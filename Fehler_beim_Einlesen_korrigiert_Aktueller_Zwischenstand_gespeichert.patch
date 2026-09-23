@@ -1,0 +1,3252 @@
+Subject: [PATCH] Fehler beim Einlesen korrigiert
+Aktueller Zwischenstand gespeichert
+---
+Index: app/src/main/java/com/example/myapplication/MainActivity.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/MainActivity.kt b/app/src/main/java/com/example/myapplication/MainActivity.kt
+--- a/app/src/main/java/com/example/myapplication/MainActivity.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/MainActivity.kt	(date 1789479892385)
+@@ -12,6 +12,7 @@
+ import android.os.Build
+ import android.os.Bundle
+ import android.speech.RecognizerIntent
++import android.util.Log
+ import android.widget.Toast
+ import androidx.activity.ComponentActivity
+ import androidx.activity.compose.rememberLauncherForActivityResult
+@@ -167,35 +168,51 @@
+     }
+ 
+     private fun handleIntent(intent: Intent?, context: Context, viewModel: FridgeViewModel) {
+-        if (intent == null) return
++        if (intent == null || intent.action == null) return
++        
++        // Verhindere mehrfache Verarbeitung desselben Intents bei Re-Compositions
++        if (intent.getBooleanExtra("INTENT_PROCESSED", false)) return
+ 
+         val action = intent.action
+         val type = intent.type
+ 
+-        if (Intent.ACTION_SEND == action || Intent.ACTION_VIEW == action) {
+-            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+-                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+-            } else {
+-                @Suppress("DEPRECATION")
+-                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+-            } ?: intent.data ?: intent.clipData?.getItemAt(0)?.uri
+-            
+-            if (uri != null) {
+-                val mimeType = context.contentResolver.getType(uri) ?: ""
+-                when {
+-                    mimeType.startsWith("image/") || type?.startsWith("image/") == true -> {
+-                        viewModel.importFromImage(context, uri)
+-                    }
+-                    mimeType == "application/pdf" || type == "application/pdf" || uri.toString().lowercase().endsWith(".pdf") -> {
+-                        viewModel.importFromPdf(context, uri)
+-                    }
+-                    else -> {
+-                        intent.getStringExtra(Intent.EXTRA_TEXT)?.let { viewModel.searchAndAddItems(it) }
+-                    }
+-                }
+-            } else if (Intent.ACTION_SEND == action && "text/plain" == type) {
+-                intent.getStringExtra(Intent.EXTRA_TEXT)?.let { viewModel.searchAndAddItems(it) }
++        try {
++            if (Intent.ACTION_SEND == action || Intent.ACTION_VIEW == action) {
++                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
++                } else {
++                    @Suppress("DEPRECATION")
++                    intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
++                } ?: intent.data ?: intent.clipData?.getItemAt(0)?.uri
++                
++                if (uri != null) {
++                    intent.putExtra("INTENT_PROCESSED", true)
++                    val mimeType = context.contentResolver.getType(uri) ?: type ?: ""
++                    when {
++                        mimeType.startsWith("image/") -> {
++                            viewModel.importFromImage(context, uri)
++                        }
++                        mimeType == "application/pdf" || uri.toString().lowercase().endsWith(".pdf") -> {
++                            viewModel.importFromPdf(context, uri)
++                        }
++                        mimeType == "text/plain" -> {
++                            intent.getStringExtra(Intent.EXTRA_TEXT)?.let { viewModel.searchAndAddItems(it) }
++                        }
++                        else -> {
++                            // Fallback: Versuche es als Text, wenn vorhanden
++                            intent.getStringExtra(Intent.EXTRA_TEXT)?.let { viewModel.searchAndAddItems(it) }
++                        }
++                    }
++                } else if (Intent.ACTION_SEND == action && type?.startsWith("text/") == true) {
++                    intent.getStringExtra(Intent.EXTRA_TEXT)?.let { 
++                        intent.putExtra("INTENT_PROCESSED", true)
++                        viewModel.searchAndAddItems(it) 
++                    }
++                }
+             }
++        } catch (e: Exception) {
++            Log.e("MainActivity", "Fehler beim Verarbeiten des geteilten Inhalts", e)
++            Toast.makeText(context, "Inhalt konnte nicht verarbeitet werden", Toast.LENGTH_SHORT).show()
+         }
+     }
+ }
+@@ -443,7 +460,7 @@
+             scanResultsJson?.let {
+                 val listType = object : TypeToken<List<Product>>() {}.type
+                 val products: List<Product> = Gson().fromJson(it, listType)
+-                fridgeViewModel.handleScannedProducts(products)
++                fridgeViewModel.handleScannedProducts(products, "CAMERA_SCAN_" + System.currentTimeMillis() / 60000) // Gruppiert nach Minute
+             }
+         }
+     }
+@@ -623,11 +640,16 @@
+                         if (hasDeals) {
+                             item {
+                                 val deal = fridgeViewModel.dealAlertItem.value!!
++                                val context = LocalContext.current
+                                 Card(
+                                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                     colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                                     shape = RoundedCornerShape(16.dp),
+-                                    onClick = { fridgeViewModel.dealAlertItem.value = null }
++                                    onClick = { 
++                                        // Problem 2: Weiterleitung zur Händler-Webseite
++                                        openRetailerWebsite(context, deal.second)
++                                        fridgeViewModel.dealAlertItem.value = null 
++                                    }
+                                 ) {
+                                     Column(modifier = Modifier.padding(16.dp)) {
+                                         Text("🎉 Angebots-Alarm!", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+@@ -2283,7 +2305,14 @@
+             isSyncing.value = true
+             showImportPreview.value = true
+             try {
+-                val inputStream = context.contentResolver.openInputStream(uri)
++                val fileName = getFileName(context, uri) ?: "unknown_image"
++                val inputStream = try {
++                    context.contentResolver.openInputStream(uri)
++                } catch (e: SecurityException) {
++                    isSyncing.value = false
++                    Toast.makeText(context, "Berechtigung zum Lesen fehlt", Toast.LENGTH_SHORT).show()
++                    return@launch
++                }
+                 val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                 inputStream?.close()
+ 
+@@ -2300,7 +2329,7 @@
+                 recognizer.process(image)
+                     .addOnSuccessListener { visionText ->
+                         val products = KassenzettelParser.parseReceipt(visionText, corrections)
+-                        handleScannedProducts(products)
++                        handleScannedProducts(products, fileName)
+                     }
+                     .addOnFailureListener {
+                         Toast.makeText(context, "Fehler beim Lesen des Bildes", Toast.LENGTH_SHORT).show()
+@@ -2320,21 +2349,27 @@
+                 showImportPreview.value = true
+             }
+             try {
+-                val parcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return@launch
++                val fileName = getFileName(context, uri) ?: "unknown_pdf"
++                val parcelFileDescriptor = try {
++                    context.contentResolver.openFileDescriptor(uri, "r")
++                } catch (e: SecurityException) {
++                    withContext(Dispatchers.Main) {
++                        isSyncing.value = false
++                        Toast.makeText(context, "Berechtigung für PDF fehlt", Toast.LENGTH_SHORT).show()
++                    }
++                    return@launch
++                } ?: return@launch
+                 val pdfRenderer = PdfRenderer(parcelFileDescriptor)
+                 val allProducts = mutableListOf<Product>()
+                 val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
+ 
+-                if (pdfRenderer.pageCount > 0) {
+-                    val page = pdfRenderer.openPage(0)
++                for (pageIndex in 0 until pdfRenderer.pageCount) {
++                    val page = pdfRenderer.openPage(pageIndex)
+                     
+-                    // Optimierung der Bildqualität: 300 DPI für Text-Erkennung (Standard PDF ist 72 DPI)
+-                    // (300 / 72) = ca. 4.16f Skalierung
+                     val scale = 4.0f 
+                     val targetWidth = (page.width * scale).toInt()
+                     val targetHeight = (page.height * scale).toInt()
+                     
+-                    // Begrenzung auf eine maximale Dimension (z.B. 4000px), um OutOfMemory zu vermeiden
+                     val maxDim = 4000
+                     val finalScale = if (targetWidth > maxDim || targetHeight > maxDim) {
+                         maxDim.toFloat() / Math.max(page.width, page.height)
+@@ -2348,12 +2383,13 @@
+                         Bitmap.Config.ARGB_8888
+                     )
+                     
+-                    // WICHTIG: Weißer Hintergrund, da PDFs oft transparent sind und OCR dann versagt
+                     val canvas = android.graphics.Canvas(bitmap)
+                     canvas.drawColor(android.graphics.Color.WHITE)
+                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                     
+-                    withContext(Dispatchers.Main) { receiptBitmap.value = bitmap }
++                    if (pageIndex == 0) {
++                        withContext(Dispatchers.Main) { receiptBitmap.value = bitmap }
++                    }
+ 
+                     try {
+                         val image = InputImage.fromBitmap(bitmap, 0)
+@@ -2363,7 +2399,7 @@
+                             allProducts.addAll(products)
+                         }
+                     } catch (e: Exception) {
+-                        e.printStackTrace()
++                        Log.e("FridgeViewModel", "OCR Fehler auf Seite $pageIndex", e)
+                     }
+                     
+                     page.close()
+@@ -2372,7 +2408,11 @@
+                 parcelFileDescriptor.close()
+ 
+                 withContext(Dispatchers.Main) {
+-                    handleScannedProducts(allProducts)
++                    if (allProducts.isEmpty()) {
++                        Toast.makeText(context, "Keine Artikel im PDF erkannt.", Toast.LENGTH_LONG).show()
++                    } else {
++                        handleScannedProducts(allProducts, fileName)
++                    }
+                     isSyncing.value = false
+                 }
+             } catch (e: Exception) {
+@@ -2388,38 +2428,54 @@
+     fun searchAndAddItems(text: String) {
+         // Unified Parsing für digitale Belege oder Text-Import
+         viewModelScope.launch {
+-            isSyncing.value = true
+-            showImportPreview.value = true
+-            
+-            val newItems = mutableListOf<FridgeItem>()
+-            
+-            // Nutze den intelligenten Premium-Parser
+-            val parsedProducts = KassenzettelParser.parseReceiptText(text)
+-            
+-            parsedProducts.forEach { p ->
+-                val item = FridgeItem(
+-                    name = p.name,
+-                    price = p.price,
+-                    quantity = p.quantity,
+-                    unit = if (p.rawText?.contains("kg", true) == true) "kg" else "Stk.",
+-                    notes = "RAW:${p.rawText}"
+-                )
+-                newItems.add(enrichItemWithSmartLogic(item))
+-            }
+-            
+-            if (newItems.isNotEmpty()) {
+-                importCandidates.value = newItems
+-                recognizedCount.intValue = newItems.size
+-                selectedItems.value = newItems.map { it.id }.toSet()
+-            }
+-            isSyncing.value = false
++            try {
++                isSyncing.value = true
++                showImportPreview.value = true
++                
++                val newItems = mutableListOf<FridgeItem>()
++                val sourceId = "TEXT_IMPORT_" + text.hashCode().toString()
++                
++                // Nutze den intelligenten Premium-Parser
++                val parsedProducts = KassenzettelParser.parseReceiptText(text)
++                
++                parsedProducts.forEach { p ->
++                    val item = FridgeItem(
++                        name = p.name,
++                        price = p.price,
++                        quantity = p.quantity,
++                        unit = if (p.rawText?.contains("kg", true) == true) "kg" else "Stk.",
++                        notes = "RAW:${p.rawText}",
++                        importHash = generateImportHash(sourceId, p.name)
++                    )
++                    newItems.add(enrichItemWithSmartLogic(item))
++                }
++                
++                if (newItems.isNotEmpty()) {
++                    importCandidates.value = newItems
++                    recognizedCount.intValue = newItems.size
++                    selectedItems.value = newItems.map { it.id }.toSet()
++                } else {
++                    withContext(Dispatchers.Main) {
++                        Toast.makeText(context, "Keine Artikel im Text erkannt.", Toast.LENGTH_SHORT).show()
++                        showImportPreview.value = false
++                    }
++                }
++            } catch (e: Exception) {
++                Log.e("FridgeViewModel", "Fehler beim Text-Import", e)
++                withContext(Dispatchers.Main) {
++                    Toast.makeText(context, "Fehler beim Importieren: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
++                    showImportPreview.value = false
++                }
++            } finally {
++                isSyncing.value = false
++            }
+         }
+     }
+ 
+     private fun enrichItemWithSmartLogic(item: FridgeItem): FridgeItem {
+         var name = item.name
+         
+-        // 1. Abkürzungs-Mapping (Premium Feature)
++        // 1. Abkürzungs-Mapping & Cleaning
+         val abbrevMap = mapOf(
+             "Edu.Liebl.Boh." to "Eduscho Bohnen",
+             "Perf.Fit" to "Katzenfutter",
+@@ -2430,7 +2486,9 @@
+             "WS" to "Wurst",
+             "Mönch." to "Mönchshof",
+             "H-Milch" to "H-Milch",
+-            "v.S." to "vom Schwein"
++            "v.S." to "vom Schwein",
++            "BIO" to "Bio",
++            "TK" to "Tiefkühl"
+         )
+         for ((abbr, full) in abbrevMap) {
+             if (name.contains(abbr, true)) {
+@@ -2438,44 +2496,43 @@
+             }
+         }
+         
+-        // Junk-Cleaning
+         name = name.replace(Regex("""\d+g$""", RegexOption.IGNORE_CASE), "").trim()
++        name = name.replace(Regex("""\d+x\d+[,.]\d{2}""", RegexOption.IGNORE_CASE), "").trim()
+         
+         // 2. Kategorie & Lagerort zuordnen
+         val detectedCat = com.example.myapplication.data.CategoryDetector.detectCategory(name)
+         val catName = detectedCat.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+         
+         val location = when {
++            name.lowercase().contains("tiefkühl") || name.lowercase().contains("tk ") || 
++            name.lowercase().contains("eis ") || name.lowercase().contains("gefroren") -> "Gefrierfach"
++            
+             name.lowercase().contains("milch") || name.lowercase().contains("kefir") || 
+             name.lowercase().contains("lachs") || name.lowercase().contains("nackenst") ||
+             name.lowercase().contains("fleisch") || name.lowercase().contains("wurst") ||
+             name.lowercase().contains("joghurt") || name.lowercase().contains("quark") ||
+-            name.lowercase().contains("gurke") || name.lowercase().contains("salat") -> "Kühlschrank"
++            name.lowercase().contains("gurke") || name.lowercase().contains("salat") ||
++            name.lowercase().contains("käse") || name.lowercase().contains("butter") -> "Kühlschrank"
+             
+             name.lowercase().contains("weichspüler") || name.lowercase().contains("katzenfutter") ||
+-            name.lowercase().contains("folie") || name.lowercase().contains("reiniger") -> "Haushalt"
++            name.lowercase().contains("folie") || name.lowercase().contains("reiniger") ||
++            name.lowercase().contains("shampoo") || name.lowercase().contains("seife") -> "Haushalt"
+             
+             else -> "Vorratskammer"
+         }
+         
+-        // 3. Smart Expiry (MHD-Vorhersage basierend auf Lagerort/Kategorie)
++        // 3. Smart Expiry (MHD-Vorhersage)
+         val expiryDays = when {
+-            // Fleisch & Fisch sind sehr kurzlebig
+-            name.lowercase().contains("lachs") || name.lowercase().contains("frisch") || 
+-            name.lowercase().contains("nacken") || name.lowercase().contains("steak") -> 2L
+-            
+-            // Kühlschrank-Artikel ca. 1 Woche
++            location == "Gefrierfach" -> 180L
++            name.lowercase().contains("lachs") || name.lowercase().contains("hackfleisch") -> 2L
++            name.lowercase().contains("steak") || name.lowercase().contains("geflügel") -> 3L
++            name.lowercase().contains("milch") || name.lowercase().contains("joghurt") -> 10L
++            name.lowercase().contains("käse") -> 21L
+             location == "Kühlschrank" -> 7L
+-            
+-            // Vorräte ca. 1 Jahr
+             location == "Vorratskammer" -> 365L
+-            
+-            // Haushalt ca. 2 Jahre
+-            location == "Haushalt" -> 730L
+-            
+             else -> 14L
+         }
+-        val expiryDate = System.currentTimeMillis() + (expiryDays * 24 * 60 * 60 * 1000)
++        val expiryDate = item.purchaseDate + (expiryDays * 24 * 60 * 60 * 1000)
+         
+         return item.copy(
+             name = name.split(" ").filter { it.isNotBlank() }.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } },
+@@ -2485,14 +2542,22 @@
+         )
+     }
+ 
+-    fun handleScannedProducts(products: List<Product>) {
++    fun handleScannedProducts(products: List<Product>, sourceId: String = "SCAN") {
+         viewModelScope.launch {
+             if (products.isEmpty()) {
+                 withContext(Dispatchers.Main) {
+                     Toast.makeText(context, "Keine Artikel auf dem Bon gefunden.", Toast.LENGTH_LONG).show()
+                 }
++                return@launch
+             }
+-            val newItems = products.map { p ->
++            
++            // Duplikatschutz: Prüfe, ob dieser Beleg (sourceId) bereits importiert wurde
++            val existingHashes = dao.getImportHashes().first()
++            
++            val newItems = products.mapNotNull { p ->
++                val hash = generateImportHash(sourceId, p.name)
++                if (existingHashes.contains(hash)) return@mapNotNull null
++                
+                 val item = FridgeItem(
+                     name = p.name,
+                     price = p.price,
+@@ -2501,8 +2566,10 @@
+                     imageUrl = p.imageUrl,
+                     allergens = p.allergens,
+                     kcal = p.kcal,
+-                    notes = "RAW:${p.rawText}",
+-                    boundingBox = p.boundingBox
++                    notes = "RAW:${p.rawText}${if (p.supermarket != null) " @${p.supermarket}" else ""}",
++                    boundingBox = p.boundingBox,
++                    purchaseDate = p.purchaseDate ?: System.currentTimeMillis(),
++                    importHash = hash
+                 )
+                 // Preisverlauf speichern
+                 if (p.price > 0) {
+@@ -2511,11 +2578,48 @@
+                 }
+                 enrichItemWithSmartLogic(item)
+             }
+-            importCandidates.value = newItems
+-            recognizedCount.intValue = newItems.size
+-            selectedItems.value = newItems.map { it.id }.toSet()
+-            showImportPreview.value = true
+-        }
++            
++            if (newItems.isEmpty()) {
++                withContext(Dispatchers.Main) {
++                    Toast.makeText(context, "Alle Artikel dieses Belegs wurden bereits importiert.", Toast.LENGTH_SHORT).show()
++                    showImportPreview.value = false
++                }
++            } else {
++                importCandidates.value = newItems
++                recognizedCount.intValue = newItems.size
++                selectedItems.value = newItems.map { it.id }.toSet()
++                showImportPreview.value = true
++            }
++        }
++    }
++
++    private fun generateImportHash(source: String, itemName: String): String {
++        return "${source}_${itemName}".hashCode().toString()
++    }
++
++    private fun getFileName(context: Context, uri: Uri): String? {
++        var result: String? = null
++        if (uri.scheme == "content") {
++            val cursor = context.contentResolver.query(uri, null, null, null, null)
++            try {
++                if (cursor != null && cursor.moveToFirst()) {
++                    val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
++                    if (index != -1) {
++                        result = cursor.getString(index)
++                    }
++                }
++            } finally {
++                cursor?.close()
++            }
++        }
++        if (result == null) {
++            result = uri.path
++            val cut = result?.lastIndexOf('/') ?: -1
++            if (cut != -1) {
++                result = result?.substring(cut + 1)
++            }
++        }
++        return result
+     }
+ 
+     private suspend fun checkProductWarner(name: String, currentPrice: Double, currentQty: Int, barcode: String?) {
+@@ -2588,11 +2692,14 @@
+     fun confirmAndImport() {
+         viewModelScope.launch {
+             val toImport = importCandidates.value.filter { selectedItems.value.contains(it.id) }
+-            toImport.forEach { dao.insertItem(it) }
++            // Problem 1: Artikel im Vorrat (Inventory) speichern statt Wochenplan
++            toImport.forEach { addItem(it) } 
+             showImportPreview.value = false
+             importCandidates.value = emptyList()
+             selectedItems.value = emptySet()
+-            Toast.makeText(context, "${toImport.size} Artikel importiert!", Toast.LENGTH_SHORT).show()
++            withContext(Dispatchers.Main) {
++                Toast.makeText(context, "${toImport.size} Artikel im Vorrat gespeichert!", Toast.LENGTH_SHORT).show()
++            }
+         }
+     }
+ }
+@@ -2600,7 +2707,7 @@
+ @Composable
+ fun ReceiptScannerDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
+     var textInput by remember { mutableStateOf("") }
+-    
++
+     AlertDialog(
+         onDismissRequest = onDismiss,
+         title = { Text("Kassenbon Text-Import 📝") },
+@@ -2631,3 +2738,21 @@
+         }
+     )
+ }
++
++// HIER IST DIE WEITERLEITUNG FÜR DEINE ANGEBOTE:
++fun openRetailerWebsite(context: Context, retailer: String) {
++    val url = when (retailer.lowercase()) {
++        "kaufland" -> "https://www.kaufland.de/angebote"
++        "lidl" -> "https://www.lidl.de/c/billiger-montag/a10006065"
++        "rewe" -> "https://www.rewe.de/angebote"
++        "aldi" -> "https://www.aldi-nord.de/angebote.html"
++        "edeka" -> "https://www.edeka.de/angebote"
++        else -> "https://www.google.de/search?q=angebote+$retailer"
++    }
++    try {
++        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
++        context.startActivity(intent)
++    } catch (e: Exception) {
++        println("Fehler beim Öffnen der Webseite: ${e.message}")
++    }
++}
+\ No newline at end of file
+Index: app/src/main/java/com/example/myapplication/Lebensmittel.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/Lebensmittel.kt b/app/src/main/java/com/example/myapplication/Lebensmittel.kt
+--- a/app/src/main/java/com/example/myapplication/Lebensmittel.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/Lebensmittel.kt	(date 1789467999053)
+@@ -1,13 +1,18 @@
+ package com.example.myapplication
+ 
+ import androidx.room.Entity
++import androidx.room.Index
+ import androidx.room.PrimaryKey
+ 
+-@Entity(tableName = "kuehlschrank_tabelle")
++@Entity(
++    tableName = "kuehlschrank_tabelle",
++    indices = [Index(value = ["name", "dateiname"], unique = true)]
++)
+ data class Lebensmittel(
+     @PrimaryKey(autoGenerate = true) val id: Int = 0,
+     val name: String,
+     val barcode: String,
+     val ablaufdatum: String,
+-    val menge: Int = 1
++    val menge: Int = 1,
++    val dateiname: String? = null
+ )
+Index: app/src/main/java/com/example/myapplication/KassenzettelParser.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/KassenzettelParser.kt b/app/src/main/java/com/example/myapplication/KassenzettelParser.kt
+--- a/app/src/main/java/com/example/myapplication/KassenzettelParser.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/KassenzettelParser.kt	(date 1789472066027)
+@@ -1,466 +1,160 @@
+ package com.example.myapplication
+ 
+-import android.graphics.Rect
+-import android.util.Log
+ import com.google.mlkit.vision.text.Text
+ import com.example.myapplication.data.Product
+-import java.util.*
+-import kotlin.math.abs
++import java.util.Locale
+ 
+-/**
+- * MASTER-PARSER 19.0 "THE ENCYCLOPEDIA"
+- * - Löst das "Unbekannter Artikel"-Problem durch persistente Text-Pufferung (Spalten-Fehler Kaufland).
+- * - Enthält erweiterte Abkürzungs-Expandierung für Marken und Artikelnamen.
+- * - Striktere Marken-Identifikation verhindert falsches Zerstückeln von Wörtern (z.B. Cappelletti -> Appel).
+- */
+ object KassenzettelParser {
+ 
+-    private val PRICE_REGEX = Regex("""(\d+[,.]\d{2})\s*(?:[A-Z*€1-9]|EUR|€|B|A|#| \-)?\b""", RegexOption.IGNORE_CASE)
+-    private val OCR_PRICE_REPAIR = Regex("""(?i)[eEsS8GgB](\d*[,.]\d{2})""")
+-    private val OCR_QUANTITY_REPAIR = Regex("""(?i)(\d+)\s*(?:5tk|Sfk|5t|Stk|stk|st|Slk|X|x)\b""")
+-    private val OCR_WEIGHT_REPAIR = Regex("""(?i)(\d+[,.]\d{3})\s*(?:k9|K9|kg|KG|g|G|ig|lg)\b""")
+-    private val QUANTITY_REGEX = Regex("""(\d+)\s*(?:Stk|x|X|stk|\*|St|Slk)\s*(\d*[,.]\d{2})""")
+-    private val WEIGHT_PRICE_REGEX = Regex("""(\d+[,.]\d{3})\s*(?:kg|KG|g|G|ig|lg)\s*(?:[xX*])\s*(\d*[,.]\d{2})""")
+-    private val UNIT_PRICE_CLEANER = Regex("""(?i)\d*[,.]\d{2}\s*(?:EUR|€)?\s*/\s*(?:kg|g|l|ml|stk|st|pkg)""")
+-    private val TAX_LETTER_REMOVER = Regex("""\s+[A-Z1-9*#]$""")
+-    private val CAMEL_CASE_SPLIT = Regex("(?<=[a-z])(?=[A-Z])")
+-    private val DATE_TIME_REGEX = Regex("""(?i)\b\d{1,2}[./]\d{1,2}[./]\d{2,4}(?:\s+\d{1,2}:\d{1,2}(?::\d{2})?)?\b|\b\d{1,2}\s*Uhr\b""")
+-    private val SYSTEM_CODE_REGEX = Regex("""\b\d{5,}\b""")
+-    private val START_WITH_SPECIAL = Regex("""^[*\-+.#/].*""")
+-    private val FILLER_WORDS = Regex("""(?i)\b(mit|und|im|am|aus|für|von|der|die|das|in|zu|bei|vom|des|dem|den|einen|eine|ein|auf|nach|zum|zur|am)\b""")
+-    private val PRICE_FUSION_FIXER = Regex("""(\p{L})(\d*[,.]\d{2})""")
+-    private val QUANTITY_FUSION_FIXER = Regex("""(\p{L})(\d+)\s*(?:x|\*|Stk)""")
+-    private val TAX_PERCENT_FILTER = Regex("""\d+\s*%\s+(?:MwSt|USt|Steuer)""")
+-    private val LEADING_QUANTITY_REGEX = Regex("""^(\d+)\s*(?:stk\.?|st\.?|x|\*|st)\s*""", RegexOption.IGNORE_CASE)
+-    private val WHITESPACE_COLLAPSE = Regex("""\s+""")
++    // DER ANKER: Sucht nach Preisen (z.B. "3,98 B", "1,49 A", "2.50 EUR" oder einfach "0,99")
++    private val TOTAL_PRICE_REGEX = Regex("""(-?\d+[,.]\d{2})\s*([A-D]|EUR|€)?\b""", RegexOption.IGNORE_CASE)
+ 
+-    private val SYSTEM_NOISE = setOf(
+-        "genehmigung", "terminal", "alter", "zahlung", "uhrzeit", "datum",
+-        "station", "bediener", "filiale", "kasse", "trace", "aid", "pan",
+-        "mv-daten", "bnr", "u-nr", "beleg", "händler", "umsatz", "steuer",
+-        "mehr erfahren", "coupons", "artikelanzahl", "vielen dank", "kontaktlos",
+-        "sie sparen", "2 cent oug beutel", "pfandartikel", "k card", "k-card",
+-        "lidl plus", "preisvorteil", "zu zahlen", "lidl pay", "gesparter",
+-        "auf wiedersehen", "besuchen sie uns", "storno", "kartenzahlung",
+-        "geg-stand", "st-nr", "ust-id", "belegnr", "trace-nr", "kundenbeleg", "punkte",
+-        "ec-karte", "mastercard", "visa", "amex", "gegeb", "wechselgeld", "netto", "brutto",
+-        "treuepunkte", "sammeln", "einlösen", "bargeld", "euro", "eur", "summe",
+-        "zwischensumme", "gesamt", "total", "subtotal", "mwst", "steuer", "ust",
+-        "anteil", "satz", "betrag", "uhr", "zeit", "e-mail", "email", "web",
+-        "filialleiter", "kassierer", "kassiererin", "bedient", "bon", "beleg",
+-        "kundenservice", "vorteil", "coupon", "rabatt", "sparen", "punkte", "gutschein",
+-        "mengenrabatt", "sparvorteil", "oug beutel", "geprueft", "ihre ersparnis", "zahlbetrag"
+-    )
++    // Sucht nach Mengen-Multiplikatoren (z.B. "2 * 1,99" oder "3 x 0.49")
++    private val QUANTITY_REGEX = Regex("""(\d+)\s*(?:\*|x|X|à)\s*(\d+[,.]\d{2})""", RegexOption.IGNORE_CASE)
+ 
+-    private val BRAND_DATABASE = mapOf(
+-        "GUT&G" to "Gut & Günstig", "G&G" to "Gut & Günstig", "G+G" to "Gut & Günstig",
+-        "JA!" to "Ja!", "JA" to "Ja!", "REWE BW" to "Rewe Beste Wahl", "B-WAHL" to "Beste Wahl",
+-        "REWE" to "Rewe", "EDEKA" to "Edeka", "ED." to "Edeka", "RE." to "Rewe",
+-        "LIDL" to "Lidl", "LI." to "Lidl", "ALDI" to "Aldi", "AL." to "Aldi",
+-        "PENNY" to "Penny", "PE." to "Penny", "K-CLASSIC" to "K-Classic",
+-        "MILBONA" to "Milbona", "MILFINA" to "Milfina", "MILSANI" to "Milsani",
+-        "GUTES LAND" to "Gutes Land", "NATURGUT" to "Naturgut", "BIOBIO" to "BioBio",
+-        "BIO-ORGANIC" to "Bio Organic", "DULANO" to "Dulano", "FREEWAY" to "Freeway",
+-        "SOLEVITA" to "Solevita", "TANDIL" to "Tandil", "TODAY" to "Today", "ELKOS" to "Elkos",
+-        "HACKFL" to "Hackfleisch", "R-HACK" to "Rinderhackfleisch", "S-HACK" to "Schweinehackfleisch",
+-        "GEM-HACK" to "Gemischtes Hackfleisch", "P-BRUST" to "Putenbrust",
+-        "H-SCHINK" to "Hinterschinken", "K-SCHINK" to "Kochschinken", "FLEISCHW" to "Fleischwurst",
+-        "LEBERW" to "Leberwurst", "ROHWURST" to "Rohwurst", "BRÜHWURST" to "Brühwurst",
+-        "WIENER" to "Wiener", "BOCKW" to "Bockwurst", "SALAMI" to "Salami", "LACHS" to "Lachs",
+-        "H-MILCH" to "H-Milch", "FR-MILCH" to "Frischmilch", "V-MILCH" to "Vollmilch",
+-        "MOPRO" to "Molkerei", "JOGH" to "Joghurt", "JOGHURT" to "Joghurt", "QUARK" to "Quark",
+-        "S-SAHNE" to "Schlagsahne", "SAHNE" to "Sahne", "SCHMAND" to "Schmand", "C-FRAICHE" to "Crème Fraîche",
+-        "BUTTER" to "Butter", "MOZZ" to "Mozzarella", "EMMENT" to "Emmentaler", "GOUDA" to "Gouda",
+-        "FR-KÄSE" to "Frischkäse", "S-KÄSE" to "Schnittkäse", "H-KÄSE" to "Hartkäse",
+-        "O+G" to "Obst & Gemüse", "GEMÜSE" to "Gemüse", "BANAN" to "Bananen", "APFEL" to "Äpfel",
+-        "TOM" to "Tomaten", "GURK" to "Gurken", "PAPRIKA" to "Paprika", "ZWIEB" to "Zwiebeln",
+-        "KART" to "Kartoffeln", "MÖHREN" to "Möhren", "KAROTT" to "Karotten", "L-ZWIEB" to "Lauchzwiebeln",
+-        "BACKST" to "Backstation", "BRÖT" to "Brötchen", "BROT" to "Brot", "TOAST" to "Toast",
+-        "BAGUETTE" to "Baguette", "KUCHEN" to "Kuchen", "GEBÄCK" to "Gebäck",
+-        "WASSER" to "Wasser", "SAFT" to "Saft", "LIMO" to "Limonade", "COLA" to "Cola",
+-        "BIER" to "Bier", "WEIN" to "Wein", "SEKT" to "Sekt", "SPIRIT" to "Spirituosen",
+-        "WC-P" to "Toilettenpapier", "Z-PASTA" to "Zahnpasta", "SHAMP" to "Shampoo",
+-        "D-GEL" to "Duschgel", "SEIFE" to "Seife", "W-MITTEL" to "Waschmittel",
+-        "S-MITTEL" to "Spülmittel", "REINIG" to "Reiniger", "K-FAVORIT" to "K-Favoriten",
+-        "K-BIO" to "K-Bio", "K-PUR" to "K-Pur", "ALDI SÜD" to "Aldi Süd", "ALDI NORD" to "Aldi Nord"
+-    )
++    // Sucht nach Zeilen, die nur aus einem Preis bestehen (oft in digitalen Apps)
++    private val STANDALONE_PRICE_REGEX = Regex("""^\s*(-?\d+[,.]\d{2})\s*([A-D]|EUR|€)?\s*$""", RegexOption.IGNORE_CASE)
+ 
+-    private val KNOWN_BRANDS = setOf(
+-        "Maggi", "Knorr", "Dr. Oetker", "Nestlé", "Ferrero", "Milka", "Haribo", "Barilla",
+-        "Coca-Cola", "Fanta", "Sprite", "Pepsi", "Mezzo Mix", "Volvic", "Vittel", "Gerolsteiner",
+-        "Jacobs", "Tchibo", "Dallmayr", "Melitta", "Meßmer", "Teekanne", "Müller", "Weihenstephan",
+-        "Landliebe", "Ehrmann", "Danone", "Alpro", "Oatly", "Rama", "Lätta", "Becel", "Kerrygold",
+-        "Iglo", "Frosta", "Wagner", "Buitoni", "Uncle Ben's", "Ben's Original", "Bonduelle", "Kühne",
+-        "Persil", "Ariel", "Pril", "Fairy", "Frosch", "Zewa", "Nivea", "Dove", "Schwarzkopf",
+-        "Balea", "Isana", "Alverde", "Hipp", "Bebivita", "Alete", "Pampers", "Kuschelweich",
+-        "Lenor", "Vernel", "Sagrotan", "Domestos", "Ajax", "Cillit Bang", "Bref", "Somat",
+-        "Finish", "Calgon", "Vanish", "Coral", "Perwoll", "Spee", "Weißer Riese", "Terra",
+-        "Fit", "Palmolive", "Fa", "Rexona", "8x4", "Axe", "Old Spice", "Gillette", "Wilkinson",
+-        "Signal", "Odol-med3", "Colgate", "Elmex", "Aronal", "Sensodyne", "Parodontax", "Meridol",
+-        "Listerine", "Oral-B", "Dontodent", "Perlodent", "Alldent", "Bevola", "Today", "Elkos",
+-        "Cien", "Ombia", "Lacura", "Kyrell", "Biotura", "Share", "Followfood", "Frosta",
+-        "Veganz", "Rügenwalder Mühle", "Gutfried", "Meica", "Wiesenhof", "Butfisch", "Appel",
+-        "Hawesta", "Nadler", "Homann", "Dahlhoff", "Popp", "Wiltmann", "Reinert", "Stockmeyer",
+-        "Abraham", "Herta", "Ponnath", "Wolf", "Berschneider", "Lutz", "Windau", "Kemper",
+-        "Hellmann's", "Thomy", "Heinz", "Bautz'ner", "Löwensenf", "Develey", "Miracel Whip",
+-        "Pema", "Lieken Urkorn", "Harry", "Golden Toast", "Wasa", "Burger", "Finn Crisp",
+-        "Mestemacher", "Pauly", "Funny-Frisch", "Chio", "Lorenz", "Ültje", "Kellogg's",
+-        "Nestlé Cerealien", "Kölln", "Schwartau", "Zentis", "Langnese", "Nutella", "Biscoff",
+-        "Ovomaltine", "Grafschafter", "Diamant Zucker", "Südzucker", "Dr. Quendt", "Bahlsen",
+-        "Leibniz", "Griesson", "DeBeukelaer", "Prinzen Rolle", "Lambertz", "Coppenrath",
+-        "Wicklein", "Ritter Sport", "Lindt", "Storck", "Toffifee", "Merci", "nimm2", "Knoppers",
+-        "Hanuta", "Duplo", "Kinder Riegel", "Kinder Bueno", "Kinder Schokolade", "Kinder Surprise",
+-        "Mars", "Snickers", "Twix", "Bounty", "Milky Way", "M&M's", "Skittles", "Wrigley's",
+-        "Airwaves", "Extra", "Hubba Bubba", "Mentos", "Chupa Chups", "Fisherman's Friend",
+-        "Ricola", "Katjes", "Trolli", "Haribo Goldbären", "Werther's Original", "Dickmann's"
+-    )
++    // Sucht nach Gewichtsangaben im Namen
++    private val WEIGHT_REGEX = Regex("""\d+(?:[,.]\d+)?\s*(?:kg|g|ml|l)\b""", RegexOption.IGNORE_CASE)
+ 
+-    fun parseReceipt(visionText: Text, corrections: Map<String, String> = emptyMap()): List<Product> {
+-        val allLines = visionText.textBlocks.flatMap { it.lines }
+-        if (allLines.isEmpty()) return emptyList()
++    // Die schwarze Liste: Jede Textzeile, die eines dieser Wörter enthält, wird komplett vernichtet
++    private val TRASH_LINES = listOf(
++        "eur", "preis", "datum", "uhrzeit",
++        "beleg", "terminal", "trace", "karte", "visa", "mastercard",
++        "debit", "kontaktlos", "ec-karte", "los(e)", "eprueft",
++        "muatd", "a-nr", "bnr", "kunden", "pay", "rabatt", "xtra",
++        "pfand", "leergut", "artikel", "summe", "total", "zahlbetrag",
++        "mwst", "steuer", "netto", "brutto", "gegeben", "zurück", "gespart",
++        "bon", "markt", "tel:", "ust-id", "id:", "st-nr", "vielen dank"
++    )
+ 
+-        // 1. Geometrischer Aufbau: Wir sortieren die Textblöcke sauber von oben nach unten
+-        val sortedLines = allLines.sortedBy { it.boundingBox?.top ?: 0 }
+-        val rows = mutableListOf<MutableList<Text.Line>>()
++    private val SUPERMARKETS = listOf("REWE", "LIDL", "ALDI", "EDEKA", "KAUFLAND", "NETTO", "PENNY", "GLOBUS", "TEGUT", "DENN")
++    private val DATE_REGEX = Regex("""(\d{2})[./](\d{2})[./](\d{2,4})""")
+ 
+-        val avgHeight = allLines.map { it.boundingBox?.height() ?: 0 }.filter { it > 0 }.average().takeIf { !it.isNaN() } ?: 20.0
+-        // PDF-Toleranz: Digitale PDFs haben oft minimale Versätze. 0.5f der Zeilenhöhe ist sicherer.
+-        val threshold = (avgHeight * 0.5).toInt().coerceIn(5, 40)
++    fun parseReceiptText(rawText: String, corrections: Map<String, String> = emptyMap()): List<Product> {
++        if (rawText.isBlank()) return emptyList()
+ 
+-        for (line in sortedLines) {
+-            val top = line.boundingBox?.top ?: 0
+-            // Suche eine Reihe, die vertikal nah genug ist (Zentrum-Abgleich ist bei PDF stabiler)
+-            val existingRow = rows.find { row ->
+-                val rowTop = row.first().boundingBox?.top ?: 0
+-                abs(rowTop - top) < threshold
+-            }
+-            if (existingRow != null) existingRow.add(line) else rows.add(mutableListOf(line))
++        val supermarket = SUPERMARKETS.find { rawText.contains(it, ignoreCase = true) }
++        val dateMatch = DATE_REGEX.find(rawText)
++        val purchaseDate = dateMatch?.let {
++            try {
++                val day = it.groupValues[1].toInt()
++                val month = it.groupValues[2].toInt() - 1
++                var year = it.groupValues[3].toInt()
++                if (year < 100) year += 2000
++                val cal = java.util.Calendar.getInstance()
++                cal.set(year, month, day, 12, 0)
++                cal.timeInMillis
++            } catch (e: Exception) { null }
++        }
++
++        // 1. VORBEREITUNG: Text säubern und in Zeilen zerlegen
++        val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
++        
++        // Atombombe: Alles nach Summe wegschneiden
++        val cutOffKeywords = listOf("SUMME", "ZAHLBETRAG", "TOTAL", "GEGEBEN", "KARTENZAHLUNG", "BARGELD", "GESAMT")
++        val filteredLines = mutableListOf<String>()
++        for (line in lines) {
++            if (cutOffKeywords.any { line.contains(it, ignoreCase = true) }) break
++            filteredLines.add(line)
+         }
+ 
+-        // 2. Wir bauen den kompletten Textblock auf, sodass wir zeilenübergreifend puffern können
+-        val reconstructedText = rows.joinToString("\n") { row ->
+-            row.sortedBy { it.boundingBox?.left ?: 0 }.joinToString(" ") { it.text }
+-        }
++        val foundItems = mutableListOf<Product>()
++        
++        // 2. STRATEGIE A: Zeilenbasierter Hybrid-Parser (Ideal für Globus & Apps)
++        // Wir gehen Zeile für Zeile durch. Ein Artikel besteht oft aus:
++        // [Name]
++        // [Menge x Einzelpreis] -> [Gesamtpreis]
++        var currentName: String? = null
++        var currentQuantity = 1
++
++        for (i in filteredLines.indices) {
++            val line = filteredLines[i]
++            val lowerLine = line.lowercase()
++
++            // Trash-Check
++            if (TRASH_LINES.any { lowerLine.contains(it) }) {
++                currentName = null
++                continue
++            }
+ 
+-        Log.d("ParserDebug", "--- RECONSTRUCTED TEXT START ---")
+-        Log.d("ParserDebug", reconstructedText)
+-        Log.d("ParserDebug", "--- RECONSTRUCTED TEXT END ---")
++            // Preis-Check (Gesamtpreis in der Zeile?)
++            val priceMatch = TOTAL_PRICE_REGEX.find(line)
++            val standalonePriceMatch = STANDALONE_PRICE_REGEX.find(line)
+ 
+-        // 3. Nur noch EINMAL parsen, damit der "Erinnerungsspeicher" für Namen erhalten bleibt!
+-        val items = parseReceiptText(reconstructedText, corrections).toMutableList()
+-        Log.d("ParserDebug", "Parsed Items Count: ${items.size}")
+-        items.forEach { Log.d("ParserDebug", "Item: ${it.name} - Price: ${it.price}") }
+-
+-        // 4. Bounding Box (rotes Rechteck) nachträglich exakt zuordnen
+-        items.forEachIndexed { index, product ->
+-            val raw = product.rawText
+-            if (!raw.isNullOrBlank()) {
+-                // Strategie A: Zeilen-Genaue Suche
+-                val exactLine = allLines.find { it.text.contains(raw, ignoreCase = true) }
+-                if (exactLine != null) {
+-                    exactLine.boundingBox?.let {
+-                        items[index] = product.copy(boundingBox = "${it.left},${it.top},${it.right},${it.bottom}")
++            if (priceMatch != null) {
++                val priceValue = priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0
++                
++                // Falls wir noch keinen Namen haben, ist der Text VOR dem Preis der Name
++                if (currentName == null) {
++                    val potentialName = line.substring(0, priceMatch.range.first).trim()
++                    if (potentialName.length > 2) {
++                        currentName = potentialName
+                     }
+-                } else {
+-                    // Strategie B: Wort-Schnittmenge (falls OCR das Produkt zerhackt hat)
+-                    val words = raw.split(" ").filter { it.length > 2 }
+-                    if (words.isNotEmpty()) {
+-                        val bestLine = allLines.maxByOrNull { line ->
+-                            words.count { word -> line.text.contains(word, ignoreCase = true) }
+-                        }
+-                        val matchCount = words.count { word -> bestLine?.text?.contains(word, ignoreCase = true) == true }
+-                        if (bestLine != null && matchCount >= (words.size / 2.0).coerceAtLeast(1.0)) {
+-                            bestLine.boundingBox?.let {
+-                                items[index] = product.copy(boundingBox = "${it.left},${it.top},${it.right},${it.bottom}")
+-                            }
+-                        } else {
+-                            // Strategie C: Suche nach dem Preis (Fallback für "Unbekannter Artikel")
+-                            val priceStr = String.format(Locale.US, "%.2f", product.price).replace(".", ",")
+-                            val priceLine = allLines.find { it.text.contains(priceStr) }
+-                            priceLine?.boundingBox?.let {
+-                                items[index] = product.copy(boundingBox = "${it.left},${it.top},${it.right},${it.bottom}")
+-                            }
+-                        }
+-                    }
++                }
++                
++                // Falls wir einen Namen haben, ist das unser Artikel!
++                if (currentName != null) {
++                    // Mengen-Check in derselben oder vorherigen Zeile
++                    val qtyMatch = QUANTITY_REGEX.find(line) ?: (if (i > 0) QUANTITY_REGEX.find(filteredLines[i-1]) else null)
++                    if (qtyMatch != null) {
++                        currentQuantity = qtyMatch.groupValues[1].toIntOrNull() ?: 1
++                    }
++
++                    if (priceValue < 0) {
++                        // Rabatt-Logik
++                        if (foundItems.isNotEmpty()) {
++                            val last = foundItems.removeAt(foundItems.size - 1)
++                            foundItems.add(last.copy(price = maxOf(0.0, last.price + priceValue)))
++                        }
++                    } else {
++                        foundItems.add(createProduct(currentName!!, priceValue, currentQuantity, corrections, supermarket, purchaseDate))
++                    }
++                    currentName = null
++                    currentQuantity = 1
++                }
++            } else if (standalonePriceMatch == null) {
++                // Kein Preis gefunden -> Es ist wahrscheinlich ein Name
++                // Wir nehmen die Zeile als Name an, wenn sie kein Müll ist
++                if (!line.matches(Regex(""".*\d{2,}.*"""))) { // Keine reinen Nummern-Zeilen
++                     currentName = line
+                 }
+             }
+         }
+ 
+-        return items.filter { it.name != "___IGNORE___" && it.price > 0 && it.price < 500 }
+-            .groupBy { it.name + String.format("%.2f", it.price) }
++        // 3. DUPLIKATE ZUSAMMENFASSEN
++        return foundItems
++            .groupBy { it.name + String.format(Locale.US, "%.2f", it.price) }
+             .map { entry ->
+                 val first = entry.value.first()
+                 first.copy(quantity = entry.value.sumOf { it.quantity })
+             }
+     }
+ 
+-    fun parseReceiptText(text: String, corrections: Map<String, String> = emptyMap()): List<Product> {
+-        val foundItems = mutableListOf<Product>()
+-        val rawLines = text.lines()
+-
+-        var nameBuffer = ""
+-        var lastMultiplierItem: Product? = null
+-
+-        for (rawLine in rawLines) {
+-            var line = rawLine.trim()
+-            if (line.isBlank() || START_WITH_SPECIAL.matches(line)) continue
+-
+-            // OCR-Fehlerkorrekturen
+-            line = line.replace(OCR_PRICE_REPAIR, "0$1")
+-            line = line.replace(OCR_QUANTITY_REPAIR, "$1 Stk")
+-            line = line.replace(OCR_WEIGHT_REPAIR, "$1 kg")
+-            line = line.replace(PRICE_FUSION_FIXER, "$1 $2").replace(QUANTITY_FUSION_FIXER, "$1 $2")
+-
+-            var explicitQuantity: Int? = null
+-            LEADING_QUANTITY_REGEX.find(line)?.let {
+-                explicitQuantity = it.groupValues[1].toIntOrNull()
+-                line = line.substring(it.range.last + 1).trim()
+-            }
+-
+-            val upper = line.uppercase()
+-
+-            // Abbruchbedingungen (Ende des Bons)
+-            if (upper.startsWith("SUMME") || upper.startsWith("GESAMT") || upper.contains("ZU ZAHLEN") ||
+-                upper.contains("LIDL PAY") || upper.contains("ZAHLBETRAG") || upper.startsWith("TOTAL")) break
+-
+-            // Rabatte und Coupons
+-            val pMatchesInLine = PRICE_REGEX.findAll(line).toList()
+-            val discount = pMatchesInLine.lastOrNull()?.groupValues?.getOrNull(1)
+-                ?.replace(',', '.')?.toDoubleOrNull()
+-            
+-            if ((upper.contains("RABATT") || upper.contains("COUPON") || upper.contains("SPAREN")) && discount != null && discount < 0.0) {
+-                if (foundItems.isNotEmpty()) {
+-                    val last = foundItems.last()
+-                    foundItems[foundItems.lastIndex] = last.copy(price = (last.price + discount).coerceAtLeast(0.01))
+-                }
+-                nameBuffer = ""
+-                continue
+-            }
++    private fun createProduct(name: String, price: Double, quantity: Int, corrections: Map<String, String>, supermarket: String? = null, purchaseDate: Long? = null): Product {
++        var cleanName = name
++        // Gewichte wie "750g" entfernen
++        cleanName = cleanName.replace(WEIGHT_REGEX, "") 
++        // Sonderzeichen weg
++        cleanName = cleanName.replace(Regex("""[^a-zA-ZäöüÄÖÜß\s\-]"""), " ")
++        cleanName = cleanName.replace(Regex("""\s+"""), " ").trim()
+ 
+-            // Müll filtern (Puffer löschen und überspringen)
+-            val hasPriceInLine = pMatchesInLine.isNotEmpty() || QUANTITY_REGEX.containsMatchIn(line)
+-            val isSystemNoise = SYSTEM_NOISE.any { noise -> 
+-                line.split(" ").any { word -> word.equals(noise, ignoreCase = true) }
+-            } || TAX_PERCENT_FILTER.containsMatchIn(line)
++        cleanName = corrections[cleanName] ?: cleanName
++        cleanName = cleanName.lowercase().split(" ").filter { it.length > 1 }.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+ 
+-            if (!hasPriceInLine && (isSystemNoise || upper.contains("STORNO") || upper.contains("RÜCKGABE") || 
+-                line.contains("Pfand", true) || line.contains("Leergut", true) || DATE_TIME_REGEX.containsMatchIn(line))) {
+-                nameBuffer = ""
+-                continue
+-            }
+-
+-            line = line.replace(UNIT_PRICE_CLEANER, "").replace(WHITESPACE_COLLAPSE, " ")
+-            line = line.replace(TAX_LETTER_REMOVER, "").replace(SYSTEM_CODE_REGEX, "")
+-
+-            // 1. Suche nach Mengenangaben (x Stk)
+-            val qMatch = QUANTITY_REGEX.find(line) ?: WEIGHT_PRICE_REGEX.find(line)
+-            if (qMatch != null) {
+-                val qtyValue = qMatch.groupValues[1].replace(',', '.')
+-                val qty = if (qtyValue.contains('.')) 1 else qtyValue.toIntOrNull() ?: 1
+-                val price = qMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
+-
+-                val nameBefore = line.substring(0, qMatch.range.first).trim()
+-                val finalNamePart = if (nameBefore.length > 2) nameBefore else nameBuffer
+-
+-                if (finalNamePart.isNotBlank()) {
+-                    val splitNames = smartSplitBuffer(finalNamePart)
+-                    splitNames.forEachIndexed { i, name ->
+-                        val p = Product(
+-                            name = applyCorrections(cleanName(name), name, corrections),
+-                            price = if (i == splitNames.size - 1) price else 0.0,
+-                            quantity = if (i == splitNames.size - 1) qty else 1,
+-                            rawText = name
+-                        )
+-                        if (p.name != "___IGNORE___") foundItems.add(p)
+-                    }
+-                    nameBuffer = ""; lastMultiplierItem = foundItems.lastOrNull(); continue
+-                } else if (foundItems.isNotEmpty()) {
+-                    val last = foundItems.last()
+-                    foundItems[foundItems.size - 1] = last.copy(quantity = qty, price = price)
+-                    lastMultiplierItem = foundItems.last(); continue
+-                }
+-            }
++        return Product(
++            name = cleanName,
++            price = price,
++            quantity = quantity,
++            rawText = name,
++            supermarket = supermarket,
++            purchaseDate = purchaseDate
++        )
++    }
+ 
+-            // 2. Suche nach Preisen
+-            if (pMatchesInLine.isNotEmpty()) {
+-                if (lastMultiplierItem != null && pMatchesInLine.size == 1) {
+-                    val lineWithoutPrice = line.replace(PRICE_REGEX, "").trim()
+-                    // Bei PDF sind Produktname und Preis oft weit getrennt -> wir vertrauen dem Buffer mehr
+-                    if (lineWithoutPrice.length < 3 || lineWithoutPrice.all { !it.isLetter() }) {
+-                        lastMultiplierItem = null; continue
+-                    }
+-                }
+-
+-                var lastIdx = 0
+-                for (m in pMatchesInLine) {
+-                    var price = m.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0
+-                    
+-                    // Erkennung von negativen Preisen (Rabatte), auch wenn das Minus davor steht
+-                    if (m.value.contains("-") || (m.range.first > 0 && line[m.range.first - 1] == '-')) {
+-                        price = -abs(price)
+-                    }
+-
+-                    if (price < 0 && foundItems.isNotEmpty()) {
+-                        val last = foundItems.last()
+-                        foundItems[foundItems.lastIndex] = last.copy(price = (last.price + price).coerceAtLeast(0.01))
+-                        lastIdx = m.range.last
+-                        continue
+-                    }
+-
+-                    // SICHERE SUBSTRING-LOGIK
+-                    val safeStart = lastIdx.coerceIn(0, line.length)
+-                    val safeEnd = m.range.first.coerceIn(0, line.length)
+-                    val rawPart = if (safeStart < safeEnd) line.substring(safeStart, safeEnd).trim() else ""
+-                    
+-                    val finalRaw = if (rawPart.length > 2) {
+-                        if (nameBuffer.isNotEmpty() && !isSystemNoise) "$nameBuffer $rawPart" else rawPart
+-                    } else nameBuffer
+-
+-                    if (finalRaw.isNotBlank()) {
+-                        val splitNames = smartSplitBuffer(finalRaw)
+-                        splitNames.forEachIndexed { i, name ->
+-                            val finalName = applyCorrections(cleanName(name), name, corrections)
+-                            if (price > 0.0 && price < 400.0 && finalName != "___IGNORE___") {
+-                                val p = Product(
+-                                    name = finalName,
+-                                    price = if (i == splitNames.lastIndex) price else 0.0,
+-                                    quantity = explicitQuantity ?: 1,
+-                                    rawText = name
+-                                )
+-                                foundItems.add(p)
+-                            }
+-                        }
+-                    }
+-                    nameBuffer = ""
+-                    lastIdx = m.range.last
+-                }
+-
+-                val safeLeftoverStart = lastIdx.coerceIn(0, line.length)
+-                val leftover = if (safeLeftoverStart < line.length) line.substring(safeLeftoverStart).trim() else ""
+-                if (leftover.length > 2 && !DATE_TIME_REGEX.containsMatchIn(leftover)) {
+-                    nameBuffer = leftover
+-                }
+-                lastMultiplierItem = null
+-            } else {
+-                // 3. Reiner Text (Name)
+-                if (line.any { it.isLetter() } && line.isNotEmpty() && !DATE_TIME_REGEX.containsMatchIn(line)) {
+-                    // Verhindere, dass wir Riesen-Blöcke sammeln
+-                    if (nameBuffer.length > 150) nameBuffer = ""
+-                    nameBuffer = if (nameBuffer.isEmpty()) line else "$nameBuffer $line"
+-                }
+-            }
+-        }
+-        return foundItems
+-    }
+-
+-    private fun applyCorrections(cleanedName: String, rawText: String, corrections: Map<String, String>): String {
+-        return corrections[rawText]
+-            ?: corrections.entries.firstOrNull { (storedRawText, _) ->
+-                storedRawText.equals(rawText, ignoreCase = true)
+-            }?.value
+-            ?: cleanedName
+-    }
+-
+-    private fun smartSplitBuffer(buffer: String): List<String> {
+-        if (buffer.length < 20) return listOf(buffer)
+-
+-        val results = mutableListOf<String>()
+-        val words = buffer.split(" ")
+-        var current = ""
+-
+-        for (word in words) {
+-            val isSplitter = isHighConfidenceStart(word) && current.length > 10
+-            if (isSplitter) {
+-                results.add(current.trim())
+-                current = word
+-            } else {
+-                current += " $word"
+-            }
+-        }
+-        results.add(current.trim())
+-        return results.filter { it.isNotBlank() }
+-    }
+-
+-    private fun isHighConfidenceStart(word: String): Boolean {
+-        val clean = word.replace(Regex("""[^a-zA-Z]"""), "").uppercase()
+-        return BRAND_DATABASE.containsKey(word) || KNOWN_BRANDS.any { it.uppercase() == clean } ||
+-                listOf("KCLASSIC", "KBIO", "REWE", "EDEKA", "ALDI", "LIDL", "WAGNER", "KNORR", "MILKA", "CHIO").contains(clean)
+-    }
+-
+-    private fun cleanName(raw: String): String {
+-        var n = raw.trim()
+-
+-        n = n.replace(Regex("""^\.+"""), "").replace(".", " ")
+-        val lower = n.lowercase()
+-        if (SYSTEM_NOISE.any { lower.contains(it) } || lower.contains("card") || lower.contains("pay") || lower.contains("pfand")) {
+-            val isHousehold = lower.contains("müll") || lower.contains("beutel") || lower.contains("rollen") ||
+-                    lower.contains("wasch") || lower.contains("spüler") || lower.contains("perle")
+-            if (!isHousehold) return "___IGNORE___"
+-        }
+-
+-        // --- MASSIVE ABKÜRZUNGS-EXPANDIERUNG ---
+-        val abbreviations = mapOf(
+-            """\bK\.""" to "K-Classic ",
+-            """\bKLC\.?\b""" to "K-Classic ",
+-            """\bKbio\.?\b""" to "K-Bio ",
+-            """\bKfav\.?\b""" to "K-Favoriten ",
+-            """\bKpur\.?\b""" to "K-Pur ",
+-            """\bWeih\.?\b""" to "Weihenstephan ",
+-            """\bRotk\.?\b""" to "Rotkäppchen ",
+-            """\bRotkäpp\.?\b""" to "Rotkäppchen ",
+-            """\bMü\.?\b""" to "Müller ",
+-            """\bEdu\.?\b""" to "Eduscho ",
+-            """\bKn\.?\b""" to "Knorr ",
+-            """\bMa\.?\b""" to "Maggi ",
+-            """\bOetk\.?\b""" to "Dr. Oetker ",
+-            """\bDelv\.?\b""" to "Delverde ",
+-            """\bPerf\.Fit\b""" to "Perfect Fit ",
+-            """\bHähnchenbr\.?\b""" to "Hähnchenbrust ",
+-            """\bNackenst\.?\b""" to "Nackensteak ",
+-            """\bv\.S\.?\b""" to "vom Schwein ",
+-            """\bSpagh\.?\b""" to "Spaghetti ",
+-            """\bCarb\.?\b""" to "Carbonara ",
+-            """\bPortug\.?\b""" to "Portugieser ",
+-            """\bWeissh\.?\b""" to "Weissherbst ",
+-            """\bReb\.?\b""" to "Reben "
+-        )
+-        for ((abbr, full) in abbreviations) {
+-            n = n.replace(Regex(abbr, RegexOption.IGNORE_CASE), full)
+-        }
+-
+-        for ((a, r) in BRAND_DATABASE) {
+-            val escaped = Regex.escape(a)
+-            n = n.replace(Regex("""\b$escaped\b""", RegexOption.IGNORE_CASE), r)
+-        }
+-
+-        // Entfernt Mengenangaben sicher, ohne Worte zu zerschneiden
+-        n = n.replace(Regex("""\d+(?:[,.]\d+)?\s*(?:g|kg|l|ml|stk|st|pkg|beutel|ds|fl|gl|tub|kart|schal|netz|bund|%|vol)""", RegexOption.IGNORE_CASE), " ")
+-
+-        // Sonderzeichen durch Leerzeichen ersetzen, damit "Dinkelvollkornbrö." nicht verschmilzt!
+-        n = n.replace(Regex("""[^a-zA-ZäöüÄÖÜß0-9&+\-]"""), " ")
+-        n = n.replace(FILLER_WORDS, " ")
+-
+-        n = n.replace(CAMEL_CASE_SPLIT, " ")
+-        n = n.replace(WHITESPACE_COLLAPSE, " ").trim()
+-
+-        if (n.length < 3 || n.all { it.isDigit() }) {
+-            val backup = raw.replace(Regex("""[^a-zA-Z0-9ß ]"""), " ").trim()
+-            if (backup.length >= 2) return backup.take(40) // Auf 2 Zeichen gesenkt für Brötchen/Obst-Kürzel
+-            return "Unbekannter Artikel"
+-        }
+-
+-        for (brand in KNOWN_BRANDS) {
+-            if (n.contains(brand, true) && !n.startsWith(brand, true)) {
+-                n = brand + " " + n.replace(brand, "", true)
+-            }
+-        }
+-
+-        // Marken-Korrekturen für Katzenfutter
+-        if (n.contains("Gourmet Perle", true) && !n.contains("Katze", true)) n += " Katzenfutter"
+-        if (n.contains("Perfect Fit", true) && !n.contains("Katze", true)) n += " Katzenfutter"
+-
+-        return n.lowercase().split(" ").filter { it.isNotEmpty() }.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+-    }
+-
+-    fun correctTypo(scannedName: String): String = scannedName
+-}
++    // Hilfsfunktion für Google ML Kit
++    fun parseReceipt(visionText: Text, corrections: Map<String, String> = emptyMap()): List<Product> {
++        return parseReceiptText(visionText.text, corrections)
++    }
++}
+\ No newline at end of file
+Index: app/src/main/AndroidManifest.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/AndroidManifest.xml	(date 1789481937255)
+@@ -1,11 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="com.example.myapplication"
+     xmlns:tools="http://schemas.android.com/tools">
+ 
+     <uses-permission android:name="android.permission.CAMERA" />
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.VIBRATE" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
++    <uses-permission android:name="android.permission.NFC" />
+ 
+     <uses-feature android:name="android.hardware.camera" android:required="false" />
+ 
+@@ -17,19 +19,16 @@
+         android:label="@string/app_name"
+         android:roundIcon="@mipmap/ic_launcher_round"
+         android:supportsRtl="true"
+-        android:theme="@style/Theme.MyApplication">
++        android:theme="@style/Theme.MyApplication"
++        android:enableOnBackInvokedCallback="true">
+ 
+         <activity
+-            android:name=".MainActivity"
++            android:name="com.example.myapplication.MainActivity"
+             android:exported="true"
+             android:label="@string/app_name"
+             android:theme="@style/Theme.MyApplication"
+             android:windowSoftInputMode="adjustResize"
+-            android:enabled="false">
+-            <intent-filter>
+-                <action android:name="android.intent.action.MAIN" />
+-                <category android:name="android.intent.category.LAUNCHER" />
+-            </intent-filter>
++            android:enabled="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.SEND" />
+                 <category android:name="android.intent.category.DEFAULT" />
+@@ -48,12 +47,12 @@
+         </activity>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant01"
++            android:name="com.example.myapplication.LauncherVariant01"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_01"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_01"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -62,12 +61,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant02"
++            android:name="com.example.myapplication.LauncherVariant02"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_02"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_02"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -76,12 +75,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant03"
++            android:name="com.example.myapplication.LauncherVariant03"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_03"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_03"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -90,12 +89,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant04"
++            android:name="com.example.myapplication.LauncherVariant04"
+             android:enabled="true"
+             android:icon="@mipmap/ic_launcher_variant_04"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_04"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -104,12 +103,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant05"
++            android:name="com.example.myapplication.LauncherVariant05"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_05"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_05"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -118,12 +117,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant06"
++            android:name="com.example.myapplication.LauncherVariant06"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_06"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_06"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -132,12 +131,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant07"
++            android:name="com.example.myapplication.LauncherVariant07"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_07"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_07"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -146,12 +145,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant08"
++            android:name="com.example.myapplication.LauncherVariant08"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_08"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_08"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -160,12 +159,12 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant09"
++            android:name="com.example.myapplication.LauncherVariant09"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_09"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_09"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -174,12 +173,222 @@
+         </activity-alias>
+ 
+         <activity-alias
+-            android:name=".LauncherVariant10"
++            android:name="com.example.myapplication.LauncherVariant10"
+             android:enabled="false"
+             android:icon="@mipmap/ic_launcher_variant_10"
+             android:label="@string/app_name"
+             android:roundIcon="@mipmap/ic_launcher_round_variant_10"
+-            android:targetActivity=".MainActivity"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant11"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_11"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_11"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant12"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_12"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_12"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant13"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_13"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_13"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant14"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_14"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_14"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant15"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_15"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_15"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant16"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_16"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_16"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant17"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_17"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_17"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant18"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_18"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_18"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant19"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_19"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_19"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant20"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_20"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_20"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant21"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_21"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_21"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant22"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_22"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_22"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant23"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_23"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_23"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant24"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_24"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_24"
++            android:targetActivity="com.example.myapplication.MainActivity"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.MAIN" />
++                <category android:name="android.intent.category.LAUNCHER" />
++            </intent-filter>
++        </activity-alias>
++
++        <activity-alias
++            android:name="com.example.myapplication.LauncherVariant25"
++            android:enabled="false"
++            android:icon="@mipmap/ic_launcher_variant_25"
++            android:label="@string/app_name"
++            android:roundIcon="@mipmap/ic_launcher_round_variant_25"
++            android:targetActivity="com.example.myapplication.MainActivity"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -188,19 +397,19 @@
+         </activity-alias>
+ 
+         <activity
+-            android:name=".ScannerActivity"
++            android:name="com.example.myapplication.KassenzettelScannerActivity"
+             android:exported="false"
+-            android:label="Barcode Scanner"
++            android:label="Kassenbon Scanner"
+             android:theme="@style/Theme.MyApplication" />
+ 
+         <activity
+-            android:name=".KassenzettelScannerActivity"
++            android:name="com.example.myapplication.QrLabelActivity"
+             android:exported="false"
+-            android:label="Kassenbon Scanner"
++            android:label="Etiketten Druck"
+             android:theme="@style/Theme.MyApplication" />
+ 
+         <receiver
+-            android:name=".FridgeWidgetReceiver"
++            android:name="com.example.myapplication.FridgeWidgetReceiver"
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+Index: auto_coder.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/auto_coder.py b/auto_coder.py
+--- a/auto_coder.py	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/auto_coder.py	(date 1786864923903)
+@@ -14,383 +14,215 @@
+     pass
+ 
+ # ==========================================
+-# 1. EINSTELLUNGEN
++# 1. EINSTELLUNGEN & API-KEY
+ # ==========================================
+-API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6J__oDJJxwD6QVOnvsXaP9m6EoqTlzv_hv4xEKp2vN7JA")
++API_KEY = "AQ.Ab8RN6JMrG58SZYH26xAGyDq1-F7WnZdvc5JszAuG5d0OxEwVA"
+ 
+ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ def projekt_pfad(*teile):
+     return os.path.join(BASE_DIR, *teile)
+ 
+-LOGIC_FILE = projekt_pfad("app", "src", "main", "java", "com", "example", "myapplication", "MainActivity.kt")
+-MANIFEST_FILE = projekt_pfad("app", "src", "main", "AndroidManifest.xml")
+-BACKLOG_FILE = projekt_pfad("auto_todo_list.json")
++# NEU: Das Skript kontrolliert jetzt den ganzen Ordner!
++APP_DIR = projekt_pfad("app", "src", "main", "java", "com", "example", "myapplication")
+ 
+-MAX_RETRIES = 3
++MAX_RETRIES = 5
+ MAX_ZEIT = 180
+-API_TIMEOUT = 180 # Extra lang für große Dateien
+-AUTO_CLEANUP_EXTERNAL_FILES = True
+-MAX_TASKS_PRO_RUN = 12
++AKTULLES_MODELL = "gemini-2.5-flash"
+ 
++# WICHTIG: KassenzettelParser.kt wurde aus der Lösch-Liste entfernt!
+ ALTE_ZUSATZDATEIEN = [
+     "FridgeItem.kt", "FridgeViewModel.kt", "FridgeDao.kt", "FridgeDatabase.kt",
+-    "FoodFactsService.kt", "FridgeWidget.kt", "PredictiveStockWorker.kt", "ScannerActivity.kt",
++    "FoodFactsService.kt", "FridgeWidget.kt", "PredictiveStockWorker.kt",
++    "ScannerActivity.kt", "ExpiryNotificationWorker.kt", "FridgeWidgetReceiver.kt"
+ ]
+ 
+ # ==========================================
+-# 2. WINDOWS JAVA-REPARATUR
++# 2. DATEI-REINIGUNG & GIT BACKUP
+ # ==========================================
+-def repariere_windows_java():
+-    standard_jbr = r"C:\Program Files\Android\Android Studio\jbr"
+-    if os.path.exists(standard_jbr):
+-        os.environ["JAVA_HOME"] = standard_jbr
+-        os.environ["PATH"] = rf"{standard_jbr}\bin;" + os.environ.get("PATH", "")
+-        return
+-    for lw in ['D:', 'E:', 'F:']:
+-        pfad = rf"{lw}\Program Files\Android\Android Studio\jbr"
+-        if os.path.exists(pfad):
+-            os.environ["JAVA_HOME"] = pfad
+-            os.environ["PATH"] = rf"{pfad}\bin;" + os.environ.get("PATH", "")
+-            return
+-
+-repariere_windows_java()
+-
+-# ==========================================
+-# 3. WASSERFALL-SYSTEM FÜR MODELLE (DER 429-FIX)
+-# ==========================================
+-# Wir nehmen FLASH als Standard, da es 1500 Anfragen pro Tag erlaubt!
+-MODELLE_ZUM_TESTEN = [
+-    "gemini-2.5-flash",
+-    "gemini-1.5-flash",
+-    "gemini-2.5-pro",
+-    "gemini-1.5-pro"
+-]
+-AKTUELLER_MODELL_INDEX = 0
+-
+-# ==========================================
+-# 4. KI-KOMMUNIKATION MIT SMARTEM LIMIT-SCHUTZ
+-# ==========================================
+-def rufe_ki_auf(prompt):
+-    global AKTUELLER_MODELL_INDEX
+-    headers = {
+-        'Content-Type': 'application/json',
+-        'x-goog-api-key': API_KEY
+-    }
+-    data = {"contents": [{"parts": [{"text": prompt}]}]}
+-
+-    for netzwerk_versuch in range(5):
+-        modell_name = MODELLE_ZUM_TESTEN[AKTUELLER_MODELL_INDEX]
+-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{modell_name}:generateContent"
+-
+-        try:
+-            req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='POST')
+-            with urllib.request.urlopen(req, timeout=API_TIMEOUT) as response:
+-                res = json.loads(response.read().decode('utf-8'))
+-                text = res['candidates'][0]['content']['parts'][0]['text']
+-                code_blocks = re.findall('`'*3 + r'(?:[a-zA-Z]+)?\n?(.*?)' + '`'*3, text, re.DOTALL)
+-                return code_blocks[0].strip() if code_blocks else text.strip()
+-
+-        except urllib.error.HTTPError as e:
+-            if e.code == 429:
+-                print(f"  [Netzwerk] 429 Limit für '{modell_name}' erreicht!")
+-                if "pro" in modell_name:
+-                    # Wenn Pro-Modell blockiert (Tageslimit), rutsche auf Flash runter
+-                    if AKTUELLER_MODELL_INDEX < len(MODELLE_ZUM_TESTEN) - 1:
+-                        AKTUELLER_MODELL_INDEX += 1
+-                        print(f"  -> Tageslimit leer! Wechsle dauerhaft auf: '{MODELLE_ZUM_TESTEN[AKTUELLER_MODELL_INDEX]}'...")
+-                        time.sleep(2)
+-                        continue
+-                print("  -> Warte 65 Sekunden, damit Google den Timer resettet...")
+-                time.sleep(65) # Genug Zeit, damit Google die Sperre aufhebt
+-            elif e.code == 404:
+-                print(f"  [Netzwerk] 404 Fehler: Google blockiert '{modell_name}'.")
+-                if AKTUELLER_MODELL_INDEX < len(MODELLE_ZUM_TESTEN) - 1:
+-                    AKTUELLER_MODELL_INDEX += 1
+-                    print(f"  -> Wechsle auf: '{MODELLE_ZUM_TESTEN[AKTUELLER_MODELL_INDEX]}'...")
+-                    time.sleep(2)
+-                    continue
+-                else:
+-                    break
+-            elif e.code in [503, 529, 500]:
+-                print(f"  [Netzwerk] Server ausgelastet ({e.code}). Pause 10s... (Versuch {netzwerk_versuch+1})")
+-                time.sleep(10)
+-            else:
+-                print(f"  [Netzwerk] HTTP-Fehler: {e} (Versuch {netzwerk_versuch+1})")
+-                time.sleep(5)
+-        except Exception as e:
+-            print(f"  [Netzwerk] Timeout/Verbindungsfehler: {e} (Versuch {netzwerk_versuch+1})")
+-            time.sleep(10)
+-
+-    return ""
+-
+-def parse_json_antwort(antwort, fallback):
+-    if not antwort: return fallback
+-    text = antwort.strip()
+-    match = re.search(r"\{.*\}", text, re.DOTALL)
+-    if match: text = match.group(0)
+-    try:
+-        return json.loads(text)
+-    except Exception:
+-        return fallback
+-
+-# ==========================================
+-# 5. DER RADIKALE DATEI-KILLER & CODE-HEALER
+-# ==========================================
+-def bereinige_und_heile_code_direkt():
+-    basis_pfad = projekt_pfad("app", "src", "main", "java", "com", "example", "myapplication")
+-    if AUTO_CLEANUP_EXTERNAL_FILES:
+-        for stoerenfried in ALTE_ZUSATZDATEIEN:
+-            vollstaendiger_pfad = os.path.join(basis_pfad, stoerenfried)
+-            if os.path.exists(vollstaendiger_pfad):
+-                try:
+-                    subprocess.run(["git", "rm", "-f", vollstaendiger_pfad], capture_output=True, text=True, timeout=15)
+-                    if os.path.exists(vollstaendiger_pfad): os.remove(vollstaendiger_pfad)
+-                except Exception: pass
++def bereinige_geister_dateien():
++    for stoerenfried in ALTE_ZUSATZDATEIEN:
++        vollstaendiger_pfad = os.path.join(APP_DIR, stoerenfried)
++        if os.path.exists(vollstaendiger_pfad):
++            try:
++                os.remove(vollstaendiger_pfad)
++                print(f"-> 🧹 Geister-Datei gelöscht: {stoerenfried}")
++            except Exception:
++                pass
+ 
+-    if not os.path.exists(LOGIC_FILE): return
+-    with open(LOGIC_FILE, "r", encoding='utf-8') as f: code = f.read()
+-    geaendert = False
++def sichere_mit_git():
++    if not os.path.exists(projekt_pfad(".git")):
++        fuehre_befehl_aus(["git", "init"])
++    # Sichert jetzt den gesamten Ordner mit beiden Dateien
++    fuehre_befehl_aus(["git", "add", APP_DIR])
++    fuehre_befehl_aus(["git", "commit", "-m", "Auto-Backup", "--no-verify"])
+ 
+-    if "fun compareTo" in code and "operator fun compareTo" not in code and "override operator fun compareTo" not in code:
+-        code = code.replace("fun compareTo", "override operator fun compareTo")
+-        geaendert = True
+-    if code.count("{") > code.count("}"):
+-        code += "\n}"
+-        geaendert = True
+-
+-    if geaendert:
+-        with open(LOGIC_FILE, "w", encoding='utf-8') as f: f.write(code)
++def stelle_git_wieder_her():
++    print("-> ⏪ Setze Projekt auf letzten funktionierenden Stand zurück...")
++    fuehre_befehl_aus(["git", "checkout", "HEAD", "--", APP_DIR])
+ 
+ # ==========================================
+-# 6. BEFEHLSAUSFÜHRUNG & HILFSFUNKTIONEN
++# 3. BEFEHLSAUSFÜHRUNG & LOG-ANALYSE
+ # ==========================================
+ def fuehre_befehl_aus(befehl, timeout=MAX_ZEIT):
+     cmd = list(befehl)
+     if os.name == 'nt' and cmd[0] in ["./gradlew", "gradlew"]:
+         cmd[0] = projekt_pfad("gradlew.bat")
+ 
+-    if os.path.basename(cmd[0]).lower() in ("gradlew", "gradlew.bat"):
+-        if "--no-daemon" not in cmd: cmd.append("--no-daemon")
+-        if "--console=plain" not in cmd: cmd.append("--console=plain")
+-
+-    env = os.environ.copy()
+-    env["CI"] = "true"
+-    env.setdefault("GRADLE_OPTS", "-Dorg.gradle.daemon=false")
+-
+     try:
+-        ergebnis = subprocess.run(
+-            cmd, capture_output=True, text=True, timeout=timeout, shell=False,
+-            stdin=subprocess.DEVNULL, encoding='utf-8', errors='replace', env=env, cwd=BASE_DIR
+-        )
+-        return ergebnis.returncode == 0, f"{ergebnis.stdout}\n{ergebnis.stderr}"
+-    except subprocess.TimeoutExpired:
+-        return False, f"Zeitüberschreitung nach {timeout} Sekunden."
++        ergebnis = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, shell=(os.name == 'nt'))
++        kompletter_log = (ergebnis.stdout + "\n" + ergebnis.stderr).strip()
++        return ergebnis.returncode == 0, kompletter_log
+     except Exception as e:
+         return False, str(e)
+ 
+-def lese_code():
+-    if os.path.exists(LOGIC_FILE):
+-        with open(LOGIC_FILE, "r", encoding='utf-8') as f: return f.read()
+-    return ""
+-
+-def schreibe_code(code):
+-    os.makedirs(os.path.dirname(LOGIC_FILE), exist_ok=True)
+-    with open(LOGIC_FILE, "w", encoding='utf-8') as f: f.write(code)
+-    bereinige_und_heile_code_direkt()
+-
+-def sichere_mit_git():
+-    bereinige_und_heile_code_direkt()
+-    dateien = [LOGIC_FILE, BACKLOG_FILE]
+-    vorhandene_dateien = [p for p in dateien if os.path.exists(p)]
+-    if vorhandene_dateien:
+-        git_dateien = [os.path.relpath(p, BASE_DIR) for p in vorhandene_dateien]
+-        fuehre_befehl_aus(["git", "add", *git_dateien])
+-    fuehre_befehl_aus(["git", "commit", "-m", "Auto-Backup", "--no-verify"])
+-
+-def speichere_json_datei(pfad, daten):
+-    with open(pfad, "w", encoding='utf-8') as f:
+-        json.dump(daten, f, indent=4, ensure_ascii=False)
+-
+ def extrahiere_wichtige_fehler(log):
+     fehler_zeilen = re.findall(r"(e: file://.*)", log)
+-    if fehler_zeilen: return "\n".join(fehler_zeilen)
++    if fehler_zeilen:
++        return "\n".join(fehler_zeilen)
+     if "Composable invocations can only happen" in log:
+-        return "FEHLER: @Composable UI-Funktion in normaler Funktion oder onClick aufgerufen. Nutze Booleans für States."
++        return "FEHLER: @Composable UI-Funktion innerhalb onClick aufgerufen! Nutze State."
++    if "Redeclaration" in log:
++        return "FEHLER: Redeclaration! Du hast Dinge doppelt definiert. Prüfe MainActivity und KassenzettelParser."
+     return log[-1500:]
+ 
+ # ==========================================
+-# 7. INTERAKTIVE FREITEXT-PLANUNG
++# 4. KI-KOMMUNIKATION (MULTI-FILE)
+ # ==========================================
+-def erstelle_manuellen_plan(wunsch):
+-    plan = {
+-        "tasks": [
+-            {
+-                "id": 1,
+-                "vorschlag": "Manueller Nutzer-Wunsch",
+-                "beschreibung": wunsch,
+-                "status": "offen",
+-                "risiko": "manuell",
+-                "score": 100,
+-                "akzeptanzkriterien": ["Build läuft", "Wunsch exakt umgesetzt"]
+-            }
+-        ]
+-    }
+-    speichere_json_datei(BACKLOG_FILE, plan)
+-    return plan
++def rufe_ki_auf(prompt):
++    url = f"https://generativelanguage.googleapis.com/v1beta/models/{AKTULLES_MODELL}:generateContent?key={API_KEY}"
++    headers = {'Content-Type': 'application/json'}
++    data = {"contents": [{"parts": [{"text": prompt}]}]}
+ 
+-def lade_oder_erweitere_plan(hauptziel, autopilot_aktiv=True):
+-    if not os.path.exists(BACKLOG_FILE):
+-        return erstelle_plan_aus_ki(hauptziel)
+-
++    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='POST')
+     try:
+-        with open(BACKLOG_FILE, "r", encoding='utf-8') as f: plan = json.load(f)
+-    except Exception:
+-        plan = {"tasks": []}
++        with urllib.request.urlopen(req) as response:
++            res = json.loads(response.read().decode('utf-8'))
++            text = res['candidates'][0]['content']['parts'][0]['text']
++            return text.strip()
++    except urllib.error.HTTPError as e:
++        print(f"-> 🌐 API Fehler ({e.code}): Google Limit erreicht. Warte 65 Sekunden...")
++        time.sleep(65)
++        return ""
++    except Exception as e:
++        print(f"-> 🌐 Netzwerkfehler: {e}. Warte 65 Sekunden...")
++        time.sleep(65)
++        return ""
+ 
+-    offen = [t for t in plan.get("tasks", []) if t["status"] == "offen"]
++def lese_code():
++    code_sammlung = ""
++    # Liest nun BEIDE Dateien für die KI ein!
++    for datei in ["MainActivity.kt", "KassenzettelParser.kt"]:
++        pfad = os.path.join(APP_DIR, datei)
++        if os.path.exists(pfad):
++            with open(pfad, "r", encoding='utf-8') as f:
++                code_sammlung += f"\n\n### DATEI: {datei} ###\n{f.read()}"
++    return code_sammlung
+ 
+-    if offen:
+-        return plan
+-    elif autopilot_aktiv:
+-        return erstelle_plan_aus_ki(hauptziel)
+-    else:
+-        return {"tasks": [], "abbruch": True}
++def schreibe_code(neuer_code):
++    # Trennt die Antwort der KI und speichert sie in die richtige Datei
++    dateien = re.split(r'### DATEI: (.*?) ###', neuer_code)
+ 
+-def erstelle_plan_aus_ki(hauptziel):
+-    modell = MODELLE_ZUM_TESTEN[AKTUELLER_MODELL_INDEX]
+-    print(f"\n-> 🤖 KI denkt nach ({modell}): Suche sinnvolle Verbesserungen...")
+-    prompt = f"""
+-    Du bist ein Senior-Android-Entwickler. Ziel: {hauptziel}
+-    Aktueller Code: {lese_code()[:20000]}
+-    Schlage 3 kleine, sichere Verbesserungen vor. Antworte NUR als JSON:
+-    {{"suggestions": [{{"titel": "...", "beschreibung": "...", "risiko": "niedrig", "score": 10, "tasks": ["Schritt 1"]}}]}}
+-    """
+-    fallback = {"suggestions": [{"titel": "Code Optimierung", "beschreibung": "Refactoring", "risiko": "niedrig", "score": 10, "tasks": ["Code aufräumen"]}]}
+-    vorschlaege = parse_json_antwort(rufe_ki_auf(prompt), fallback)
++    if len(dateien) < 3:
++        # Fallback, falls die KI die Markierungen vergisst
++        pfad = os.path.join(APP_DIR, "MainActivity.kt")
++        bereinigter_code = re.sub(r'```(?:kotlin)?\n?(.*?)```', r'\1', neuer_code, flags=re.DOTALL).strip()
++        with open(pfad, "w", encoding='utf-8') as f:
++            f.write(bereinigter_code)
++        return
+ 
+-    tasks = []
+-    task_id = 1
+-    for v in vorschlaege.get("suggestions", [])[:3]:
+-        for t in v.get("tasks", [v.get("beschreibung", "")]):
+-            tasks.append({"id": task_id, "beschreibung": t, "status": "offen", "risiko": v.get("risiko", "niedrig")})
+-            task_id += 1
++    for i in range(1, len(dateien), 2):
++        dateiname = dateien[i].strip()
++        code_inhalt = dateien[i+1].strip()
++        code_inhalt = re.sub(r'```(?:kotlin)?\n?(.*?)```', r'\1', code_inhalt, flags=re.DOTALL).strip()
+ 
+-    plan = {"tasks": tasks}
+-    speichere_json_datei(BACKLOG_FILE, plan)
+-    return plan
++        if dateiname in ["MainActivity.kt", "KassenzettelParser.kt"]:
++            pfad = os.path.join(APP_DIR, dateiname)
++            os.makedirs(os.path.dirname(pfad), exist_ok=True)
++            with open(pfad, "w", encoding='utf-8') as f:
++                f.write(code_inhalt)
+ 
+ # ==========================================
+-# 8. AUTOMATISIERUNGS-SCHLEIFE
++# 5. DER INTELLIGENTE LOOP
+ # ==========================================
+-def starte_automatik(ziel, autopilot_aktiv=True):
+-    if not os.path.exists(".git"):
+-        fuehre_befehl_aus(["git", "init"])
+-
+-    bereinige_und_heile_code_direkt()
++def starte_loop(aufgabe_text):
++    bereinige_geister_dateien()
+     sichere_mit_git()
+-    bearbeitete_tasks = 0
+-
+-    while True:
+-        if bearbeitete_tasks >= MAX_TASKS_PRO_RUN:
+-            print(f"\n-> Pause: {MAX_TASKS_PRO_RUN} Aufgaben bearbeitet.")
+-            break
+-
+-        plan = lade_oder_erweitere_plan(ziel, autopilot_aktiv)
+-        if plan.get("abbruch"):
+-            print("\n✅ Alle manuellen Aufgaben erledigt!")
+-            break
+-
+-        offen = [t for t in plan.get("tasks", []) if t["status"] == "offen"]
+-        if not offen: break
+-
+-        aufgabe = offen[0]
+-        bearbeitete_tasks += 1
+-        print(f"\n[🚀 Aktuelle Aufgabe] -> {aufgabe['beschreibung']}")
+-        sichere_mit_git()
+-        stabiler_code = lese_code()
+-        erfolg = False
+-        fehler_verlauf = []
++    fehler_verlauf = []
+ 
+-        for versuch in range(1, MAX_RETRIES + 1):
+-            aktuelles_modell = MODELLE_ZUM_TESTEN[AKTUELLER_MODELL_INDEX]
+-            print(f"  -> Sende Anweisung an {aktuelles_modell} (Versuch {versuch}/{MAX_RETRIES})...")
++    for versuch in range(1, MAX_RETRIES + 1):
++        print(f"\n-> 🚀 Versuch {versuch} von {MAX_RETRIES}...")
+ 
+-            prompt = f"""
+-            Du bist ein Elite-Android-Entwickler.
+-            Aktueller Code:
+-            {lese_code()}
++        system_prompt = (
++            f"Du bist ein Senior Android Entwickler. Programmiere die Kühlschrank-App.\n"
++            f"WICHTIG: Das Projekt besteht nun aus ZWEI Dateien (MainActivity.kt und KassenzettelParser.kt)!\n"
++            f"REGELN:\n"
++            f"1. Baue diese Aufgabe ein: {aufgabe_text}\n"
++            f"2. Behalte ALLES bestehende (ViewModel, UI) in beiden Dateien zwingend bei.\n"
++            f"3. Verhindere 'Redeclaration'-Fehler: Deklariere nichts doppelt, was in der anderen Datei steht.\n"
++            f"4. Du MUSST in deiner Antwort dieses Format nutzen, um den Code zu trennen:\n"
++            f"### DATEI: MainActivity.kt ###\n"
++            f"[Code hier]\n"
++            f"### DATEI: KassenzettelParser.kt ###\n"
++            f"[Code hier]\n"
++        )
+ 
+-            DEINE AUFGABE: {aufgabe['beschreibung']}
+-
+-            REGELN:
+-            1. Gib NUR den vollständigen, überarbeiteten Kotlin-Code zurück.
+-            2. Keine XML, alles in Jetpack Compose in MainActivity.kt.
+-            3. @Composable Funktionen dürfen niemals in onClick-Lambdas aufgerufen werden.
+-            """
++        prompt = f"{system_prompt}\nAktueller Code beider Dateien:\n{lese_code()}"
+ 
+-            if fehler_verlauf:
+-                prompt += f"\n\n⚠️ BEHEBE DIESE FEHLER:\n" + "\n".join(fehler_verlauf)
++        if fehler_verlauf:
++            prompt += f"\n\nACHTUNG: Letzter Code ist abgestürzt! Behebe diese Fehler:\n" + "\n".join(fehler_verlauf)
+ 
+-            neuer_code = rufe_ki_auf(prompt)
+-            if not neuer_code or len(neuer_code) < 10:
+-                print("  -> ⚠️ Timeout oder leere Antwort. Neuer Versuch...")
+-                continue
++        neuer_code = rufe_ki_auf(prompt)
++
++        if not neuer_code or len(neuer_code) < 50:
++            print("-> ❌ Leere Antwort der KI. Wiederhole...")
++            continue
+ 
+-            schreibe_code(neuer_code)
+-            test_ok, gesamt_log = fuehre_befehl_aus(["./gradlew", "assembleDebug"])
++        schreibe_code(neuer_code)
++        print("-> 🏗️ Code getrennt gespeichert. Baue App zusammen (assembleDebug)...")
++
++        test_ok, log = fuehre_befehl_aus(["gradlew", "assembleDebug"])
+ 
+-            if test_ok:
+-                print("  -> 🎉 Erfolg! Code wurde fehlerfrei kompiliert.")
+-                erfolg = True
+-                break
+-            else:
+-                relevanter_fehler = extrahiere_wichtige_fehler(gesamt_log)
+-                print(f"  -> ❌ Build fehlgeschlagen. Kotlin-Fehler:\n     {relevanter_fehler[:250].strip()}...")
+-                fehler_verlauf.append(f"- Versuch {versuch}: {relevanter_fehler}")
+-                schreibe_code(stabiler_code)
+-
+-        if erfolg:
+-            aufgabe["status"] = "erledigt"
+-            speichere_json_datei(BACKLOG_FILE, plan)
+-            fuehre_befehl_aus(["./gradlew", "installDebug"])
++        if test_ok:
++            print("-> 🎉 ERFOLG! Beide Dateien sind fehlerfrei kompiliert!")
++            sichere_mit_git()
++            return True
+         else:
+-            print(f"\n🚨 Aufgabe konnte nicht repariert werden. Überspringe...")
+-            aufgabe["status"] = "blockiert"
+-            speichere_json_datei(BACKLOG_FILE, plan)
+-            schreibe_code(stabiler_code)
++            wichtiger_fehler = extrahiere_wichtige_fehler(log)
++            print(f"-> ❌ Build fehlgeschlagen! Fehler: {wichtiger_fehler[:200]}...")
++            fehler_verlauf.append(wichtiger_fehler)
++            stelle_git_wieder_her()
++
++            if versuch == MAX_RETRIES:
++                print("-> 🛑 Maximale Versuche erreicht. Gradle Clean...")
++                fuehre_befehl_aus(["gradlew", "clean"])
++
++    return False
+ 
+ # ==========================================
+-# 9. INTERAKTIVES TERMINAL
++# 6. INTERAKTIVES MENÜ
+ # ==========================================
+ def interaktives_menue():
+-    print("\n" + "="*55)
+-    print(f" 🤖 AUTO-CODER PRO (Mit 429 & 503 Schutz)")
+-    print("="*55)
+-
+-    while True:
+-        print("\nWas möchtest du tun?")
+-        print(" [1] ✍️  Eigenen Wunsch eingeben (Frei Schnauze)")
+-        print(" [2] ✈️  Autopilot starten (KI sucht sich Aufgaben)")
+-        print(" [3] ❌ Beenden")
++    while True:
++        print("\n" + "="*55)
++        print(" 🤖 MULTI-FILE AUTO-CODER PRO")
++        print("="*55)
++        print("[1] ✍️  Eigenen Wunsch eingeben (Frei Schnauze)")
++        print("[2] ❌ Beenden")
+ 
+-        wahl = input("\nDeine Wahl (1/2/3): ").strip()
+-
+-        if wahl == '3' or wahl.lower() in ['exit', 'quit']:
+-            print("Auf Wiedersehen!")
++        try:
++            wahl = input("\nDeine Wahl (1/2): ").strip()
++        except EOFError:
+             break
+-        elif wahl == '2':
+-            print("\nStarte Autopilot...")
+-            ziel = "Programmiere die Kühlschrank-App KOMPLETT mit Jetpack Compose in der MainActivity.kt."
+-            starte_automatik(ziel, autopilot_aktiv=True)
+-        elif wahl == '1':
+-            wunsch = input("\n📝 Was genau soll die KI machen?\n> ").strip()
+-            if wunsch:
+-                erstelle_manuellen_plan(wunsch)
+-                starte_automatik(wunsch, autopilot_aktiv=False)
+-            else:
+-                print("Keine Eingabe erkannt.")
+-        else:
+-            print("Ungültige Eingabe.")
++
++        if wahl == "1":
++            try:
++                wunsch = input("Was soll die KI einbauen?: ").strip()
++                if wunsch:
++                    starte_loop(wunsch)
++            except EOFError:
++                break
++        elif wahl == "2":
++            sys.exit(0)
+ 
+ if __name__ == "__main__":
+     interaktives_menue()
+\ No newline at end of file
+Index: .idea/planningMode.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/planningMode.xml b/.idea/planningMode.xml
+--- a/.idea/planningMode.xml	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/.idea/planningMode.xml	(date 1789480996343)
+@@ -16,6 +16,18 @@
+         <entry key="20260801-141313-2a7a97de-dac9-42a4-aa8d-8dacf5baeadb" value="true" />
+         <entry key="20260802-180948-43c222e0-5b22-448c-b137-2740e23d9c5a" value="true" />
+         <entry key="20260808-001209-f7c256d8-1948-4f83-a358-17986b71564f" value="true" />
++        <entry key="20260809-144439-907b7935-dcfa-4c34-a40e-d73f89bee7ea" value="true" />
++        <entry key="20260809-164254-dd45c146-0925-4cad-b6a2-dd19473e744a" value="true" />
++        <entry key="20260809-193719-f0ba2c66-4d54-4c76-b5a5-28e2251b176e" value="true" />
++        <entry key="20260815-144129-fa91ec33-bb55-42ec-a0b5-2c2e020cfcc0" value="true" />
++        <entry key="20260815-144812-182992b4-b2fa-4bd3-9e9f-a99eda8884e4" value="true" />
++        <entry key="20260816-092957-d07604a5-82da-4446-92e1-d31ea55569a3" value="true" />
++        <entry key="20260816-133700-7caeb7da-afe4-405c-aa73-b3a4c33728f4" value="true" />
++        <entry key="20260822-140710-a4ab7e95-788a-42d0-b724-80918b470626" value="true" />
++        <entry key="20260822-161508-8d2c2171-e5ca-41d2-9ca4-c7241cc3df3f" value="true" />
++        <entry key="20260915-132558-d594c7c7-f5af-4bd1-8146-004581cd7d92" value="true" />
++        <entry key="20260915-160149-5249a44c-982a-406f-a739-4e301ab2ae89" value="true" />
++        <entry key="20260915-160212-2b4792bc-3bee-4567-b489-f9f74a01059a" value="true" />
+       </map>
+     </option>
+   </component>
+Index: app/build.gradle.kts
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/build.gradle.kts	(date 1789481524872)
+@@ -46,9 +46,10 @@
+ dependencies {
+     // ML Kit Text Recognition V2 (OCR für Kassenzettel, lateinische Schrift)
+     implementation("com.google.mlkit:text-recognition:16.0.1")
+-// Gson für die Intent-Übergabe der Produkt-Liste
++
++    // Gson für die Intent-Übergabe der Produkt-Liste
+     implementation("com.google.code.gson:gson:2.10.1")
+-    implementation("androidx.work:work-runtime-ktx:2.9.0")
++
+     implementation("org.jsoup:jsoup:1.17.2")
+     implementation("androidx.core:core-ktx:1.15.0")
+     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+@@ -63,18 +64,22 @@
+     // Image loading
+     implementation("io.coil-kt:coil-compose:2.7.0")
+ 
+-    // Ktor for kaufDA/Apify
+-    implementation("io.ktor:ktor-client-core:3.0.1")
+-    implementation("io.ktor:ktor-client-okhttp:3.0.1")
+-    implementation("io.ktor:ktor-client-content-negotiation:3.0.1")
+-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.1")
++    // Ktor for kaufDA/Apify & Gemini SDK requirements
++    val ktor_version = "2.3.12"
++    implementation("io.ktor:ktor-client-core:$ktor_version")
++    implementation("io.ktor:ktor-client-okhttp:$ktor_version")
++    implementation("io.ktor:ktor-client-android:$ktor_version")
++    implementation("io.ktor:ktor-client-content-negotiation:$ktor_version")
++    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
++    implementation("io.ktor:ktor-client-logging:$ktor_version")
++    implementation("io.ktor:ktor-client-auth:$ktor_version")
++    implementation("io.ktor:ktor-client-encoding:$ktor_version")
+ 
+     // Networking
+     implementation("com.squareup.retrofit2:retrofit:2.9.0")
+     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+-    implementation("com.google.code.gson:gson:2.10.1")
+ 
+-    // Database (Upgrade auf 2.8.4 für Kotlin 2.4 / KSP 2.3 Kompatibilität)
++    // Database
+     val room_version = "2.8.4"
+     implementation("androidx.room:room-runtime:$room_version")
+     implementation("androidx.room:room-ktx:$room_version")
+@@ -105,6 +110,9 @@
+     // QR Code Generation
+     implementation("com.google.zxing:core:3.5.3")
+ 
++    // Google AI (Gemini) SDK
++    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
++
+     testImplementation("junit:junit:4.13.2")
+     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+Index: app/src/main/java/com/example/myapplication/data/Product.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/data/Product.kt b/app/src/main/java/com/example/myapplication/data/Product.kt
+--- a/app/src/main/java/com/example/myapplication/data/Product.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/data/Product.kt	(date 1789472053726)
+@@ -11,5 +11,8 @@
+     val allergens: String = "",
+     val kcal: Int = 0,
+     val rawText: String? = null,
+-    val boundingBox: String? = null
++    val boundingBox: String? = null,
++    val category: String = "SONSTIGES",
++    val supermarket: String? = null,
++    val purchaseDate: Long? = null
+ ) : Serializable
+Index: app/src/main/java/com/example/myapplication/KassenzettelScannerActivity.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/KassenzettelScannerActivity.kt b/app/src/main/java/com/example/myapplication/KassenzettelScannerActivity.kt
+--- a/app/src/main/java/com/example/myapplication/KassenzettelScannerActivity.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/KassenzettelScannerActivity.kt	(date 1786880557126)
+@@ -1,538 +1,194 @@
+ package com.example.myapplication
+ 
+-import android.Manifest
+-import android.app.Activity
+ import android.content.Intent
+-import android.content.pm.PackageManager
+-import android.net.Uri
++import android.graphics.Bitmap
+ import android.os.Bundle
++import android.util.Log
++import android.widget.Toast
+ import androidx.activity.ComponentActivity
+ import androidx.activity.compose.rememberLauncherForActivityResult
+ import androidx.activity.compose.setContent
+-import androidx.activity.result.PickVisualMediaRequest
+ import androidx.activity.result.contract.ActivityResultContracts
+-import androidx.camera.core.CameraControl
+-import androidx.camera.core.CameraSelector
+-import androidx.camera.core.ImageCapture
+-import androidx.camera.core.ImageCaptureException
+-import androidx.camera.core.ImageProxy
+-import androidx.camera.core.Preview
+-import androidx.camera.lifecycle.ProcessCameraProvider
+-import androidx.camera.view.PreviewView
+-import androidx.compose.foundation.BorderStroke
+-import androidx.compose.foundation.background
+-import androidx.compose.foundation.layout.Arrangement
+-import androidx.compose.foundation.layout.Box
+-import androidx.compose.foundation.layout.Column
+-import androidx.compose.foundation.layout.PaddingValues
+-import androidx.compose.foundation.layout.Row
+-import androidx.compose.foundation.layout.Spacer
+-import androidx.compose.foundation.layout.fillMaxSize
+-import androidx.compose.foundation.layout.fillMaxWidth
+-import androidx.compose.foundation.layout.height
+-import androidx.compose.foundation.layout.padding
+-import androidx.compose.foundation.layout.size
+-import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.Image
++import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+-import androidx.compose.foundation.lazy.itemsIndexed
+-import androidx.compose.foundation.shape.RoundedCornerShape
+-import androidx.compose.foundation.text.KeyboardOptions
++import androidx.compose.foundation.lazy.items
+ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.filled.CameraAlt
+ import androidx.compose.material.icons.filled.Check
+-import androidx.compose.material.icons.filled.Close
+-import androidx.compose.material.icons.filled.Delete
+-import androidx.compose.material.icons.filled.FlashlightOff
+-import androidx.compose.material.icons.filled.FlashlightOn
+-import androidx.compose.material.icons.filled.PhotoLibrary
+-import androidx.compose.material.icons.filled.Share
+-import androidx.compose.material.icons.filled.Savings
+-import androidx.compose.material3.Button
+-import androidx.compose.material3.ButtonDefaults
+-import androidx.compose.material3.Card
+-import com.example.myapplication.data.Product
+-import androidx.compose.material3.CardDefaults
+-import androidx.compose.material3.CircularProgressIndicator
+-import androidx.compose.material3.ExperimentalMaterial3Api
+-import androidx.compose.material3.Icon
+-import androidx.compose.material3.IconButton
+-import androidx.compose.material3.OutlinedButton
+-import androidx.compose.material3.OutlinedTextField
+-import androidx.compose.material3.Scaffold
+-import androidx.compose.material3.Surface
+-import androidx.compose.material3.Text
+-import androidx.compose.material3.TopAppBar
+-import androidx.compose.material3.TopAppBarDefaults
+-import androidx.compose.runtime.Composable
+-import androidx.compose.runtime.LaunchedEffect
+-import androidx.compose.runtime.getValue
+-import androidx.compose.runtime.mutableStateListOf
+-import androidx.compose.runtime.mutableStateOf
+-import androidx.compose.runtime.remember
+-import androidx.compose.runtime.setValue
++import androidx.compose.material3.*
++import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+-import androidx.compose.ui.graphics.Color
+-import androidx.compose.ui.platform.LocalContext
+-import androidx.compose.ui.platform.LocalLifecycleOwner
+-import androidx.compose.ui.text.font.FontWeight
+-import androidx.compose.ui.text.input.KeyboardType
++import androidx.compose.ui.graphics.asImageBitmap
+ import androidx.compose.ui.unit.dp
+-import androidx.compose.ui.unit.sp
+-import androidx.compose.ui.viewinterop.AndroidView
+-import androidx.core.content.ContextCompat
+-import androidx.lifecycle.lifecycleScope
+-import com.example.myapplication.data.AppDatabase
+-import com.example.myapplication.data.LearningEntry
++import com.example.myapplication.data.Product
++import com.google.ai.client.generativeai.GenerativeModel
++import com.google.ai.client.generativeai.type.content
+ import com.google.gson.Gson
+-import com.google.mlkit.vision.common.InputImage
+-import com.google.mlkit.vision.text.TextRecognition
+-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
++import com.google.gson.reflect.TypeToken
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.withContext
+-import java.util.Locale
+-import java.util.concurrent.Executors
+ 
+-/**
+- * Erfasst einen vollständigen Kassenbon als hochauflösendes Foto und übergibt die
+- * anschließend geprüften Artikel an die Hauptansicht. Die Texterkennung läuft lokal über ML Kit.
+- */
+ class KassenzettelScannerActivity : ComponentActivity() {
+ 
+-    private val cameraExecutor = Executors.newSingleThreadExecutor()
+-    private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
++    private val apiKey = "AQ.Ab8RN6ICQy_IBpdBMBjk9GJJHi5_ydt3R9pMK_qbxR91R5Unqw"
++    private val generativeModel = GenerativeModel(
++        modelName = "gemini-1.5-flash",
++        apiKey = apiKey
++    )
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+-        val dao = AppDatabase.getDatabase(this).fridgeItemDao()
+-
+         setContent {
+-            var scannedProducts by remember { mutableStateOf<List<Product>?>(null) }
+-
+-            if (scannedProducts == null) {
+-                KassenzettelScannerScreen(
+-                    onProductsDetected = { products -> scannedProducts = products },
+-                    onCancel = { finish() }
+-                )
+-            } else {
+-                ReceiptReviewScreen(
+-                    initialItems = scannedProducts.orEmpty(),
+-                    onCancel = { scannedProducts = null },
+-                    onConfirm = { finalProducts ->
+-                        lifecycleScope.launch {
+-                            finalProducts.forEach { product ->
+-                                val rawText = product.rawText?.trim().orEmpty()
+-                                if (rawText.isNotEmpty() && !rawText.equals(product.name, ignoreCase = true)) {
+-                                    dao.insertLearningEntry(
+-                                        LearningEntry(
+-                                            rawName = rawText,
+-                                            correctedName = product.name.trim(),
+-                                            usageCount = 1
+-                                        )
+-                                    )
+-                                }
+-                            }
+-
+-                            setResult(
+-                                Activity.RESULT_OK,
+-                                Intent().putExtra("SCAN_RESULTS", Gson().toJson(finalProducts))
+-                            )
+-                            finish()
+-                        }
+-                    }
+-                )
++            MaterialTheme {
++                Surface(modifier = Modifier.fillMaxSize()) {
++                    ScannerScreen()
++                }
+             }
+         }
+     }
+ 
+     @Composable
+-    private fun KassenzettelScannerScreen(
+-        onProductsDetected: (List<Product>) -> Unit,
+-        onCancel: () -> Unit
+-    ) {
+-        val context = LocalContext.current
+-        val lifecycleOwner = LocalLifecycleOwner.current
+-        val dao = remember { AppDatabase.getDatabase(context).fridgeItemDao() }
+-        val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+-        var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+-        var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
+-        var hasCameraPermission by remember {
+-            mutableStateOf(
+-                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+-            )
+-        }
+-        var isProcessing by remember { mutableStateOf(false) }
+-        var isFlashOn by remember { mutableStateOf(false) }
+-        var message by remember { mutableStateOf<String?>(null) }
+-
+-        val finishRecognition: () -> Unit = { isProcessing = false }
+-        val showRecognitionResult: (List<Product>) -> Unit = { products ->
+-            isProcessing = false
+-            if (products.isEmpty()) {
+-                message = "Keine Artikel erkannt. Bitte den gesamten Bon gerade, gut beleuchtet und ohne Spiegelungen aufnehmen."
+-            } else {
+-                onProductsDetected(products)
+-            }
+-        }
+-        val showRecognitionError: (String) -> Unit = { error ->
+-            isProcessing = false
+-            message = error
+-        }
+-
+-        fun recognizeInputImage(image: InputImage, closeImage: (() -> Unit)? = null) {
+-            lifecycleScope.launch {
+-                val corrections = withContext(Dispatchers.IO) {
+-                    dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
+-                }
+-                recognizer.process(image)
+-                    .addOnSuccessListener { visionText ->
+-                        showRecognitionResult(KassenzettelParser.parseReceipt(visionText, corrections))
+-                    }
+-                    .addOnFailureListener {
+-                        showRecognitionError("Der Bon konnte nicht gelesen werden. Bitte erneut fotografieren.")
+-                    }
+-                    .addOnCompleteListener {
+-                        closeImage?.invoke()
+-                        finishRecognition()
+-                    }
+-            }
+-        }
++    fun ScannerScreen() {
++        var bitmap by remember { mutableStateOf<Bitmap?>(null) }
++        var isAnalyzing by remember { mutableStateOf(false) }
++        var detectedItems by remember { mutableStateOf<List<Product>>(emptyList()) }
++        val scope = rememberCoroutineScope()
+ 
+-        val galleryLauncher = rememberLauncherForActivityResult(
+-            contract = ActivityResultContracts.PickVisualMedia()
+-        ) { uri: Uri? ->
+-            if (uri == null || isProcessing) return@rememberLauncherForActivityResult
+-            isProcessing = true
+-            message = null
+-            try {
+-                recognizeInputImage(InputImage.fromFilePath(context, uri))
+-            } catch (_: Exception) {
+-                showRecognitionError("Das ausgewählte Bild konnte nicht geöffnet werden.")
+-            }
+-        }
+-
+-        val permissionLauncher = rememberLauncherForActivityResult(
+-            contract = ActivityResultContracts.RequestPermission()
+-        ) { granted ->
+-            hasCameraPermission = granted
+-            if (!granted) {
+-                message = "Ohne Kameraberechtigung kannst du weiterhin ein Bonfoto aus der Galerie auswählen."
++        val takePhotoLauncher = rememberLauncherForActivityResult(
++            contract = ActivityResultContracts.TakePicturePreview()
++        ) { resultBitmap ->
++            if (resultBitmap != null) {
++                bitmap = resultBitmap
++                isAnalyzing = true
++                scope.launch {
++                    analyzeReceipt(resultBitmap) { items ->
++                        detectedItems = items
++                        isAnalyzing = false
++                    }
++                }
+             }
+         }
+ 
+-        LaunchedEffect(Unit) {
+-            if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+-        }
+-
+-        val takeReceiptPhoto: () -> Unit = takePhoto@{
+-            val capture = imageCapture
+-            if (capture == null) {
+-                message = "Die Kamera wird noch vorbereitet."
+-                return@takePhoto
+-            }
+-            if (isProcessing) return@takePhoto
+-
+-            isProcessing = true
+-            message = null
+-            capture.takePicture(cameraExecutor, object : ImageCapture.OnImageCapturedCallback() {
+-                override fun onCaptureSuccess(image: ImageProxy) {
+-                    val mediaImage = image.image
+-                    if (mediaImage == null) {
+-                        image.close()
+-                        runOnUiThread { showRecognitionError("Das Kamerabild konnte nicht verarbeitet werden.") }
+-                        return
+-                    }
+-                    val inputImage = InputImage.fromMediaImage(mediaImage, image.imageInfo.rotationDegrees)
+-                    recognizeInputImage(inputImage) { image.close() }
+-                }
+-
+-                override fun onError(exception: ImageCaptureException) {
+-                    runOnUiThread {
+-                        showRecognitionError("Das Foto konnte nicht aufgenommen werden. Bitte erneut versuchen.")
+-                    }
+-                }
+-            })
+-        }
+-
+-        Box(modifier = Modifier.fillMaxSize()) {
+-            if (hasCameraPermission) {
+-                AndroidView(
+-                    factory = { previewContext ->
+-                        PreviewView(previewContext).also { previewView ->
+-                            previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
+-                            cameraProviderFuture.addListener({
+-                                try {
+-                                    val cameraProvider = cameraProviderFuture.get()
+-                                    val preview = Preview.Builder().build().also {
+-                                        it.setSurfaceProvider(previewView.surfaceProvider)
+-                                    }
+-                                    val capture = ImageCapture.Builder()
+-                                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+-                                        .build()
+-                                    cameraProvider.unbindAll()
+-                                    val camera = cameraProvider.bindToLifecycle(
+-                                        lifecycleOwner,
+-                                        CameraSelector.DEFAULT_BACK_CAMERA,
+-                                        preview,
+-                                        capture
+-                                    )
+-                                    imageCapture = capture
+-                                    cameraControl = camera.cameraControl
+-                                } catch (_: Exception) {
+-                                    message = "Die Kamera konnte nicht gestartet werden."
+-                                }
+-                            }, ContextCompat.getMainExecutor(previewContext))
+-                        }
+-                    },
+-                    modifier = Modifier.fillMaxSize()
+-                )
+-                ReceiptFrameOverlay()
+-            } else {
+-                Column(
+-                    modifier = Modifier.fillMaxSize().padding(24.dp),
+-                    verticalArrangement = Arrangement.Center,
+-                    horizontalAlignment = Alignment.CenterHorizontally
+-                ) {
+-                    Text("Kamerazugriff fehlt", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
+-                    Spacer(Modifier.height(8.dp))
+-                    Text("Erlaube den Zugriff oder wähle ein vorhandenes Bonfoto aus.")
+-                    Spacer(Modifier.height(16.dp))
+-                    Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+-                        Text("Kamera erlauben")
+-                    }
+-                }
+-            }
+-
+-            Column(
+-                modifier = Modifier.fillMaxSize().padding(16.dp),
+-                horizontalAlignment = Alignment.CenterHorizontally
+-            ) {
+-                Row(
+-                    modifier = Modifier.fillMaxWidth(),
+-                    horizontalArrangement = Arrangement.SpaceBetween,
+-                    verticalAlignment = Alignment.CenterVertically
+-                ) {
+-                    Button(
+-                        onClick = onCancel,
+-                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error)
+-                    ) {
+-                        Icon(Icons.Default.Close, contentDescription = null)
+-                        Spacer(Modifier.width(6.dp))
+-                        Text("Abbrechen")
+-                    }
+-                    if (hasCameraPermission) {
+-                        IconButton(
+-                            onClick = {
+-                                isFlashOn = !isFlashOn
+-                                cameraControl?.enableTorch(isFlashOn)
+-                            },
+-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(24.dp))
+-                        ) {
+-                            Icon(
+-                                if (isFlashOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
+-                                contentDescription = "Taschenlampe",
+-                                tint = Color.White
+-                            )
+-                        }
+-                    }
+-                }
++        Column(
++            modifier = Modifier.fillMaxSize().padding(16.dp),
++            horizontalAlignment = Alignment.CenterHorizontally
++        ) {
++            Text("Kassenbon Scanner (Gemini AI)", style = MaterialTheme.typography.headlineMedium)
++            Spacer(modifier = Modifier.height(16.dp))
+ 
+-                Spacer(Modifier.height(12.dp))
+-                Text(
+-                    text = "Kassenbon vollständig in den Rahmen legen",
+-                    color = Color.White,
+-                    fontSize = 16.sp,
+-                    fontWeight = FontWeight.SemiBold,
+-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(12.dp)).padding(10.dp)
++            if (bitmap != null) {
++                Image(
++                    bitmap = bitmap!!.asImageBitmap(),
++                    contentDescription = "Bon Foto",
++                    modifier = Modifier.height(250.dp).fillMaxWidth()
+                 )
+-                Spacer(Modifier.weight(1f))
+-
+-                if (message != null) {
+-                    Surface(
+-                        color = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer,
+-                        shape = RoundedCornerShape(12.dp),
+-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+-                    ) {
+-                        Text(message.orEmpty(), modifier = Modifier.padding(12.dp))
+-                    }
+-                }
+-                if (isProcessing) {
+-                    CircularProgressIndicator(color = Color.White)
+-                    Spacer(Modifier.height(8.dp))
+-                    Text("Bon wird analysiert …", color = Color.White)
+-                    Spacer(Modifier.height(12.dp))
+-                }
+-
+-                Row(
+-                    modifier = Modifier.fillMaxWidth(),
+-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+-                ) {
+-                    OutlinedButton(
+-                        onClick = {
+-                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+-                        },
+-                        enabled = !isProcessing,
+-                        modifier = Modifier.weight(1f)
+-                    ) {
+-                        Icon(Icons.Default.PhotoLibrary, contentDescription = null)
+-                        Spacer(Modifier.width(6.dp))
+-                        Text("Galerie")
+-                    }
+-                    Button(
+-                        onClick = takeReceiptPhoto,
+-                        enabled = hasCameraPermission && !isProcessing,
+-                        modifier = Modifier.weight(1f)
+-                    ) {
+-                        Icon(Icons.Default.CameraAlt, contentDescription = null)
+-                        Spacer(Modifier.width(6.dp))
+-                        Text("Bon erfassen")
+-                    }
+-                }
+-            }
+-        }
+-    }
+-
+-    @Composable
+-    private fun ReceiptFrameOverlay() {
+-        Box(
+-            modifier = Modifier
+-                .fillMaxSize()
+-                .padding(horizontal = 28.dp, vertical = 116.dp)
+-                .background(Color.Transparent, RoundedCornerShape(18.dp))
+-                .then(Modifier)
+-        ) {
+-            Surface(
+-                modifier = Modifier.fillMaxSize(),
+-                color = Color.Transparent,
+-                shape = RoundedCornerShape(18.dp),
+-                border = BorderStroke(2.dp, Color.White.copy(alpha = 0.9f))
+-            ) {}
+-        }
+-    }
++            } else {
++                Box(
++                    modifier = Modifier.height(250.dp).fillMaxWidth(),
++                    contentAlignment = Alignment.Center
++                ) {
++                    Text("Noch kein Foto aufgenommen")
++                }
++            }
+ 
+-    @OptIn(ExperimentalMaterial3Api::class)
+-    @Composable
+-    private fun ReceiptReviewScreen(
+-        initialItems: List<Product>,
+-        onCancel: () -> Unit,
+-        onConfirm: (List<Product>) -> Unit
+-    ) {
+-        val context = LocalContext.current
+-        val editableItems = remember(initialItems) { mutableStateListOf<Product>().apply { addAll(initialItems) } }
++            Spacer(modifier = Modifier.height(16.dp))
+ 
+-        fun shareReceipt() {
+-            val text = "Erkannte Artikel vom Kassenbon (Kühlschrank Profi 🍏):\n\n" +
+-                    editableItems.joinToString("\n") { "• ${it.quantity}x ${it.name} (${String.format("%.2f €", it.price)})" }
+-            val intent = Intent(Intent.ACTION_SEND).apply {
+-                type = "text/plain"
+-                putExtra(Intent.EXTRA_TEXT, text)
++            Button(onClick = { takePhotoLauncher.launch(null) }, enabled = !isAnalyzing) {
++                Icon(Icons.Default.CameraAlt, contentDescription = null)
++                Spacer(Modifier.width(8.dp))
++                Text("Bon fotografieren")
+             }
+-            context.startActivity(Intent.createChooser(intent, "Kassenbon teilen"))
+-        }
+ 
+-        Scaffold(
+-            topBar = {
+-                TopAppBar(
+-                    title = { Text("Erkannte Artikel prüfen") },
+-                    actions = {
+-                        IconButton(onClick = { shareReceipt() }) {
+-                            Icon(Icons.Default.Share, "Teilen")
+-                        }
+-                    },
+-                    colors = TopAppBarDefaults.topAppBarColors(
+-                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer
+-                    )
+-                )
+-            },
+-            bottomBar = {
+-                Surface(shadowElevation = 8.dp) {
+-                    Row(
+-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+-                    ) {
+-                        OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) {
+-                            Text("Zurück")
+-                        }
+-                        Button(
+-                            onClick = {
+-                                onConfirm(editableItems.filter { it.name.isNotBlank() && it.price >= 0.0 })
+-                            },
+-                            enabled = editableItems.isNotEmpty(),
+-                            modifier = Modifier.weight(1f)
+-                        ) {
+-                            Icon(Icons.Default.Check, contentDescription = null)
+-                            Spacer(Modifier.width(6.dp))
+-                            Text("Übernehmen")
+-                        }
+-                    }
++            if (isAnalyzing) {
++                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
++                Text("Analysiere mit Gemini...")
++            }
++
++            Spacer(modifier = Modifier.height(16.dp))
++
++            if (detectedItems.isNotEmpty()) {
++                Text("Erkannte Artikel:", style = MaterialTheme.typography.titleLarge)
++                LazyColumn(modifier = Modifier.weight(1f)) {
++                    items(detectedItems) { item ->
++                        ListItem(
++                            headlineContent = { Text(item.name) },
++                            supportingContent = { Text("${item.quantity}x - ${item.price}€") }
++                        )
++                    }
++                }
++                
++                Button(
++                    onClick = {
++                        val resultIntent = Intent().apply {
++                            putExtra("SCAN_RESULTS", Gson().toJson(detectedItems))
++                        }
++                        setResult(RESULT_OK, resultIntent)
++                        finish()
++                    },
++                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
++                ) {
++                    Icon(Icons.Default.Check, contentDescription = null)
++                    Spacer(Modifier.width(8.dp))
++                    Text("Übernehmen")
+                 }
+             }
+-        ) { innerPadding ->
+-            LazyColumn(
+-                modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
+-                verticalArrangement = Arrangement.spacedBy(8.dp),
+-                contentPadding = PaddingValues(vertical = 16.dp)
+-            ) {
+-                itemsIndexed(editableItems) { index, item ->
+-                    val isSuspect = item.name.length < 3 || item.name == "Unbekannter Artikel"
+-                    Card(
+-                        modifier = Modifier.fillMaxWidth(),
+-                        border = if (isSuspect) BorderStroke(2.dp, androidx.compose.material3.MaterialTheme.colorScheme.error) else null,
+-                        colors = CardDefaults.cardColors(
+-                            containerColor = if (isSuspect) androidx.compose.material3.MaterialTheme.colorScheme.errorContainer
+-                            else androidx.compose.material3.MaterialTheme.colorScheme.surface
+-                        )
+-                    ) {
+-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                            Row(verticalAlignment = Alignment.CenterVertically) {
+-                                OutlinedTextField(
+-                                    value = item.name,
+-                                    onValueChange = { editableItems[index] = item.copy(name = it) },
+-                                    label = { Text("Produktname") },
+-                                    modifier = Modifier.weight(1f),
+-                                    singleLine = true
+-                                )
+-                                IconButton(onClick = { editableItems.removeAt(index) }) {
+-                                    Icon(Icons.Default.Delete, contentDescription = "Artikel entfernen", tint = androidx.compose.material3.MaterialTheme.colorScheme.error)
+-                                }
+-                            }
+-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                                OutlinedTextField(
+-                                    value = String.format(Locale.GERMANY, "%.2f", item.price),
+-                                    onValueChange = { value ->
+-                                        value.replace(',', '.').toDoubleOrNull()?.let { price ->
+-                                            editableItems[index] = item.copy(price = price.coerceIn(0.0, 399.99))
+-                                        }
+-                                    },
+-                                    label = { Text("Preis (€)") },
+-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+-                                    modifier = Modifier.weight(1f),
+-                                    singleLine = true
+-                                )
+-                                OutlinedTextField(
+-                                    value = item.quantity.toString(),
+-                                    onValueChange = { value ->
+-                                        value.toIntOrNull()?.let { quantity ->
+-                                            editableItems[index] = item.copy(quantity = quantity.coerceIn(1, 99))
+-                                        }
+-                                    },
+-                                    label = { Text("Menge") },
+-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+-                                    modifier = Modifier.weight(0.7f),
+-                                    singleLine = true
+-                                )
+-                            }
+-                        }
+-                    }
++        }
++    }
++
++    private suspend fun analyzeReceipt(bitmap: Bitmap, onResult: (List<Product>) -> Unit) {
++        withContext(Dispatchers.IO) {
++            try {
++                val prompt = """
++                    Du bist ein präziser Kassenbon-Analysator für eine deutsche Kühlschrank-App.
++                    Analysiere diesen Kassenbon (Supermarkt wie Kaufland, Lidl, Rewe, Edeka).
++                    
++                    Ignoriere komplett: Summen, Steuern, Kartenzahlung, Rabatte, Pfand, Adressen und Müll.
++                    
++                    Extrahiere alle gekauften Lebensmittel und Haushaltsartikel. 
++                    Schreibe abgekürzte Artikel vollständig und mit richtiger Marke aus.
++                    
++                    Gib das Ergebnis AUSSCHLIESSLICH im folgenden JSON-Format zurück:
++                    [
++                      {"quantity": 1, "name": "Müller Ayran", "price": 0.88},
++                      {"quantity": 2, "name": "Weihenstephan H-Milch 1,5%", "price": 2.22}
++                    ]
++                """.trimIndent()
++
++                val inputContent = content {
++                    image(bitmap)
++                    text(prompt)
++                }
++
++                val response = generativeModel.generateContent(inputContent)
++                val textResponse = response.text?.replace("```json", "")?.replace("```", "")?.trim() ?: ""
++                
++                val listType = object : TypeToken<List<GeminiProduct>>() {}.type
++                val items: List<GeminiProduct> = Gson().fromJson(textResponse, listType)
++                
++                val products = items.map { 
++                    Product(
++                        name = it.name,
++                        price = it.price,
++                        quantity = it.quantity,
++                        rawText = it.name
++                    )
++                }
++
++                withContext(Dispatchers.Main) {
++                    onResult(products)
++                }
++            } catch (e: Exception) {
++                Log.e("Gemini", "Fehler bei der Analyse", e)
++                withContext(Dispatchers.Main) {
++                    Toast.makeText(this@KassenzettelScannerActivity, "Fehler: ${e.message}", Toast.LENGTH_LONG).show()
++                    onResult(emptyList())
+                 }
+             }
+         }
+     }
+ 
+-    override fun onDestroy() {
+-        recognizer.close()
+-        cameraExecutor.shutdown()
+-        super.onDestroy()
+-    }
++    private data class GeminiProduct(val quantity: Int, val name: String, val price: Double)
+ }
+Index: .idea/appInsightsSettings.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/appInsightsSettings.xml b/.idea/appInsightsSettings.xml
+--- a/.idea/appInsightsSettings.xml	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/.idea/appInsightsSettings.xml	(date 1787408060829)
+@@ -1,6 +1,7 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <project version="4">
+   <component name="AppInsightsSettings">
++    <option name="selectedTabId" value="Android vitals" />
+     <option name="tabSettings">
+       <map>
+         <entry key="Firebase Crashlytics">
+Index: app/src/test/java/com/example/myapplication/KassenzettelParserTest.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/test/java/com/example/myapplication/KassenzettelParserTest.kt b/app/src/test/java/com/example/myapplication/KassenzettelParserTest.kt
+--- a/app/src/test/java/com/example/myapplication/KassenzettelParserTest.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/test/java/com/example/myapplication/KassenzettelParserTest.kt	(date 1789471086052)
+@@ -94,4 +94,64 @@
+         assertEquals("Gouda", products.single().name)
+         assertEquals(2.49, products.single().price, 0.001)
+     }
++
++    @Test
++    fun `test lild receipt style without tax letters`() {
++        val text = """
++            LIDL
++            BIO BANANEN 1.99
++            H-MILCH 1,5% 0.88
++            SUMME 2.87
++        """.trimIndent()
++        
++        val products = KassenzettelParser.parseReceiptText(text)
++        
++        assertEquals(2, products.size)
++        assertEquals("Bio Bananen", products[0].name)
++        assertEquals(1.99, products[0].price, 0.001)
++        assertEquals("H-Milch", products[1].name) // 1,5% wird weggefiltert
++    }
++
++    @Test
++    fun `test globus receipt style`() {
++        val text = """
++            GLOBUS Markthalle
++            Bananen lose 0.99
++            1.234 kg x 0,80
++            H-Milch 1,5% 0.88
++            SUMME 1.87
++        """.trimIndent()
++        
++        val products = KassenzettelParser.parseReceiptText(text)
++        
++        assertEquals(2, products.size)
++        assertEquals("Bananen Lose", products[0].name)
++        assertEquals(0.99, products[0].price, 0.001)
++        assertEquals("H-Milch", products[1].name)
++        assertEquals(0.88, products[1].price, 0.001)
++    }
++
++    @Test
++    fun `test app export style with separate lines`() {
++        val text = """
++            Lidl Plus Beleg
++            Bio Gurke
++            1 x 0.99
++            0.99
++            Käseaufschnitt
++            2 x 1.49
++            2.98
++            GESAMT 3.97
++        """.trimIndent()
++        
++        val products = KassenzettelParser.parseReceiptText(text)
++        
++        assertEquals(2, products.size)
++        assertEquals("Bio Gurke", products[0].name)
++        assertEquals(0.99, products[0].price, 0.001)
++        assertEquals(1, products[0].quantity)
++        assertEquals("Käseaufschnitt", products[1].name)
++        assertEquals(2.98, products[1].price, 0.001)
++        assertEquals(2, products[1].quantity)
++    }
+ }
+Index: app/src/test/java/com/example/myapplication/ScannerActivityTest.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/test/java/com/example/myapplication/ScannerActivityTest.kt b/app/src/test/java/com/example/myapplication/ScannerActivityTest.kt
+--- a/app/src/test/java/com/example/myapplication/ScannerActivityTest.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/test/java/com/example/myapplication/ScannerActivityTest.kt	(date 1787405013183)
+@@ -1,6 +1,6 @@
+ package com.example.myapplication
+ 
+-import org.junit.Test
++aimport org.junit.Test
+ 
+ class ScannerActivityTest {
+     @Test
+Index: app/src/main/java/com/example/myapplication/data/FridgeItem.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/data/FridgeItem.kt b/app/src/main/java/com/example/myapplication/data/FridgeItem.kt
+--- a/app/src/main/java/com/example/myapplication/data/FridgeItem.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/data/FridgeItem.kt	(date 1789467981193)
+@@ -2,10 +2,14 @@
+ 
+ import androidx.room.ColumnInfo
+ import androidx.room.Entity
++import androidx.room.Index
+ import androidx.room.PrimaryKey
+ import java.util.UUID
+ 
+-@Entity(tableName = "fridge_items")
++@Entity(
++    tableName = "fridge_items",
++    indices = [Index(value = ["importHash"], unique = true)]
++)
+ data class FridgeItem(
+     @PrimaryKey val id: String = UUID.randomUUID().toString(),
+     @ColumnInfo(name = "item_name")
+@@ -62,5 +66,8 @@
+     
+     // NEU: Donation & Sharing
+     var isDonationCandidate: Boolean = false,
+-    var sharedWithUserId: String? = null
++    var sharedWithUserId: String? = null,
++
++    // Hash zur Vermeidung von Doppel-Imports (Dateiname + Artikel)
++    var importHash: String? = null
+ )
+Index: app/src/androidTest/java/com/example/myapplication/DuplicateImportTest.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/androidTest/java/com/example/myapplication/DuplicateImportTest.kt b/app/src/androidTest/java/com/example/myapplication/DuplicateImportTest.kt
+new file mode 100644
+--- /dev/null	(date 1789468573190)
++++ b/app/src/androidTest/java/com/example/myapplication/DuplicateImportTest.kt	(date 1789468573190)
+@@ -0,0 +1,74 @@
++package com.example.myapplication
++
++import android.content.Context
++import androidx.room.Room
++import androidx.test.core.app.ApplicationProvider
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import com.example.myapplication.data.AppDatabase
++import com.example.myapplication.data.FridgeItem
++import com.example.myapplication.data.FridgeItemDao
++import kotlinx.coroutines.flow.first
++import kotlinx.coroutines.runBlocking
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Before
++import org.junit.Test
++import org.junit.runner.RunWith
++import java.io.IOException
++
++@RunWith(AndroidJUnit4::class)
++class DuplicateImportTest {
++    private lateinit var dao: FridgeItemDao
++    private lateinit var db: AppDatabase
++
++    @Before
++    fun createDb() {
++        val context = ApplicationProvider.getApplicationContext<Context>()
++        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
++        dao = db.fridgeItemDao()
++    }
++
++    @After
++    @Throws(IOException::class)
++    fun closeDb() {
++        db.close()
++    }
++
++    @Test
++    @Throws(Exception::class)
++    fun writeItemAndCheckDuplicate() = runBlocking {
++        val item1 = FridgeItem(
++            name = "Testmilch",
++            importHash = "hash123"
++        )
++        val item2 = FridgeItem(
++            name = "Testmilch",
++            importHash = "hash123" // Gleicher Hash wie item1
++        )
++
++        dao.insertItem(item1)
++        dao.insertItem(item2) // Sollte ignoriert werden wegen OnConflictStrategy.IGNORE
++
++        val allItems = dao.getAllFridgeItems().first()
++        assertEquals("Nur ein Item sollte in der DB sein", 1, allItems.size)
++    }
++
++    @Test
++    @Throws(Exception::class)
++    fun writeDifferentItemsAndCheck() = runBlocking {
++        val item1 = FridgeItem(
++            name = "Testmilch",
++            importHash = "hash1"
++        )
++        val item2 = FridgeItem(
++            name = "Testbrot",
++            importHash = "hash2"
++        )
++
++        dao.insertItem(item1)
++        dao.insertItem(item2)
++
++        val allItems = dao.getAllFridgeItems().first()
++        assertEquals("Zwei verschiedene Items sollten in der DB sein", 2, allItems.size)
++    }
++}
+Index: app/src/main/res/xml/fridge_widget_info.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/res/xml/fridge_widget_info.xml b/app/src/main/res/xml/fridge_widget_info.xml
+--- a/app/src/main/res/xml/fridge_widget_info.xml	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/res/xml/fridge_widget_info.xml	(date 1786285059683)
+@@ -1,8 +1,8 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:minWidth="100dp"
+-    android:minHeight="100dp"
+-    android:updatePeriodMillis="86400000"
+     android:initialLayout="@layout/glance_default_loading_layout"
++    android:minWidth="110dp"
++    android:minHeight="40dp"
+     android:resizeMode="horizontal|vertical"
++    android:updatePeriodMillis="86400000"
+     android:widgetCategory="home_screen" />
+Index: app/src/main/java/com/example/myapplication/data/FridgeItemDao.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/data/FridgeItemDao.kt b/app/src/main/java/com/example/myapplication/data/FridgeItemDao.kt
+--- a/app/src/main/java/com/example/myapplication/data/FridgeItemDao.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/data/FridgeItemDao.kt	(date 1789478412813)
+@@ -22,7 +22,7 @@
+     @Query("SELECT * FROM fridge_items ORDER BY item_name ASC")
+     fun getAllFridgeItems(): Flow<List<FridgeItem>>
+ 
+-    @Insert(onConflict = OnConflictStrategy.REPLACE)
++    @Insert(onConflict = OnConflictStrategy.IGNORE)
+     suspend fun insertItem(item: FridgeItem)
+ 
+     @Update
+@@ -122,4 +122,7 @@
+ 
+     @Insert(onConflict = OnConflictStrategy.REPLACE)
+     suspend fun insertBudget(budget: BudgetConfig)
++
++    @Query("SELECT importHash FROM fridge_items")
++    fun getImportHashes(): Flow<List<String>>
+ }
+Index: app/src/main/java/com/example/myapplication/data/AppDatabase.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/data/AppDatabase.kt b/app/src/main/java/com/example/myapplication/data/AppDatabase.kt
+--- a/app/src/main/java/com/example/myapplication/data/AppDatabase.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/data/AppDatabase.kt	(date 1789468014238)
+@@ -12,7 +12,7 @@
+     MealPlan::class, ConsumptionPattern::class,
+     Household::class, HouseholdLog::class, UserProfile::class,
+     BudgetConfig::class
+-], version = 21, exportSchema = false)
++], version = 22, exportSchema = false)
+ abstract class AppDatabase : RoomDatabase() {
+     abstract fun fridgeItemDao(): FridgeItemDao
+ 
+Index: AGENTS.md
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/AGENTS.md b/AGENTS.md
+--- a/AGENTS.md	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/AGENTS.md	(date 1789471933746)
+@@ -25,6 +25,12 @@
+ - **Angebots-Checker:** Ermögliche es mir, in der App bestimmte Lebensmittel als "Lieblingsprodukt" zu markieren und einen Wunsch-Händler (z.B. REWE, EDEKA) zu hinterlegen.
+ - **Hintergrund-Suche:** Der `WorkManager` soll in regelmäßigen Abständen im Hintergrund eine Schnittstelle (z.B. Bring! oder eine offene Prospekt-API) abfragen. Wenn das Lieblingsprodukt im Angebot ist, löse sofort eine Push-Benachrichtigung mit dem Spar-Preis aus.
+ 
++## 7. Strukturierte Beleg-Erkennung (OCR & KI)
++- **Extraktion:** Bei der Analyse von Kassenbons (OCR-Text oder PDF) müssen neben den Produkten IMMER auch folgende Metadaten extrahiert werden:
++    1. **Supermarkt-Name:** (z.B. REWE, LIDL, ALDI, EDEKA, KAUFLAND).
++    2. **Kaufdatum:** Im Format `DD.MM.YYYY`.
++- **Datenstruktur:** Diese Informationen müssen im `FridgeViewModel` verarbeitet und in den `FridgeItem`-Notes oder dedizierten Feldern (falls vorhanden) gespeichert werden, um die Preishistorie und Frische-Vorhersage zu verbessern.
++
+ ## 6. Dynamische Favoriten-Symbole (Settings)
+ - **Symbol-Speicherung:** Speichere das vom Nutzer gewählte Favoriten-Symbol als String in den App-Einstellungen (SharedPreferences oder Jetpack DataStore). Standardwert ist das bestehende Sternchen ("star").
+ - **15 Auswahl-Optionen:** Stelle genau 15 moderne Material Design Icons zur Auswahl bereit:
+Index: app/src/main/java/com/example/myapplication/LebensmittelDao.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/myapplication/LebensmittelDao.kt b/app/src/main/java/com/example/myapplication/LebensmittelDao.kt
+--- a/app/src/main/java/com/example/myapplication/LebensmittelDao.kt	(revision b489b5deceb9dc268ef571ba6f8f02da650769e9)
++++ b/app/src/main/java/com/example/myapplication/LebensmittelDao.kt	(date 1789468050062)
+@@ -10,8 +10,8 @@
+     @Query("SELECT * FROM kuehlschrank_tabelle ORDER BY ablaufdatum ASC")
+     fun getAllLebensmittel(): Flow<List<Lebensmittel>>
+ 
+-    // Fügt ein neues Lebensmittel hinzu (oder aktualisiert es, falls es existiert)
+-    @Insert(onConflict = OnConflictStrategy.REPLACE)
++    // Fügt ein neues Lebensmittel hinzu (oder ignoriert es, falls es existiert - Duplikatschutz)
++    @Insert(onConflict = OnConflictStrategy.IGNORE)
+     suspend fun insertLebensmittel(lebensmittel: Lebensmittel)
+ 
+     // Löscht ein bestimmtes Produkt aus dem Kühlschrank
+diff --git a/app/src/main/assets/kuehlschrank_datenbank.db b/app/src/main/assets/kuehlschrank_datenbank.db
+new file mode 100644
+index 0000000000000000000000000000000000000000..34b3dca8b55dde6cb9d71640c1a2ee7c02b6a835
+GIT binary patch
+literal 12288
+zc%1FmyGjE=6vpwHL=*%sg^((6%7g?PD?3*mB$%vmUBRtnHKQ!q+%}sBh^3F~6F3PN
+z%_7)Yg#Qoba?UWP|L$(vNp9t3lnvrsPSl~&TAhg~rL<dR^=(ma73#leb^Ly`=PsrF
+z4|Q<qHUIzs0090)x3pbpG<1~5PpO?wQWt+8r*<;4!{=gIz6gvL8VSAgwvobPZ5R)1
+z(^d8PsotqntNP6>XO6Q`Z`RLOXK8K9S66Dg@<Y;-mLHlc6G%5`b-W;wYZHlgAKtWl
+zH=twuu(|eQV27_(Li14Q$622AZTid0IJ3!g*<ZEmi)`*fKL7v#007uv<bMDF0000s
+F-zTtzRY3p%
+

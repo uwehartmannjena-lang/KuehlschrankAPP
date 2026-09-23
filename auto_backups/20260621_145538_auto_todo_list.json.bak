@@ -1,0 +1,56 @@
+{
+    "tasks": [
+        {
+            "id": 1,
+            "vorschlag": "Schnelles Hinzufügen mit Validierung",
+            "beschreibung": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 2,
+            "vorschlag": "Ablaufdatum-Ampel",
+            "beschreibung": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 3,
+            "vorschlag": "Filter nach Lagerort",
+            "beschreibung": "Filter nach Lagerort in MainActivity.kt sauber umsetzen.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 4,
+            "vorschlag": "Mengensteuerung",
+            "beschreibung": "Mengensteuerung in MainActivity.kt sauber umsetzen.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        }
+    ]
+}

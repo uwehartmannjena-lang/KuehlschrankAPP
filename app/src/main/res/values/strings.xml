@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FrischeRadar</string>
+    <string name="app_subtitle">Kühlschrank, Vorrat &amp; MHD Tracker</string>
+    <string name="vorrat">Vorrat</string>
+    <string name="einkaufsliste">Einkaufsliste</string>
+    <string name="statistik">Statistik</string>
+    <string name="hinzufuegen">Hinzufügen</string>
+    <string name="bearbeiten">Bearbeiten</string>
+    <string name="speichern">Speichern</string>
+    <string name="abbrechen">Abbrechen</string>
+    <string name="name_label">Produktname</string>
+    <string name="menge_label">Menge</string>
+    <string name="haltbarkeit_label">Haltbar (Tage)</string>
+    <string name="kategorie_label">Kategorie</string>
+    <string name="lagerort_label">Lagerort</string>
+    <string name="preis_label">Preis (€)</string>
+    <string name="bio_label">Bio-Qualität</string>
+    <string name="kuehlschrank">Kühlschrank</string>
+    <string name="gefrierfach">Gefrierfach</string>
+    <string name="vorratskammer">Vorratskammer</string>
+    <string name="suche_placeholder">Suche (z.B. Käse, Gemüse)</string>
+    <string name="kaese">Käse</string>
+    <string name="gemuese">Gemüse</string>
+    <string name="oel">Öl</string>
+    <string name="apfel">Apfel</string>
+    <string name="saft">Saft</string>
+</resources>

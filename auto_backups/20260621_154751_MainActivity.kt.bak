@@ -1,0 +1,584 @@
+package com.example.myapplication
+
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val locale = Locale.GERMANY
+        Locale.setDefault(locale)
+        val config = resources.configuration
+        config.setLocale(locale)
+
+        enableEdgeToEdge()
+        setContent {
+            MyApplicationTheme {
+                val viewModel: FridgeViewModel = viewModel()
+                
+                // Handle shared receipt intent
+                LaunchedEffect(intent) {
+                    if (intent?.action == Intent.ACTION_SEND) {
+                        if ("text/plain" == intent.type) {
+                            intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedText ->
+                                viewModel.importFromReceipt(sharedText)
+                                Toast.makeText(this@MainActivity, "Kassenzettel importiert!", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+                
+                RefrigeratorApp(viewModel)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RefrigeratorApp(fridgeViewModel: FridgeViewModel) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var isSearchExpanded by remember { mutableStateOf(false) }
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var itemToEdit by remember { mutableStateOf<FridgeItem?>(null) }
+    var showRecipeDialog by remember { mutableStateOf(false) }
+
+    // Quick add states
+    var newItemText by rememberSaveable { mutableStateOf("") }
+    // Fix: Changed 'remember' to 'rememberSaveable' for newItemQuantity to resolve delegation error
+    // and ensure state preservation across process death, aligning with newItemText.
+    var newItemQuantity by rememberSaveable { mutableIntStateOf(1) } // Initial quantity for quick add
+    var newItemTextError by remember { mutableStateOf(false) } // State for TextField error
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+
+    // Lambda for quick add action
+    val onQuickAddConfirm: () -> Unit = {
+        if (newItemText.isNotBlank()) {
+            fridgeViewModel.addItem(FridgeItem(name = newItemText, quantity = newItemQuantity))
+            newItemText = ""
+            newItemQuantity = 1
+            newItemTextError = false // Clear error state on successful add
+            focusManager.clearFocus()
+        } else {
+            newItemTextError = true // Set error for visual feedback
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = "Der Artikelname darf nicht leer sein.", // Error message for Snackbar
+                    withDismissAction = true
+                )
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    if (isSearchExpanded) {
+                        TextField(
+                            value = fridgeViewModel.searchInput,
+                            onValueChange = { fridgeViewModel.updateSearchInput(it) },
+                            placeholder = { Text("Suche...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                errorContainerColor = Color.Transparent
+                            ),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Search
+                            )
+                        )
+                    } else {
+                        Text("Mein Kühlschrank \uD83C\uDF4F", fontWeight = FontWeight.Bold)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        isSearchExpanded = !isSearchExpanded
+                        if (!isSearchExpanded) fridgeViewModel.updateSearchInput("")
+                    }) {
+                        Icon(if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = "Suche")
+                    }
+                    IconButton(onClick = { showRecipeDialog = true }) {
+                        Icon(Icons.Default.Restaurant, contentDescription = "Rezepte")
+                    }
+                    var showSortMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sortieren")
+                    }
+                    DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                        DropdownMenuItem(text = { Text("Nach Name") }, onClick = {
+                            fridgeViewModel.updateSortOrder(SortOrder.NAME)
+                            showSortMenu = false
+                        })
+                        DropdownMenuItem(text = { Text("Nach Ablaufdatum") }, onClick = {
+                            fridgeViewModel.updateSortOrder(SortOrder.EXPIRY_DATE)
+                            showSortMenu = false
+                        })
+                        DropdownMenuItem(text = { Text("Nach Kategorie") }, onClick = {
+                            fridgeViewModel.updateSortOrder(SortOrder.CATEGORY)
+                            showSortMenu = false
+                        })
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Vorrat") },
+                    label = { Text("Vorrat") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Einkauf") },
+                    label = { Text("Einkauf") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.BarChart, contentDescription = "Statistik") },
+                    label = { Text("Statistik") }
+                )
+            }
+        },
+        floatingActionButton = {
+            if (selectedTab != 2) {
+                FloatingActionButton(onClick = {
+                    itemToEdit = null
+                    showAddDialog = true
+                }) {
+                    Icon(Icons.Default.Add, contentDescription = "Hinzufügen")
+                }
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (selectedTab == 0) {
+                // Quick add row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newItemText,
+                        onValueChange = {
+                            newItemText = it
+                            newItemTextError = it.isBlank() // Update error state immediately
+                        },
+                        label = { Text("Schnell hinzufügen") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        isError = newItemTextError,
+                        supportingText = {
+                            if (newItemTextError) {
+                                Text("Der Artikelname darf nicht leer sein.")
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { onQuickAddConfirm() } // Call the consolidated lambda
+                        )
+                    )
+                    // Quantity controls for quick add
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { if (newItemQuantity > 1) newItemQuantity-- }) { Icon(Icons.Default.Remove, "Menge reduzieren") }
+                        Text("$newItemQuantity", modifier = Modifier.padding(horizontal = 4.dp))
+                        IconButton(onClick = { newItemQuantity++ }) { Icon(Icons.Default.Add, "Menge erhöhen") }
+                    }
+                    Button(
+                        onClick = { onQuickAddConfirm() }, // Call the consolidated lambda
+                        enabled = newItemText.isNotBlank() // Disable button if text is blank
+                    ) { Text("OK") }
+                }
+                
+                // Filters for storage location
+                val scrollState = rememberScrollState()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState)
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = fridgeViewModel.selectedStorageLocation == null,
+                        onClick = { fridgeViewModel.updateSelectedStorageLocation(null) },
+                        label = { Text("Alle") }
+                    )
+                    listOf("Kühlschrank", "Gefrierfach", "Vorratskammer").forEach { loc ->
+                        FilterChip(
+                            selected = fridgeViewModel.selectedStorageLocation == loc,
+                            onClick = { fridgeViewModel.updateSelectedStorageLocation(loc) },
+                            label = { Text(loc) }
+                        )
+                    }
+                }
+            }
+
+            when (selectedTab) {
+                0 -> FridgeList(
+                    items = fridgeViewModel.displayedItems,
+                    onDelete = { fridgeViewModel.removeItem(it) },
+                    onEdit = { itemToEdit = it; showAddDialog = true },
+                    onConsume = { fridgeViewModel.consumeItem(it) },
+                    onWaste = { fridgeViewModel.wasteItem(it) }
+                )
+                1 -> ShoppingList(
+                    items = fridgeViewModel.allFridgeItems.filter { it.quantity <= it.minStock },
+                    onShare = {
+                        val shareText = fridgeViewModel.allFridgeItems
+                            .filter { it.quantity <= it.minStock }
+                            .joinToString("\n") { "${it.name}: ${it.minStock - it.quantity} ${it.unit}" }
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "Meine Einkaufsliste:\n$shareText")
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Teilen via"))
+                    }
+                )
+                2 -> StatisticsView(items = fridgeViewModel.allFridgeItems, wastedItems = fridgeViewModel.wastedItems)
+            }
+        }
+
+        if (showAddDialog) {
+            ItemDialog(
+                viewModel = fridgeViewModel,
+                title = if (itemToEdit == null) "Neuer Artikel" else "Bearbeiten",
+                initialItem = itemToEdit,
+                onDismiss = { showAddDialog = false; itemToEdit = null },
+                onConfirm = {
+                    if (itemToEdit == null) fridgeViewModel.addItem(it) else fridgeViewModel.updateItem(it)
+                    showAddDialog = false
+                    itemToEdit = null
+                }
+            )
+        }
+
+        if (showRecipeDialog) {
+            RecipeDialog(
+                items = fridgeViewModel.allFridgeItems, 
+                onDismiss = { showRecipeDialog = false },
+                onOpenChefkoch = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.chefkoch.de/suche.php?suche=" + 
+                        fridgeViewModel.allFridgeItems.filter { it.quantity > 0 }.take(3).joinToString(",") { it.name }))
+                    context.startActivity(intent)
+                },
+                onOpenKaufda = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.kaufda.de/"))
+                    context.startActivity(intent)
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ItemDialog(
+    viewModel: FridgeViewModel,
+    title: String,
+    initialItem: FridgeItem? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (FridgeItem) -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(initialItem?.name ?: "") }
+    var category by remember { mutableStateOf(initialItem?.category ?: "Sonstiges") }
+    
+    // Quantity management: Use a single MutableIntState for quantity
+    var quantity by remember { mutableIntStateOf(initialItem?.quantity ?: 1) }
+
+    var unit by remember { mutableStateOf(initialItem?.unit ?: "Stk.") }
+    
+    // Min stock management: Use a single MutableIntState for minStock
+    var minStock by remember { mutableIntStateOf(initialItem?.minStock ?: 0) }
+    
+    var location by remember { mutableStateOf(initialItem?.storageLocation ?: "Kühlschrank") }
+    var barcode by remember { mutableStateOf(initialItem?.barcode ?: "") }
+    var price by remember { mutableStateOf(initialItem?.price?.toString() ?: "0.00") }
+    var isOrganic by remember { mutableStateOf(initialItem?.isOrganic ?: false) }
+    var notes by remember { mutableStateOf(initialItem?.notes ?: "") }
+    var imageUrl by remember { mutableStateOf(initialItem?.imageUrl) }
+    
+    val context = LocalContext.current
+    val scannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.getStringExtra("RESULT")?.let { code ->
+                barcode = code
+                coroutineScope.launch {
+                    viewModel.fetchProductInfo(code)?.let { info ->
+                        name = info.name ?: name
+                        imageUrl = info.imageUrl
+                    }
+                }
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                item {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            IconButton(onClick = { scannerLauncher.launch(Intent(context, ScannerActivity::class.java)) }) {
+                                Icon(Icons.Default.QrCodeScanner, null)
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Bio", modifier = Modifier.weight(1f))
+                        Switch(checked = isOrganic, onCheckedChange = { isOrganic = it })
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Quantity input with +/- buttons, using a single `quantity` Int state
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = quantity.toString(), // Bind directly to the Int state
+                            onValueChange = { newValue ->
+                                if (newValue.all { it.isDigit() } || newValue.isEmpty()) {
+                                    // Update the Int state directly, handling empty string as 0
+                                    quantity = newValue.toIntOrNull() ?: 0
+                                }
+                            },
+                            label = { Text("Menge") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(
+                            onClick = { if (quantity > 0) quantity-- }, // Decrement directly
+                            enabled = quantity > 0, // Disable if quantity is 0
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Remove, "Menge reduzieren")
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { quantity++ }, // Increment directly
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Add, "Menge erhöhen")
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Min stock input, using a single `minStock` Int state
+                    OutlinedTextField(
+                        value = minStock.toString(), // Bind directly to the Int state
+                        onValueChange = { newValue ->
+                            if (newValue.all { it.isDigit() } || newValue.isEmpty()) {
+                                // Update the Int state directly, handling empty string as 0
+                                minStock = newValue.toIntOrNull() ?: 0
+                            }
+                        },
+                        label = { Text("Mindestbestand") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Preis (€)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Lagerort")
+                    Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        listOf("Kühlschrank", "Gefrierfach", "Vorratskammer").forEach { loc ->
+                            FilterChip(selected = location == loc, onClick = { location = loc }, label = { Text(loc) })
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                // Ensure quantity and minStock are at least 0 before saving
+                val finalQuantity = quantity.coerceAtLeast(0)
+                val finalMinStock = minStock.coerceAtLeast(0)
+                
+                onConfirm((initialItem ?: FridgeItem(name = name)).copy(
+                    name = name, 
+                    quantity = finalQuantity, 
+                    unit = unit,
+                    category = category, 
+                    minStock = finalMinStock,
+                    storageLocation = location, 
+                    barcode = barcode,
+                    price = price.replace(",", ".").toDoubleOrNull() ?: 0.0,
+                    isOrganic = isOrganic, 
+                    notes = notes, 
+                    imageUrl = imageUrl
+                ))
+            }) { Text("Speichern") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
+@Composable
+fun FridgeList(items: List<FridgeItem>, onDelete: (FridgeItem) -> Unit, onEdit: (FridgeItem) -> Unit, onConsume: (FridgeItem) -> Unit, onWaste: (FridgeItem) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(items, key = { it.id }) { item ->
+            FridgeItemCard(item, onDelete = { onDelete(item) }, onEdit = { onEdit(item) }, onConsume = { onConsume(item) }, onWaste = { onWaste(item) })
+        }
+    }
+}
+
+@Composable
+fun FridgeItemCard(item: FridgeItem, onDelete: () -> Unit, onEdit: () -> Unit, onConsume: () -> Unit, onWaste: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable { onEdit() }) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(item.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("${item.storageLocation} • ${item.category}", style = MaterialTheme.typography.labelSmall)
+                }
+                Text("x${item.quantity}", style = MaterialTheme.typography.headlineSmall)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onConsume, modifier = Modifier.weight(1f)) { Text("Genutzt", fontSize = 10.sp) }
+                Button(onClick = onWaste, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Abfall", fontSize = 10.sp) }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null) }
+            }
+        }
+    }
+}
+
+@Composable
+fun ShoppingList(items: List<FridgeItem>, onShare: () -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Einkaufsliste \uD83D\uDED2", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onShare) { Icon(Icons.Default.Share, null) }
+            }
+        }
+        items(items) { item ->
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Text(item.name, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
+}
+
+@Composable
+fun StatisticsView(items: List<FridgeItem>, wastedItems: List<WastedItem>) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { Text("Statistik \uD83D\uDCCA", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Abfall-Verlust", style = MaterialTheme.typography.labelMedium)
+                    Text("${String.format("%.2f", wastedItems.sumOf { it.value })} €", style = MaterialTheme.typography.headlineMedium, color = Color.Red)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecipeDialog(items: List<FridgeItem>, onDismiss: () -> Unit, onOpenChefkoch: () -> Unit, onOpenKaufda: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Inspiration") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onOpenChefkoch, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Restaurant, null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Rezepte auf Chefkoch suchen")
+                }
+                Button(onClick = onOpenKaufda, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                    Icon(Icons.Default.Store, null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Prospekte auf Kaufda ansehen")
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("OK") } }
+    )
+}

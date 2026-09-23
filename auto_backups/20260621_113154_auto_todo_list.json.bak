@@ -1,0 +1,292 @@
+{
+    "tasks": [
+        {
+            "id": 1,
+            "vorschlag": "Dauerhafte Datenspeicherung (DataStore)",
+            "beschreibung": "Integriere Jetpack Preference DataStore zur Speicherung einer serialisierten Liste von `FridgeItem`s und `WastedItem`s.",
+            "status": "blockiert",
+            "risiko": "niedrig",
+            "blockiert_grund": "Diese Aufgabe nutzt wahrscheinlich DataStore/Serialization/Room/KSP und hat bereits bekannte Buildfehler erzeugt. Erst kleinere sichere Tasks umsetzen.",
+            "blockiert_am": "2026-06-21 10:17:42"
+        },
+        {
+            "id": 2,
+            "vorschlag": "Dauerhafte Datenspeicherung (DataStore)",
+            "beschreibung": "Implementiere eine Funktion im `FridgeViewModel`, die die aktuelle Liste der Artikel im `DataStore` speichert.",
+            "status": "blockiert",
+            "risiko": "niedrig",
+            "blockiert_grund": "Diese Aufgabe nutzt wahrscheinlich DataStore/Serialization/Room/KSP und hat bereits bekannte Buildfehler erzeugt. Erst kleinere sichere Tasks umsetzen.",
+            "blockiert_am": "2026-06-21 10:17:55"
+        },
+        {
+            "id": 3,
+            "vorschlag": "Dauerhafte Datenspeicherung (DataStore)",
+            "beschreibung": "Implementiere eine Funktion im `FridgeViewModel`, die die Artikel beim Starten der App aus dem `DataStore` lädt.",
+            "status": "blockiert",
+            "risiko": "niedrig",
+            "blockiert_grund": "Diese Aufgabe nutzt wahrscheinlich DataStore/Serialization/Room/KSP und hat bereits bekannte Buildfehler erzeugt. Erst kleinere sichere Tasks umsetzen.",
+            "blockiert_am": "2026-06-21 10:18:00"
+        },
+        {
+            "id": 4,
+            "vorschlag": "Dauerhafte Datenspeicherung (DataStore)",
+            "beschreibung": "Stelle sicher, dass die Speicherfunktion jedes Mal aufgerufen wird, wenn die Liste der Artikel (hinzufügen, löschen, bearbeiten, konsumieren, verschwenden) geändert wird.",
+            "status": "blockiert",
+            "risiko": "niedrig",
+            "blockiert_grund": "Diese Aufgabe nutzt wahrscheinlich DataStore/Serialization/Room/KSP und hat bereits bekannte Buildfehler erzeugt. Erst kleinere sichere Tasks umsetzen.",
+            "blockiert_am": "2026-06-21 10:18:09"
+        },
+        {
+            "id": 5,
+            "vorschlag": "Robuste Eingabeprüfung im Artikel-Dialog",
+            "beschreibung": "Füge `isError` und `supportingText` (für Fehlermeldungen) zu den `OutlinedTextField`s für 'Tage', 'Mindestbestand' und 'Preis' im `ItemDialog` hinzu.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 6,
+            "vorschlag": "Robuste Eingabeprüfung im Artikel-Dialog",
+            "beschreibung": "Implementiere eine Validierungslogik in den `onValueChange` Callbacks dieser Felder, um zu prüfen, ob die Eingaben gültige Zahlen (Integer/Double) sind.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 7,
+            "vorschlag": "Robuste Eingabeprüfung im Artikel-Dialog",
+            "beschreibung": "Deaktiviere den 'Speichern'-Button im `ItemDialog`, wenn Validierungsfehler vorliegen, bis alle Eingaben gültig sind.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 8,
+            "vorschlag": "Robuste Eingabeprüfung im Artikel-Dialog",
+            "beschreibung": "Wandle die String-Werte erst nach erfolgreicher Validierung in die entsprechenden numerischen Typen um.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 9,
+            "vorschlag": "Benutzerfreundliche Verfallsdatumseingabe (Date Picker)",
+            "beschreibung": "Behebe die fehlende geschweifte Klammer auf der Zeile `IconButton(onClick = { if (quantity < 20) quantity++ })` im `ItemDialog`.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "blockiert_grund": "Zu viele leere KI-Antworten oder Netzwerk-Timeouts. Task wird übersprungen, damit der Loop weiterlaufen kann.",
+            "blockiert_am": "2026-06-21 11:02:45",
+            "reaktiviert_am": "2026-06-21 11:08:01"
+        },
+        {
+            "id": 10,
+            "vorschlag": "Benutzerfreundliche Verfallsdatumseingabe (Date Picker)",
+            "beschreibung": "Ersetze das `OutlinedTextField` für 'Tage' durch ein Feld, das das ausgewählte Ablaufdatum anzeigt und beim Klicken einen `DatePickerDialog` öffnet.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "blockiert_grund": "Zu viele leere KI-Antworten oder Netzwerk-Timeouts. Task wird übersprungen, damit der Loop weiterlaufen kann.",
+            "blockiert_am": "2026-06-21 11:20:43",
+            "reaktiviert_am": "2026-06-21 11:28:43"
+        },
+        {
+            "id": 11,
+            "vorschlag": "Benutzerfreundliche Verfallsdatumseingabe (Date Picker)",
+            "beschreibung": "Verwende `rememberDatePickerState()` und `DatePickerDialog` aus Material3, um die Datumsauswahl zu ermöglichen.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "blockiert_grund": "Zu viele leere KI-Antworten oder Netzwerk-Timeouts. Task wird übersprungen, damit der Loop weiterlaufen kann.",
+            "blockiert_am": "2026-06-21 11:21:19",
+            "reaktiviert_am": "2026-06-21 11:28:43"
+        },
+        {
+            "id": 12,
+            "vorschlag": "Benutzerfreundliche Verfallsdatumseingabe (Date Picker)",
+            "beschreibung": "Speichere das ausgewählte Datum als Millisekunden-Timestamp in einem `MutableState<Long>` im `ItemDialog`.",
+            "status": "offen",
+            "risiko": "niedrig",
+            "blockiert_grund": "Zu viele leere KI-Antworten oder Netzwerk-Timeouts. Task wird übersprungen, damit der Loop weiterlaufen kann.",
+            "blockiert_am": "2026-06-21 11:21:54",
+            "reaktiviert_am": "2026-06-21 11:28:43"
+        },
+        {
+            "id": 13,
+            "vorschlag": "Manuelle Barcode-Eingabe und -Speicherung",
+            "beschreibung": "Füge ein `OutlinedTextField` für die manuelle Eingabe des Barcodes in den `ItemDialog` ein.",
+            "status": "offen",
+            "risiko": "niedrig",
+            "blockiert_grund": "Zu viele leere KI-Antworten oder Netzwerk-Timeouts. Task wird übersprungen, damit der Loop weiterlaufen kann.",
+            "blockiert_am": "2026-06-21 11:22:29",
+            "reaktiviert_am": "2026-06-21 11:28:43"
+        },
+        {
+            "id": 14,
+            "vorschlag": "Manuelle Barcode-Eingabe und -Speicherung",
+            "beschreibung": "Implementiere eine einfache Validierung für den Barcode (z.B. nur Ziffern, Mindest-/Maximallänge).",
+            "status": "offen",
+            "risiko": "niedrig",
+            "blockiert_grund": "Zu viele leere KI-Antworten oder Netzwerk-Timeouts. Task wird übersprungen, damit der Loop weiterlaufen kann.",
+            "blockiert_am": "2026-06-21 11:23:18",
+            "reaktiviert_am": "2026-06-21 11:28:43"
+        },
+        {
+            "id": 15,
+            "vorschlag": "Manuelle Barcode-Eingabe und -Speicherung",
+            "beschreibung": "Stelle sicher, dass der eingegebene Barcode korrekt im `FridgeItem` gespeichert und bei der Aktualisierung übergeben wird.",
+            "status": "offen",
+            "risiko": "niedrig",
+            "blockiert_grund": "Zu viele leere KI-Antworten oder Netzwerk-Timeouts. Task wird übersprungen, damit der Loop weiterlaufen kann.",
+            "blockiert_am": "2026-06-21 11:23:55",
+            "reaktiviert_am": "2026-06-21 11:28:43"
+        },
+        {
+            "id": 16,
+            "vorschlag": "Visuelles Feedback für Nutzeraktionen (Snackbar)",
+            "beschreibung": "Füge einen `SnackbarHost` zum `Scaffold` in der `RefrigeratorApp` hinzu.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 17,
+            "vorschlag": "Visuelles Feedback für Nutzeraktionen (Snackbar)",
+            "beschreibung": "Erzeuge eine `SnackbarHostState` und übergebe sie dem `SnackbarHost`.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 18,
+            "vorschlag": "Visuelles Feedback für Nutzeraktionen (Snackbar)",
+            "beschreibung": "Rufe `snackbarHostState.showSnackbar()` im `rememberCoroutineScope` in `RefrigeratorApp` auf, nachdem Aktionen wie Hinzufügen, Bearbeiten, Löschen, Verbrauchen oder Verschwenden von Artikeln erfolgreich waren, um kurze Statusmeldungen anzuzeigen.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 19,
+            "vorschlag": "Erweitertes Datenmodell für 'FridgeItem'",
+            "beschreibung": "Erweitere die `FridgeItem`-Datenklasse um `purchaseDate: Long` (Standardwert: aktueller Zeitpunkt) und `unit: String` (Standardwert: 'Stk.').",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 20,
+            "vorschlag": "Erweitertes Datenmodell für 'FridgeItem'",
+            "beschreibung": "Füge in den `ItemDialog` ein Dropdown-Menü oder ein Textfeld für die Auswahl/Eingabe der `unit` hinzu (z.B. 'Stk.', 'g', 'ml', 'kg').",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 21,
+            "vorschlag": "Erweitertes Datenmodell für 'FridgeItem'",
+            "beschreibung": "Passe die Logik im `ItemDialog` an, um das `purchaseDate` (standardmäßig auf heute gesetzt, aber bei Bedarf anpassbar) zu verwalten.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 22,
+            "vorschlag": "Erweitertes Datenmodell für 'FridgeItem'",
+            "beschreibung": "Aktualisiere die ViewModel-Logik und alle relevanten UI-Komponenten, die `FridgeItem` verwenden.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 23,
+            "vorschlag": "Vollständige Barrierefreiheit: Content Descriptions",
+            "beschreibung": "Überprüfe alle `Icon` und `AsyncImage` Composable-Funktionen im gesamten Code.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 24,
+            "vorschlag": "Vollständige Barrierefreiheit: Content Descriptions",
+            "beschreibung": "Füge überall, wo `contentDescription = null` oder eine unzureichende Beschreibung vorhanden ist, präzise und hilfreiche Beschreibungen hinzu (z.B. 'Sprachsteuerung starten', 'Bild des Artikels').",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 25,
+            "vorschlag": "Vollständige Barrierefreiheit: Content Descriptions",
+            "beschreibung": "Achte darauf, dass die Beschreibungen im Kontext der deutschen Sprache sinnvoll sind.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 26,
+            "vorschlag": "Grundlegende KI-Rezepte basierend auf Vorhandenem",
+            "beschreibung": "Erweitere den `RecipeDialog`, um alle verfügbaren `FridgeItem`s anzuzeigen, die der Benutzer im Kühlschrank hat.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 27,
+            "vorschlag": "Grundlegende KI-Rezepte basierend auf Vorhandenem",
+            "beschreibung": "Implementiere eine einfache, regelbasierte Logik (z.B. mit `when`-Statements oder einer einfachen Map von Zutaten zu Rezepten), die grundlegende Rezeptvorschläge macht, wenn bestimmte Kombinationen von Artikeln vorhanden sind (z.B. 'Nudeln mit Tomatensoße' wenn Nudeln und Tomaten vorhanden sind).",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 28,
+            "vorschlag": "Grundlegende KI-Rezepte basierend auf Vorhandenem",
+            "beschreibung": "Zeige diese Vorschläge im `RecipeDialog` übersichtlich an.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 29,
+            "vorschlag": "Erweitertes Abfall-Tracking für Statistiken",
+            "beschreibung": "Definiere eine neue Datenklasse `WastedItem` mit Attributen wie `name: String`, `wasteDate: Long` und optional `category: String`, `quantity: Int`.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 30,
+            "vorschlag": "Erweitertes Abfall-Tracking für Statistiken",
+            "beschreibung": "Füge eine `MutableList<WastedItem>` zum `FridgeViewModel` hinzu, die die verschwendeten Artikel speichert.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 31,
+            "vorschlag": "Erweitertes Abfall-Tracking für Statistiken",
+            "beschreibung": "Implementiere in `FridgeViewModel` die Logik, dass beim Aufruf von `wasteItem(item)` ein entsprechendes `WastedItem` erstellt und zur Liste hinzugefügt wird.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 32,
+            "vorschlag": "Erweitertes Abfall-Tracking für Statistiken",
+            "beschreibung": "Integriere die `WastedItem`-Liste in die dauerhafte Speicherung mittels `DataStore` (siehe Vorschlag 1).",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 33,
+            "vorschlag": "Erweitertes Abfall-Tracking für Statistiken",
+            "beschreibung": "Passe die `StatisticsView` an, um die Anzahl der verschwendeten Artikel und/oder eine Liste der zuletzt verschwendeten Artikel anzuzeigen.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 34,
+            "vorschlag": "Anpassbare Artikelkategorien",
+            "beschreibung": "Füge eine `MutableList<String>` namens `userDefinedCategories` (mit anfänglichen Standardkategorien) zum `FridgeViewModel` hinzu.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 35,
+            "vorschlag": "Anpassbare Artikelkategorien",
+            "beschreibung": "Implementiere die Persistenz dieser Liste im `DataStore` (siehe Vorschlag 1).",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 36,
+            "vorschlag": "Anpassbare Artikelkategorien",
+            "beschreibung": "Ersetze im `ItemDialog` die direkte Eingabe der Kategorie durch eine `ExposedDropdownMenuBox`, die eine Kombination aus der auto-erkannten Kategorie und den `userDefinedCategories` anbietet.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 37,
+            "vorschlag": "Anpassbare Artikelkategorien",
+            "beschreibung": "Füge eine Option im `ItemDialog` hinzu (z.B. ein 'Neue Kategorie hinzufügen'-Button), über die der Benutzer neue Kategorien zur Liste hinzufügen kann.",
+            "status": "offen",
+            "risiko": "niedrig"
+        }
+    ]
+}

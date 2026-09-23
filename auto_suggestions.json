@@ -1,0 +1,164 @@
+{
+    "suggestions": [
+        {
+            "id": 1,
+            "titel": "Schnelles Hinzufügen mit Validierung",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 2,
+            "titel": "Ablaufdatum-Ampel",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 3,
+            "titel": "Filter nach Lagerort",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Filter nach Lagerort in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 4,
+            "titel": "Mengensteuerung",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Mengensteuerung in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 5,
+            "titel": "Einkaufsliste aus Mindestbestand",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Einkaufsliste aus Mindestbestand in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 6,
+            "titel": "Leerer-Zustand und klare Hinweise",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Leerer-Zustand und klare Hinweise in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 7,
+            "titel": "Suchfeld für Lebensmittel",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Suchfeld für Lebensmittel in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 8,
+            "titel": "Sortierung nach Ablaufdatum",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Sortierung nach Ablaufdatum in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 9,
+            "titel": "Undo nach Löschen",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Undo nach Löschen in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        },
+        {
+            "id": 10,
+            "titel": "Barrierefreie Material-3-Oberfläche",
+            "beschreibung": "Kleine, sichere Verbesserung für Bedienbarkeit und Stabilität.",
+            "nutzen": "Die App wird nützlicher und robuster.",
+            "risiko": "niedrig",
+            "score": 10,
+            "tasks": [
+                "Barrierefreie Material-3-Oberfläche in MainActivity.kt sauber umsetzen."
+            ],
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien",
+                "UI bleibt bedienbar"
+            ]
+        }
+    ]
+}

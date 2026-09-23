@@ -1,0 +1,1319 @@
+package com.example.myapplication
+
+import android.app.Activity
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognizerIntent
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val locale = Locale.GERMANY
+        Locale.setDefault(locale)
+        val config = resources.configuration
+        config.setLocale(locale)
+
+        enableEdgeToEdge()
+        setContent {
+            MyApplicationTheme {
+                RefrigeratorApp()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RefrigeratorApp() {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var isSearchExpanded by remember { mutableStateOf(false) }
+
+    val fridgeViewModel: FridgeViewModel = viewModel()
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var itemToEdit by remember { mutableStateOf<FridgeItem?>(null) }
+    var showRecipeDialog by remember { mutableStateOf(false) }
+    var newItemText by rememberSaveable { mutableStateOf("") }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    if (isSearchExpanded) {
+                        TextField(
+                            value = fridgeViewModel.searchInput,
+                            onValueChange = { fridgeViewModel.updateSearchInput(it) },
+                            placeholder = { Text("Suche...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                errorContainerColor = Color.Transparent
+                            ),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Search
+                            )
+                        )
+                    } else {
+                        Text("Mein Kühlschrank \uD83C\uDF4F", fontWeight = FontWeight.Bold)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        isSearchExpanded = !isSearchExpanded
+                        if (!isSearchExpanded) fridgeViewModel.updateSearchInput("")
+                    }) {
+                        Icon(if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (isSearchExpanded) "Suchleiste schließen" else "Suchleiste öffnen")
+                    }
+                    IconButton(onClick = { showRecipeDialog = true }) {
+                        Icon(Icons.Default.Restaurant, contentDescription = "Rezepte anzeigen")
+                    }
+                    var showSortMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(Icons.Default.Sort, contentDescription = "Sortieroptionen anzeigen")
+                    }
+                    DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                        DropdownMenuItem(text = { Text("Nach Name") }, onClick = {
+                            fridgeViewModel.updateSortOrder(SortOrder.NAME)
+                            showSortMenu = false
+                        })
+                        DropdownMenuItem(text = { Text("Nach Ablaufdatum") }, onClick = {
+                            fridgeViewModel.updateSortOrder(SortOrder.EXPIRY_DATE)
+                            showSortMenu = false
+                        })
+                        DropdownMenuItem(text = { Text("Nach Kategorie") }, onClick = {
+                            fridgeViewModel.updateSortOrder(SortOrder.CATEGORY)
+                            showSortMenu = false
+                        })
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = {
+                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Vorrat anzeigen")
+                    },
+                    label = { Text("Vorrat") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Einkaufsliste anzeigen") },
+                    label = { Text("Einkaufsliste") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.BarChart, contentDescription = "Statistik anzeigen") },
+                    label = { Text("Statistik") }
+                )
+            }
+        },
+        floatingActionButton = {
+            if (selectedTab != 2) {
+                FloatingActionButton(onClick = {
+                    itemToEdit = null
+                    showAddDialog = true
+                }) {
+                    Icon(Icons.Default.Add, contentDescription = "Neuen Artikel hinzufügen")
+                }
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (selectedTab == 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newItemText,
+                        onValueChange = { newItemText = it },
+                        label = { Text("Neuen Artikel eingeben") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                            imeAction = ImeAction.Done
+                        ),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent
+                        )
+                    )
+                    Button(
+                        onClick = {
+                            if (newItemText.isNotBlank()) {
+                                val newItem = FridgeItem(name = newItemText)
+                                fridgeViewModel.addItem(newItem)
+                                scope.launch { snackbarHostState.showSnackbar("Artikel '${newItem.name}' hinzugefügt.") }
+                                newItemText = ""
+                            }
+                        },
+                        enabled = newItemText.isNotBlank()
+                    ) {
+                        Text("Hinzufügen")
+                    }
+                }
+
+                if (fridgeViewModel.allFridgeItems.isNotEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        item {
+                            Text("Meine Artikel:", style = MaterialTheme.typography.titleSmall)
+                        }
+                        items(fridgeViewModel.allFridgeItems.reversed(), key = { it.id }) { item ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp, horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(item.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                    IconButton(
+                                        onClick = {
+                                            fridgeViewModel.removeItem(item)
+                                            scope.launch { snackbarHostState.showSnackbar("Artikel '${item.name}' gelöscht.") }
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Artikel ${item.name} löschen", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "Keine Artikel im Kühlschrank. Füge jetzt welche hinzu!",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp, horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Artikel im Kühlschrank: ${fridgeViewModel.allFridgeItems.size}",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    textAlign = TextAlign.Start,
+                    fontWeight = FontWeight.Bold
+                )
+                Divider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+
+            when (selectedTab) {
+                0 -> FridgeList(
+                    items = fridgeViewModel.displayedItems,
+                    onDelete = { item ->
+                        fridgeViewModel.removeItem(item)
+                        scope.launch { snackbarHostState.showSnackbar("Artikel '${item.name}' gelöscht.") }
+                    },
+                    onEdit = { item ->
+                        itemToEdit = item
+                        showAddDialog = true
+                    },
+                    onConsume = { item ->
+                        fridgeViewModel.consumeItem(item)
+                        scope.launch { snackbarHostState.showSnackbar("1x '${item.name}' verbraucht.") }
+                    },
+                    onWaste = { item ->
+                        fridgeViewModel.wasteItem(item)
+                        scope.launch { snackbarHostState.showSnackbar("1x '${item.name}' als Abfall markiert.") }
+                    }
+                )
+                1 -> ShoppingList(
+                    items = fridgeViewModel.allFridgeItems.filter { it.quantity <= it.minStock },
+                    onShare = { /* Implement share functionality */ }
+                )
+                2 -> StatisticsView(items = fridgeViewModel.allFridgeItems, wastedItems = fridgeViewModel.wastedItems)
+            }
+        }
+
+        if (showAddDialog) {
+            ItemDialog(
+                viewModel = fridgeViewModel,
+                title = if (itemToEdit == null) "Neuen Artikel hinzufügen" else "Artikel bearbeiten",
+                initialItem = itemToEdit,
+                onDismiss = { showAddDialog = false; itemToEdit = null },
+                onConfirm = { newItem ->
+                    if (itemToEdit == null) {
+                        fridgeViewModel.addItem(newItem)
+                        scope.launch { snackbarHostState.showSnackbar("Artikel '${newItem.name}' hinzugefügt.") }
+                    } else {
+                        fridgeViewModel.updateItem(newItem)
+                        scope.launch { snackbarHostState.showSnackbar("Artikel '${newItem.name}' aktualisiert.") }
+                    }
+                    showAddDialog = false
+                    itemToEdit = null
+                }
+            )
+        }
+
+        if (showRecipeDialog) {
+            RecipeDialog(items = fridgeViewModel.allFridgeItems, onDismiss = { showRecipeDialog = false })
+        }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ItemDialog(
+    viewModel: FridgeViewModel,
+    title: String,
+    initialItem: FridgeItem? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (FridgeItem) -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(initialItem?.name ?: "") }
+    var category by remember { mutableStateOf(initialItem?.category ?: "Sonstiges") }
+    var quantity by remember { mutableIntStateOf(initialItem?.quantity ?: 1) }
+    var unit by remember { mutableStateOf(initialItem?.unit ?: "Stk.") }
+    var minStock by remember { mutableStateOf(initialItem?.minStock?.toString() ?: "0") }
+    val defaultLocation = "Kühlschrank"
+    var location by remember { mutableStateOf(initialItem?.storageLocation ?: defaultLocation) }
+    var barcode by remember { mutableStateOf(initialItem?.barcode ?: "") }
+    var price by remember { mutableStateOf(initialItem?.price?.toString() ?: "0.00") }
+    var isOrganic by remember { mutableStateOf(initialItem?.isOrganic ?: false) }
+    var notes by remember { mutableStateOf(initialItem?.notes ?: "") }
+    var imageUrl by remember { mutableStateOf(initialItem?.imageUrl) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    var showExpiryDatePicker by remember { mutableStateOf(false) }
+    var showPurchaseDatePicker by remember { mutableStateOf(false) }
+
+    val initialExpiryDate = initialItem?.expiryDate ?: (System.currentTimeMillis() + (7 * 24 * 60 * 60 * 1000L))
+    val expiryDatePickerState = rememberDatePickerState(initialSelectedDateMillis = initialExpiryDate)
+    var selectedExpiryDateMillis by remember { mutableLongStateOf(initialExpiryDate) }
+
+    val initialPurchaseDate = initialItem?.purchaseDate ?: System.currentTimeMillis()
+    val purchaseDatePickerState = rememberDatePickerState(initialSelectedDateMillis = initialPurchaseDate)
+    var selectedPurchaseDateMillis by remember { mutableLongStateOf(initialPurchaseDate) }
+
+    var minStockError by remember { mutableStateOf(false) }
+    var minStockErrorText by remember { mutableStateOf("") }
+    var priceError by remember { mutableStateOf(false) }
+    var priceErrorText by remember { mutableStateOf("") }
+    var barcodeError by remember { mutableStateOf(false) }
+    var barcodeErrorText by remember { mutableStateOf("") }
+
+    val isFormValid = !minStockError && !priceError && !barcodeError && name.isNotBlank()
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (spokenText != null) name = spokenText
+        }
+    }
+
+    // val context = LocalContext.current // Not used directly after commenting out scannerLauncher code
+
+    LaunchedEffect(name) {
+        val n = name.lowercase()
+        if (n.contains("milch") || n.contains("käse") || n.contains("joghurt") || n.contains("butter")) {
+            category = "Milchprodukte"
+        } else if (n.contains("apfel") || n.contains("äpfel") || n.contains("gemüse") || n.contains("salat") || n.contains("gurke")) {
+            category = "Obst & Gemüse"
+        } else if (n.contains("wurst") || n.contains("fleisch") || n.contains("hähnchen") || n.contains("salami")) {
+            category = "Fleisch & Wurst"
+        } else if (n.contains("saft") || n.contains("wasser") || n.contains("bier") || n.contains("öl")) {
+            category = "Getränke & Öle"
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                item {
+                    if (isLoading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    imageUrl?.let {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            AsyncImage(
+                                model = it,
+                                contentDescription = "Produktbild des Artikels ${name.ifBlank { "ohne Namen" }}",
+                                modifier = Modifier.size(100.dp).clip(RoundedCornerShape(8.dp))
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            Row {
+                                IconButton(onClick = {
+                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
+                                    }
+                                    voiceLauncher.launch(intent)
+                                }) { Icon(Icons.Default.Mic, "Spracheingabe für den Namen starten") }
+                                // Scanner IconButton
+                                // IconButton(onClick = {
+                                //    val intent = Intent(context, ScannerActivity::class.java).apply {
+                                //        putExtra("SCAN_MODE", "TEXT")
+                                //    }
+                                //    scannerLauncher.launch(intent)
+                                // }) { Icon(Icons.Default.PhotoCamera, "Barcode scannen") }
+                            }
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Bio", modifier = Modifier.weight(1f))
+                        Switch(checked = isOrganic, onCheckedChange = { isOrganic = it })
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Menge: $quantity", style = MaterialTheme.typography.labelLarge)
+                        IconButton(onClick = { if (quantity > 1) quantity-- }) { Icon(Icons.Default.Remove, "Menge reduzieren") }
+                        Slider(value = quantity.toFloat(), onValueChange = { quantity = it.toInt() }, valueRange = 1f..20f, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { if (quantity < 20) quantity++ }) { Icon(Icons.Default.Add, "Menge erhöhen") }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+                        var showUnitMenu by remember { mutableStateOf(false) }
+                        OutlinedButton(onClick = { showUnitMenu = true }) {
+                            Text(unit)
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Einheit auswählen")
+                        }
+                        DropdownMenu(expanded = showUnitMenu, onDismissRequest = { showUnitMenu = false }) {
+                            listOf("Stk.", "g", "ml", "kg", "L").forEach { selectedUnit ->
+                                DropdownMenuItem(text = { Text(selectedUnit) }, onClick = {
+                                    unit = selectedUnit
+                                    showUnitMenu = false
+                                })
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = minStock,
+                        onValueChange = {
+                            minStock = it
+                            val parsedValue = it.toIntOrNull()
+                            minStockError = (parsedValue == null && it.isNotBlank()) || (parsedValue != null && parsedValue < 0)
+                            minStockErrorText = if (minStockError) "Gültige positive Zahl eingeben" else ""
+                        },
+                        label = { Text("Mindestbestand") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = minStockError,
+                        supportingText = { if (minStockError) Text(minStockErrorText) }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = price,
+                            onValueChange = {
+                                price = it
+                                val cleanedPrice = it.replace(",", ".")
+                                val parsedValue = cleanedPrice.toDoubleOrNull()
+                                priceError = (parsedValue == null && it.isNotBlank()) || (parsedValue != null && parsedValue < 0)
+                                priceErrorText = if (priceError) "Gültigen positiven Preis eingeben" else ""
+                            },
+                            label = { Text("Preis") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f),
+                            isError = priceError,
+                            supportingText = { if (priceError) Text(priceErrorText) }
+                        )
+                        OutlinedTextField(
+                            value = formatDate(selectedExpiryDateMillis),
+                            onValueChange = { /* Read-only, handled by date picker */ },
+                            label = { Text("Ablaufdatum") },
+                            readOnly = true,
+                            trailingIcon = {
+                                IconButton(onClick = { showExpiryDatePicker = true }) {
+                                    Icon(Icons.Default.CalendarToday, contentDescription = "Ablaufdatum auswählen")
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = formatDate(selectedPurchaseDateMillis),
+                        onValueChange = { /* Read-only, handled by date picker */ },
+                        label = { Text("Kaufdatum") },
+                        readOnly = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showPurchaseDatePicker = true }) {
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Kaufdatum auswählen")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notizen / Details") }, modifier = Modifier.fillMaxWidth())
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = barcode,
+                        onValueChange = { newBarcode ->
+                            barcode = newBarcode
+                            if (newBarcode.isNotBlank()) {
+                                val isDigitsOnly = newBarcode.all { it.isDigit() }
+                                val isValidLength = newBarcode.length in 8..14
+
+                                barcodeError = !isDigitsOnly || !isValidLength
+                                barcodeErrorText = when {
+                                    !isDigitsOnly -> "Barcode darf nur Ziffern enthalten"
+                                    !isValidLength -> "Barcode muss zwischen 8 und 14 Ziffern lang sein"
+                                    else -> ""
+                                }
+                            } else {
+                                barcodeError = false
+                                barcodeErrorText = ""
+                            }
+
+                            if (!barcodeError && newBarcode.length > 5 && newBarcode.all { it.isDigit() } && !isLoading) {
+                                isLoading = true
+                                coroutineScope.launch {
+                                    val product = viewModel.fetchProductInfo(newBarcode)
+                                    if (product != null) {
+                                        product.name?.let { if (it.isNotBlank() && name.isBlank()) name = it }
+                                        product.categories?.split(",")?.firstOrNull()?.let { if (it.isNotBlank() && category == "Sonstiges") category = it }
+                                        product.imageUrl?.let { imageUrl = it }
+                                    }
+                                    isLoading = false
+                                }
+                            }
+                        },
+                        label = { Text("Barcode manuell eingeben") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = barcodeError,
+                        supportingText = { if (barcodeError) Text(barcodeErrorText) },
+                        trailingIcon = {
+                            if (barcode.isNotEmpty()) {
+                                IconButton(onClick = { barcode = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Barcode löschen")
+                                }
+                            }
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Lagerort:", style = MaterialTheme.typography.labelMedium)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("Kühlschrank", "Gefrierfach", "Vorratskammer").forEach { loc ->
+                            FilterChip(
+                                selected = location == loc,
+                                onClick = { location = loc },
+                                label = { Text(loc, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Barcode scanner button (commented out as ScannerActivity is not provided)
+                    // Button(
+                    //    onClick = {
+                    //        val intent = Intent(context, ScannerActivity::class.java).apply {
+                    //            putExtra("SCAN_MODE", "BARCODE")
+                    //        }
+                    //    scannerLauncher.launch(intent)
+                    //    },
+                    //    modifier = Modifier.fillMaxWidth(),
+                    //    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    // ) {
+                    //    Icon(Icons.Default.QrCodeScanner, contentDescription = "Barcode scannen")
+                    //    Spacer(modifier = Modifier.width(8.dp))
+                    //    Text(if (barcode == null) "Barcode scannen" else "Code: $barcode")
+                    // }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val parsedMinStock = minStock.toIntOrNull() ?: 0
+                    val parsedPrice = price.replace(",", ".").toDoubleOrNull() ?: 0.0
+
+                    val newItem = (initialItem ?: FridgeItem(name = "")).copy(
+                        name = name,
+                        quantity = quantity,
+                        unit = unit,
+                        purchaseDate = selectedPurchaseDateMillis,
+                        expiryDate = selectedExpiryDateMillis,
+                        category = category,
+                        minStock = parsedMinStock,
+                        storageLocation = location,
+                        barcode = barcode.ifBlank { null },
+                        price = parsedPrice,
+                        isOrganic = isOrganic,
+                        notes = notes,
+                        imageUrl = imageUrl
+                    )
+                    onConfirm(newItem)
+                },
+                enabled = isFormValid
+            ) {
+                Text("Speichern")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Abbrechen") }
+        }
+    )
+
+    if (showExpiryDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showExpiryDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    expiryDatePickerState.selectedDateMillis?.let {
+                        selectedExpiryDateMillis = it
+                    }
+                    showExpiryDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExpiryDatePicker = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        ) {
+            DatePicker(state = expiryDatePickerState)
+        }
+    }
+
+    if (showPurchaseDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showPurchaseDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    purchaseDatePickerState.selectedDateMillis?.let {
+                        selectedPurchaseDateMillis = it
+                    }
+                    showPurchaseDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPurchaseDatePicker = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        ) {
+            DatePicker(state = purchaseDatePickerState)
+        }
+    }
+}
+
+@Composable
+fun FridgeList(
+    items: List<FridgeItem>,
+    onDelete: (FridgeItem) -> Unit,
+    onEdit: (FridgeItem) -> Unit,
+    onConsume: (FridgeItem) -> Unit,
+    onWaste: (FridgeItem) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text("Mein Vorrat \uD83D\uDCE6", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        if (items.isEmpty()) {
+            item {
+                Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Dein Kühlschrank ist leer. Zeit für einen Einkauf! \uD83D\uDED2", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+        items(items, key = { it.id }) { item ->
+            FridgeItemCard(
+                item = item,
+                onDelete = { onDelete(item) },
+                onEdit = { onEdit(item) },
+                onConsume = { onConsume(item) },
+                onWaste = { onWaste(item) }
+            )
+        }
+    }
+}
+
+@Composable
+fun FridgeItemCard(
+    item: FridgeItem,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit,
+    onConsume: () -> Unit,
+    onWaste: () -> Unit
+) {
+    val daysLeft = ((item.expiryDate - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt()
+    val statusColor = when {
+        daysLeft < 0 -> Color.Red
+        daysLeft <= 3 -> Color(0xFFFFA500)
+        else -> Color(0xFF4CAF50)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit,  // Using onClick for clickable, contentDescription is implicitly handled
+            // Providing explicit description for better accessibility
+            // For the whole card, the default semantic of "clickable" is usually sufficient
+            // as the content inside already describes the item.
+            // If the card itself needs a description for its *action* then it's done here.
+            // For now, onEdit is just a regular action.
+            onClickLabel = "Artikel ${item.name} bearbeiten"
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(modifier = Modifier.size(14.dp), shape = CircleShape, color = statusColor) {}
+                Spacer(modifier = Modifier.width(12.dp))
+                if (item.imageUrl != null) {
+                    AsyncImage(
+                        model = item.imageUrl,
+                        contentDescription = "Bild von ${item.name}",
+                        modifier = Modifier.size(40.dp).clip(CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row {
+                        Text(item.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        if (item.isOrganic) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("\uD83C\uDF3F", fontSize = 14.sp)
+                        }
+                    }
+                    Text("${item.storageLocation} \u2022 ${item.category}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                }
+                Text("x${item.quantity} ${item.unit}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
+
+            if (item.notes.isNotEmpty()) {
+                Text(item.notes, style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text(
+                        text = if (daysLeft < 0) "Abgelaufen!" else "Haltbar: ${formatDate(item.expiryDate)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (daysLeft < 0) Color.Red else Color.Unspecified
+                    )
+                    Text(
+                        text = "Gekauft: ${formatDate(item.purchaseDate)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+                if (item.price > 0) {
+                    Text("${String.format("%.2f", item.price * item.quantity)} \u20AC", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onConsume,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = "Artikel als verbraucht markieren", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Genutzt", fontSize = 11.sp)
+                }
+                Button(
+                    onClick = onWaste,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(Icons.Default.DeleteForever, contentDescription = "Artikel als Abfall markieren", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Abfall", fontSize = 11.sp)
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Artikel ${item.name} löschen", tint = Color.Gray)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ShoppingList(items: List<FridgeItem>, onShare: () -> Unit) {
+    // val context = LocalContext.current // Not used
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Einkaufsliste \uD83D\uDED2", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Einkaufsliste teilen") }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        val shoppingItems = items.filter { it.quantity <= it.minStock }
+        if (shoppingItems.isEmpty()) {
+            item { Text("Alles auf Vorrat! \u2705", modifier = Modifier.padding(16.dp)) }
+        }
+        items(shoppingItems) { item ->
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AddShoppingCart, contentDescription = "Artikel für Einkaufsliste benötigt")
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Bestand: ${item.quantity} ${item.unit} / Min: ${item.minStock} ${item.unit}", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatisticsView(items: List<FridgeItem>, wastedItems: List<WastedItem>) {
+    val totalConsumed = items.sumOf { it.consumedCount }
+    val totalWastedOverallQuantity = wastedItems.sumOf { it.quantity } // Summing up quantities from WastedItem list
+    val wastedValue = wastedItems.sumOf { it.value } // Summing up values from WastedItem list
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text("Finanzen & Nachhaltigkeit \uD83D\uDCCA", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        }
+
+        item {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Monetärer Verlust durch Abfall", style = MaterialTheme.typography.labelMedium)
+                    Text("${String.format("%.2f", wastedValue)} \u20AC", style = MaterialTheme.typography.headlineMedium, color = Color.Red)
+                }
+            }
+        }
+
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Genutzt", style = MaterialTheme.typography.labelMedium)
+                        Text("$totalConsumed", style = MaterialTheme.typography.headlineMedium, color = Color(0xFF2E7D32))
+                    }
+                }
+                Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Artikel als Abfall markiert", style = MaterialTheme.typography.labelMedium)
+                        Text("$totalWastedOverallQuantity", style = MaterialTheme.typography.headlineMedium, color = Color(0xFFC62828))
+                    }
+                }
+            }
+        }
+        
+        if (wastedItems.isNotEmpty()) {
+            item {
+                Text("Letzte Abfälle:", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            items(wastedItems.reversed().take(5)) { wastedItem -> // Show last 5 wasted items
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(wastedItem.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Am ${formatDate(wastedItem.wasteDate)}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+                        Text("-${String.format("%.2f", wastedItem.value)} \u20AC", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecipeDialog(items: List<FridgeItem>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("KI Rezept-Inspiration \uD83D\uDC68\u200D\uD83C\uDF73") },
+        text = {
+            Column {
+                val availableItems = items.filter { it.quantity > 0 }
+                if (availableItems.isEmpty()) {
+                    Text("Dein Kühlschrank ist leer. Füge zuerst Artikel hinzu, um Rezepte zu finden!")
+                } else {
+                    Text("Basierend auf deinem aktuellen Vorrat könnten diese Artikel für Rezepte verwendet werden:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.heightIn(max = 120.dp)) { // Added LazyColumn for scrollable item list
+                        items(availableItems) { item ->
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("• ${item.name}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Text("${item.quantity} ${item.unit}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val availableItemNames = availableItems.map { it.name.lowercase() }
+                    val suggestedRecipes = mutableListOf<String>()
+
+                    // Rule-based recipe suggestions
+                    if (availableItemNames.any { it.contains("nudel") || it.contains("pasta") } &&
+                        availableItemNames.any { it.contains("tomaten") || it.contains("passata") || it.contains("tomatensoße") }) {
+                        suggestedRecipes.add("Nudeln mit Tomatensoße")
+                    }
+
+                    if (availableItemNames.any { it.contains("ei") || it.contains("eier") }) {
+                        suggestedRecipes.add("Rührei oder Spiegelei")
+                    }
+
+                    if (availableItemNames.any { it.contains("milch") } &&
+                        availableItemNames.any { it.contains("reis") }) {
+                        suggestedRecipes.add("Milchreis")
+                    }
+
+                    if (availableItemNames.any { it.contains("apfel") || it.contains("äpfel") }) {
+                        suggestedRecipes.add("Apfelmus oder Apfelkuchen")
+                    }
+
+                    if (availableItemNames.any { it.contains("joghurt") } &&
+                        availableItemNames.any { it.contains("müsli") || it.contains("haferflocken") }) {
+                        suggestedRecipes.add("Joghurt mit Müsli")
+                    }
+
+                    if (availableItemNames.any { it.contains("brot") } &&
+                        availableItemNames.any { it.contains("käse") }) {
+                        suggestedRecipes.add("Käsebrot")
+                    }
+
+                    if (availableItemNames.any { it.contains("kartoffel") || it.contains("kartoffeln") } &&
+                        availableItemNames.any { it.contains("zwiebel") || it.contains("zwiebeln") } &&
+                        availableItemNames.any { it.contains("ei") || it.contains("eier") }) {
+                        suggestedRecipes.add("Bauernfrühstück")
+                    }
+
+                    if (suggestedRecipes.isNotEmpty()) {
+                        Text("Hier sind einige Rezeptvorschläge:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            suggestedRecipes.forEach { recipe ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.RestaurantMenu, contentDescription = "Rezept", modifier = Modifier.size(24.dp))
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(recipe, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Text("Aktuell keine spezifischen Rezeptvorschläge gefunden.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Was möchtest du daraus zaubern? Denk dir ein Gericht aus!", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("OK") } }
+    )
+}
+
+fun formatDate(timestamp: Long): String {
+    val sdf = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    return sdf.format(Date(timestamp))
+}
+
+data class FridgeItem(
+    val id: Long = UUID.randomUUID().mostSignificantBits,
+    val name: String,
+    val quantity: Int = 1,
+    val unit: String = "Stk.",
+    val purchaseDate: Long = System.currentTimeMillis(),
+    val expiryDate: Long = System.currentTimeMillis() + (7 * 24 * 60 * 60 * 1000L),
+    val category: String = "Sonstiges",
+    val minStock: Int = 0,
+    val storageLocation: String = "Kühlschrank",
+    val barcode: String? = null,
+    val price: Double = 0.0,
+    val isOrganic: Boolean = false,
+    val notes: String = "",
+    val imageUrl: String? = null,
+    val consumedCount: Int = 0,
+    val wastedCount: Int = 0
+) : Comparable<FridgeItem> {
+    override operator fun compareTo(other: FridgeItem): Int {
+        return this.expiryDate.compareTo(other.expiryDate)
+    }
+}
+
+data class ProductInfo(
+    val name: String?,
+    val categories: String?,
+    val imageUrl: String?
+)
+
+enum class SortOrder {
+    NAME, EXPIRY_DATE, CATEGORY
+}
+
+data class WastedItem(
+    val id: Long = UUID.randomUUID().mostSignificantBits,
+    val name: String,
+    val wasteDate: Long = System.currentTimeMillis(),
+    val category: String? = null,
+    val quantity: Int = 1,
+    val value: Double = 0.0
+)
+
+class FridgeViewModel : ViewModel() {
+    private val _fridgeItems = mutableStateListOf<FridgeItem>()
+    private val _wastedItems = mutableStateListOf<WastedItem>() // Added to store wasted items
+
+    val allFridgeItems: List<FridgeItem> get() = _fridgeItems
+    val wastedItems: List<WastedItem> get() = _wastedItems // Public getter for wasted items
+
+    var sortOrder by mutableStateOf(SortOrder.EXPIRY_DATE)
+        private set
+
+    var searchInput by mutableStateOf("")
+        private set
+
+    init {
+        _fridgeItems.addAll(
+            listOf(
+                FridgeItem(
+                    name = "M-Budget Milch",
+                    quantity = 2,
+                    unit = "L",
+                    purchaseDate = System.currentTimeMillis() - (2 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (5 * 24 * 60 * 60 * 1000L),
+                    category = "Milchprodukte",
+                    minStock = 1,
+                    storageLocation = "Kühlschrank",
+                    barcode = "7613036100057",
+                    price = 1.20,
+                    isOrganic = false,
+                    imageUrl = "https://i.ibb.co/L9hV773/milch.png"
+                ),
+                FridgeItem(
+                    name = "Bio Äpfel",
+                    quantity = 5,
+                    unit = "Stk.",
+                    purchaseDate = System.currentTimeMillis() - (4 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (10 * 24 * 60 * 60 * 1000L),
+                    category = "Obst & Gemüse",
+                    minStock = 2,
+                    storageLocation = "Vorratskammer",
+                    barcode = "7613036001002",
+                    price = 0.80,
+                    isOrganic = true,
+                    imageUrl = "https://i.ibb.co/3M361d9/apfel.png"
+                ),
+                FridgeItem(
+                    name = "Joghurt Nature",
+                    quantity = 3,
+                    unit = "Becher",
+                    purchaseDate = System.currentTimeMillis() - (1 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (3 * 24 * 60 * 60 * 1000L),
+                    category = "Milchprodukte",
+                    minStock = 1,
+                    storageLocation = "Kühlschrank",
+                    price = 0.50,
+                    imageUrl = "https://i.ibb.co/Ydtc119/joghurt.png"
+                ),
+                FridgeItem(
+                    name = "Salatgurke",
+                    quantity = 1,
+                    unit = "Stk.",
+                    purchaseDate = System.currentTimeMillis() - (5 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() - (1 * 24 * 60 * 60 * 1000L),
+                    category = "Obst & Gemüse",
+                    minStock = 0,
+                    storageLocation = "Kühlschrank",
+                    price = 0.99
+                ),
+                FridgeItem(
+                    name = "Tiefkühlpizza",
+                    quantity = 2,
+                    unit = "Stk.",
+                    purchaseDate = System.currentTimeMillis() - (10 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (30 * 24 * 60 * 60 * 1000L),
+                    category = "Tiefkühl",
+                    minStock = 1,
+                    storageLocation = "Gefrierfach",
+                    price = 3.50
+                ),
+                FridgeItem(
+                    name = "Spaghetti",
+                    quantity = 1,
+                    unit = "Packung",
+                    purchaseDate = System.currentTimeMillis() - (5 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (180 * 24 * 60 * 60 * 1000L),
+                    category = "Vorratskammer",
+                    minStock = 1,
+                    storageLocation = "Vorratskammer",
+                    price = 1.00
+                ),
+                FridgeItem(
+                    name = "Passierte Tomaten",
+                    quantity = 2,
+                    unit = "Dose",
+                    purchaseDate = System.currentTimeMillis() - (3 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (90 * 24 * 60 * 60 * 1000L),
+                    category = "Vorratskammer",
+                    minStock = 1,
+                    storageLocation = "Vorratskammer",
+                    price = 0.70
+                ),
+                FridgeItem(
+                    name = "Eier",
+                    quantity = 6,
+                    unit = "Stk.",
+                    purchaseDate = System.currentTimeMillis() - (1 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (10 * 24 * 60 * 60 * 1000L),
+                    category = "Kühlschrank",
+                    minStock = 2,
+                    storageLocation = "Kühlschrank",
+                    price = 0.30
+                ),
+                FridgeItem(
+                    name = "Basmatireis",
+                    quantity = 1,
+                    unit = "kg",
+                    purchaseDate = System.currentTimeMillis() - (20 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L),
+                    category = "Vorratskammer",
+                    minStock = 1,
+                    storageLocation = "Vorratskammer",
+                    price = 2.50
+                ),
+                FridgeItem(
+                    name = "Bio Müsli",
+                    quantity = 1,
+                    unit = "Packung",
+                    purchaseDate = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L),
+                    expiryDate = System.currentTimeMillis() + (60 * 24 * 60 * 60 * 1000L),
+                    category = "Vorratskammer",
+                    minStock = 0,
+                    storageLocation = "Vorratskammer",
+                    price = 3.00,
+                    isOrganic = true
+                )
+            )
+        )
+    }
+
+    val displayedItems: List<FridgeItem>
+        get() {
+            val filtered = if (searchInput.isBlank()) {
+                _fridgeItems
+            } else {
+                _fridgeItems.filter {
+                    it.name.contains(searchInput, ignoreCase = true) ||
+                            it.category.contains(searchInput, ignoreCase = true) ||
+                            it.notes.contains(searchInput, ignoreCase = true) ||
+                            it.storageLocation.contains(searchInput, ignoreCase = true)
+                }
+            }
+
+            return when (sortOrder) {
+                SortOrder.NAME -> filtered.sortedBy { it.name }
+                SortOrder.EXPIRY_DATE -> filtered.sortedBy { it.expiryDate }
+                SortOrder.CATEGORY -> filtered.sortedBy { it.category }
+            }
+        }
+
+    fun addItem(item: FridgeItem) {
+        _fridgeItems.add(item)
+    }
+
+    fun removeItem(item: FridgeItem) {
+        _fridgeItems.remove(item)
+    }
+
+    fun updateItem(item: FridgeItem) {
+        val index = _fridgeItems.indexOfFirst { it.id == item.id }
+        if (index != -1) {
+            _fridgeItems[index] = item
+        }
+    }
+
+    fun consumeItem(item: FridgeItem) {
+        val index = _fridgeItems.indexOf(item)
+        if (index != -1) {
+            val updatedItem = item.copy(
+                quantity = item.quantity - 1,
+                consumedCount = item.consumedCount + 1
+            )
+            if (updatedItem.quantity <= 0) {
+                _fridgeItems.removeAt(index)
+            } else {
+                _fridgeItems[index] = updatedItem
+            }
+        }
+    }
+
+    fun wasteItem(item: FridgeItem) {
+        val index = _fridgeItems.indexOf(item)
+        if (index != -1) {
+            // Add to wasted items list
+            _wastedItems.add(
+                WastedItem(
+                    name = item.name,
+                    category = item.category,
+                    quantity = 1, // We mark 1 unit as wasted at a time
+                    value = item.price // Add the value of the wasted item (per unit)
+                )
+            )
+
+            val updatedItem = item.copy(
+                quantity = item.quantity - 1,
+                wastedCount = item.wastedCount + 1
+            )
+            if (updatedItem.quantity <= 0) {
+                _fridgeItems.removeAt(index)
+            } else {
+                _fridgeItems[index] = updatedItem
+            }
+        }
+    }
+
+    fun updateSortOrder(order: SortOrder) {
+        sortOrder = order
+    }
+
+    fun updateSearchInput(input: String) {
+        searchInput = input
+    }
+
+    suspend fun fetchProductInfo(barcode: String): ProductInfo? {
+        kotlinx.coroutines.delay(1000)
+        return when (barcode) {
+            "7613036100057" -> ProductInfo("M-Budget Milch 1L", "Milchprodukte", "https://i.ibb.co/L9hV773/milch.png")
+            "7613036001002" -> ProductInfo("Bio-Apfel Gala", "Obst & Gemüse", "https://i.ibb.co/3M361d9/apfel.png")
+            "7617027582236" -> ProductInfo("Joghurt Nature 180g", "Milchprodukte", "https://i.ibb.co/Ydtc119/joghurt.png")
+            else -> null
+        }
+    }
+}

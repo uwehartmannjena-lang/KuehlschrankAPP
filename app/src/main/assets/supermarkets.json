@@ -1,0 +1,177 @@
+[
+  {
+    "name": "Kaufland",
+    "trigger": ["Kaufland", "DE145804122"],
+    "stopWords": ["SUMME", "GESAMT", "KARTENZAHLUNG", "BARZAHLUNG"],
+    "ignorePatterns": ["K-Card", "Pfand", "Rabatt", "Coupon", "Gutschein", "Beutel"],
+    "priceRegex": "(-?\\d+[,.]\\d{2})\\s*[AB]?"
+  },
+  {
+    "name": "Lidl",
+    "trigger": ["Lidl", "LIDL PLUS", "St.-Ingbert-Straße"],
+    "stopWords": ["ZU ZAHLEN", "LIDL PAY", "TOTAL", "SUMME", "GEGEBEN"],
+    "ignorePatterns": ["Lidl Plus", "Preisvorteil", "Coupon", "Flasche", "Pfand"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Rewe",
+    "trigger": ["Rewe", "REWE Markt"],
+    "stopWords": ["SUMME", "UNBAR", "GEGEBEN"],
+    "ignorePatterns": ["Payback", "Pfand", "Rabatt", "Tüte"],
+    "priceRegex": "(-?\\d+[,.]\\d{2})\\s*[AB]?"
+  },
+  {
+    "name": "Edeka",
+    "trigger": ["Edeka", "EDEKA"],
+    "stopWords": ["SUMME", "UNBAR"],
+    "ignorePatterns": ["Genuss +", "Pfand", "Rabatt"],
+    "priceRegex": "(-?\\d+[,.]\\d{2})\\s*[AB]?"
+  },
+  {
+    "name": "Aldi",
+    "trigger": ["Aldi", "ALDI SÜD", "ALDI NORD"],
+    "stopWords": ["SUMME", "UNBAR"],
+    "ignorePatterns": ["Rabatt", "Pfand"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Penny",
+    "trigger": ["Penny", "PENNY Markt"],
+    "stopWords": ["SUMME", "UNBAR"],
+    "ignorePatterns": ["Rabatt", "Pfand", "Treuepunkt"],
+    "priceRegex": "(-?\\d+[,.]\\d{2})\\s*[AB]?"
+  },
+  {
+    "name": "Netto",
+    "trigger": ["Netto", "Netto Marken-Discount"],
+    "stopWords": ["SUMME", "UNBAR"],
+    "ignorePatterns": ["Rabatt", "Pfand", "DeutschlandCard"],
+    "priceRegex": "(-?\\d+[,.]\\d{2})\\s*[AB]?"
+  },
+  {
+    "name": "Metro",
+    "trigger": ["Metro", "METRO Deutschland"],
+    "stopWords": ["BRUTTO-SUMME", "GESAMTSUMME"],
+    "ignorePatterns": ["Rabatt", "Leergut", "Pfand"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Selgros",
+    "trigger": ["Selgros", "SELGROS Cash"],
+    "stopWords": ["RECHNUNGSBETRAG"],
+    "ignorePatterns": ["Pfand", "Rabatt"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Globus",
+    "trigger": ["Globus", "GLOBUS Markthalle"],
+    "stopWords": ["SUMME", "ZAHLBETRAG"],
+    "ignorePatterns": ["Rabatt", "Pfand", "Gutschein"],
+    "priceRegex": "(-?\\d+[,.]\\d{2})\\s*[AB]?"
+  },
+  {
+    "name": "Tegut",
+    "trigger": ["Tegut", "tegut..."],
+    "stopWords": ["SUMME", "GEGEBEN"],
+    "ignorePatterns": ["Gute Karten", "Pfand"],
+    "priceRegex": "(\\d+[,.]\\d{2})\\s*[AB]"
+  },
+  {
+    "name": "Denns",
+    "trigger": ["Denns", "BioMarkt", "Dennree"],
+    "stopWords": ["SUMME", "ZAHLBETRAG"],
+    "ignorePatterns": ["Pfand", "Gutschein"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Alnatura",
+    "trigger": ["Alnatura"],
+    "stopWords": ["SUMME", "UNBAR"],
+    "ignorePatterns": ["Rabatt", "Pfand"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "dm",
+    "trigger": ["dm-drogerie", "dm markt"],
+    "stopWords": ["SUMME", "GEGEBEN"],
+    "ignorePatterns": ["Payback", "Gutschein"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Rossmann",
+    "trigger": ["Rossmann"],
+    "stopWords": ["SUMME", "UNBAR"],
+    "ignorePatterns": ["App-Rabatt", "Coupon"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Müller",
+    "trigger": ["Müller", "MUELLER"],
+    "stopWords": ["SUMME", "GEGEBEN"],
+    "ignorePatterns": ["Rabatt", "Gutschein"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "IKEA",
+    "trigger": ["IKEA"],
+    "stopWords": ["GESAMT", "TOTAL"],
+    "ignorePatterns": ["IKEA Family", "Rabatt"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Decathlon",
+    "trigger": ["Decathlon"],
+    "stopWords": ["GESAMT", "TOTAL"],
+    "ignorePatterns": ["Rabatt"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "MediaMarkt",
+    "trigger": ["MediaMarkt"],
+    "stopWords": ["GESAMT", "TOTAL"],
+    "ignorePatterns": ["Rabatt", "Gutschein"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Saturn",
+    "trigger": ["Saturn"],
+    "stopWords": ["GESAMT", "TOTAL"],
+    "ignorePatterns": ["Rabatt", "Gutschein"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Bauhaus",
+    "trigger": ["Bauhaus"],
+    "stopWords": ["SUMME", "BAR"],
+    "ignorePatterns": ["Rabatt"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Obi",
+    "trigger": ["Obi"],
+    "stopWords": ["SUMME", "ZAHLBETRAG"],
+    "ignorePatterns": ["Rabatt"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Hornbach",
+    "trigger": ["Hornbach"],
+    "stopWords": ["SUMME", "ZAHLBETRAG"],
+    "ignorePatterns": ["Rabatt"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Fressnapf",
+    "trigger": ["Fressnapf"],
+    "stopWords": ["SUMME", "GEGEBEN"],
+    "ignorePatterns": ["Rabatt", "Coupon"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  },
+  {
+    "name": "Action",
+    "trigger": ["Action"],
+    "stopWords": ["TOTAAL", "TOTAL", "SUMME"],
+    "ignorePatterns": ["Rabatt"],
+    "priceRegex": "(\\d+[,.]\\d{2})"
+  }
+]

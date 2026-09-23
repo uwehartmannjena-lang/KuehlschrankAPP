@@ -1,0 +1,23 @@
+{
+  "id" : "d296dd78-617a-4259-b1bd-1a0ef25fc64d",
+  "title" : "[Agent] verbesser mir das einlesen des kassenzettels von all...",
+  "createdAt" : 1789555014987,
+  "updatedAt" : 1789919142097,
+  "messages" : [ {
+    "role" : "USER",
+    "content" : "[Agent] verbesser mir das einlesen des kassenzettels von allen Märkten behalte alle funktionen bei und antworte immer auf deutsch",
+    "timestamp" : 1789555140944
+  }, {
+    "role" : "ASSISTANT",
+    "content" : "Discovering relevant files...\nGenerating plan...",
+    "timestamp" : 1789555273389
+  }, {
+    "role" : "USER",
+    "content" : "[Agent] überprüfe die codes auf Fehler",
+    "timestamp" : 1789918839282
+  }, {
+    "role" : "ASSISTANT",
+    "content" : "Discovering relevant files...\nGenerating plan...\nPlanning timed out.",
+    "timestamp" : 1789919142097
+  } ]
+}

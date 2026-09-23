@@ -1,0 +1,54 @@
+{
+    "tasks": [
+        {
+            "id": 1,
+            "vorschlag": "Verbesserung 1",
+            "beschreibung": "Kleine sichere Verbesserung umsetzen.",
+            "status": "erledigt",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien"
+            ]
+        },
+        {
+            "id": 2,
+            "vorschlag": "Verbesserung 2",
+            "beschreibung": "Kleine sichere Verbesserung umsetzen.",
+            "status": "blockiert",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien"
+            ],
+            "blockiert_grund": "Zu viele Timeouts/leere Antworten.",
+            "blockiert_am": "2026-06-22 14:01:50"
+        },
+        {
+            "id": 3,
+            "vorschlag": "Verbesserung 3",
+            "beschreibung": "Kleine sichere Verbesserung umsetzen.",
+            "status": "offen",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien"
+            ]
+        },
+        {
+            "id": 4,
+            "vorschlag": "Verbesserung 4",
+            "beschreibung": "Kleine sichere Verbesserung umsetzen.",
+            "status": "offen",
+            "risiko": "niedrig",
+            "score": 10,
+            "akzeptanzkriterien": [
+                "assembleDebug läuft erfolgreich",
+                "Keine neuen Dateien"
+            ]
+        }
+    ]
+}

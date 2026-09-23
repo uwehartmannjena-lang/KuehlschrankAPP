@@ -1,0 +1,172 @@
+{
+    "tasks": [
+        {
+            "id": 1,
+            "beschreibung": "Ändere das `Text` Komposable, das `$newItemQuantity` anzeigt, zu einem `OutlinedTextField` innerhalb der `Row` für die Menge.",
+            "status": "blockiert",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 2,
+            "beschreibung": "Konfiguriere das `OutlinedTextField` mit `keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done)` und `textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)` für eine zentrale Ausrichtung.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 3,
+            "beschreibung": "Implementiere `onValueChange` für das `OutlinedTextField`: Der neue Wert sollte zuerst in eine lokale `mutableState` Variable für die Textanzeige gespeichert werden. Anschließend sollte versucht werden, diesen Wert in ein `Int` zu parsen. Bei einer gültigen Zahl wird `newItemQuantity` aktualisiert; bei leerem oder ungültigem Wert kann `newItemQuantity` auf einen Standardwert (z.B. 1) gesetzt werden.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 4,
+            "beschreibung": "Füge dem `TextField` in der `CenterAlignedTopAppBar` (wenn `isSearchExpanded` `true` ist) ein `trailingIcon` hinzu.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 5,
+            "beschreibung": "Das `trailingIcon` (mit `Icons.Default.Clear`) sollte nur sichtbar sein, wenn `fridgeViewModel.searchInput.isNotBlank()` ist.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 6,
+            "beschreibung": "Der `onClick`-Handler des `trailingIcon` sollte `fridgeViewModel.updateSearchInput(\"\")` aufrufen, um das Suchfeld zu leeren.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 7,
+            "beschreibung": "Füge eine `mutableStateOf(false)`-Variable namens `isImporting` zum `RefrigeratorApp`-Composable hinzu (z.B. `var isImporting by remember { mutableStateOf(false) }`).",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 8,
+            "beschreibung": "Setze `isImporting = true`, sobald ein Import über `receiptPickerLauncher` oder `pdfPickerLauncher` gestartet wird (innerhalb des `onClick` der jeweiligen `DropdownMenuItem` *bevor* der `launcher.launch()`-Aufruf erfolgt).",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 9,
+            "beschreibung": "Setze `isImporting = false` im jeweiligen `rememberLauncherForActivityResult`-Callback, nachdem der Import abgeschlossen ist (oder fehlgeschlagen ist und die Snackbar angezeigt wurde).",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 10,
+            "beschreibung": "Platziere einen `LinearProgressIndicator` (z.B. innerhalb des `Column`s nach dem `padding(innerPadding)` und vor den Reitern) und zeige ihn nur an, wenn `isImporting` `true` ist, z.B. `if (isImporting) { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }`.",
+            "status": "erledigt",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 11,
+            "beschreibung": "**build.gradle.kts** (Module-Ebene): Füge die Room-Abhängigkeiten hinzu: `implementation(\"androidx.room:room-runtime\")`, `annotationProcessor(\"androidx.room:room-compiler\")` oder `ksp(\"androidx.room:room-compiler\")` (falls KSP verwendet wird), `implementation(\"androidx.room:room-ktx\")`.",
+            "status": "erledigt",
+            "risiko": "mittel"
+        },
+        {
+            "id": 12,
+            "beschreibung": "**Neue Dateien (außerhalb MainActivity.kt):** Erstelle die folgenden Dateien im `com.example.myapplication.data` (oder ähnlichem) Paket:\n    *   `FridgeItem.kt`: Ergänze die `FridgeItem` Datenklasse mit `@Entity`, `@PrimaryKey`, `@ColumnInfo` für die Room-Persistenz. Erstelle einen `@TypeConverter` für `Date` (Long) oder `UUID`.\n    *   `WastedItem.kt`: Ergänze die `WastedItem` Datenklasse mit `@Entity`, `@PrimaryKey`.\n    *   `FridgeItemDao.kt`: Definiere ein `@Dao`-Interface mit `@Insert`, `@Update`, `@Delete`-Methoden und einer `@Query(\"SELECT * FROM fridge_item_table ORDER BY name ASC\") fun getAllFridgeItems(): Flow<List<FridgeItem>>` Methode. Füge ähnliche Methoden für `WastedItem` hinzu.\n    *   `AppDatabase.kt`: Definiere eine `@Database`-Klasse, die die Entities und DAOs enthält, sowie eine Singleton-Instanz-Erzeugung.",
+            "status": "erledigt",
+            "risiko": "mittel"
+        },
+        {
+            "id": 13,
+            "beschreibung": "**MainActivity.kt**: Füge eine `lateinit var database: AppDatabase` und `lateinit var fridgeItemDao: FridgeItemDao` hinzu. Initialisiere diese im `onCreate` der `MainActivity`: `database = Room.databaseBuilder(applicationContext, AppDatabase::class.java, \"fridge_database\").build()` und `fridgeItemDao = database.fridgeItemDao()`. Passe die `FridgeViewModel` Instanziierung an, um `fridgeItemDao` über einen `ViewModelProvider.Factory` zu injizieren.",
+            "status": "blockiert",
+            "risiko": "mittel"
+        },
+        {
+            "id": 14,
+            "beschreibung": "**FridgeViewModel**: Aktualisiere den Konstruktor, um `private val fridgeItemDao: FridgeItemDao` zu empfangen. Ersetze die `_allFridgeItems` und `_wastedItems` `MutableStateFlow`s durch `StateFlow`s, die direkt von den DAO-Abfragen stammen: `allFridgeItems = fridgeItemDao.getAllFridgeItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())`. Implementiere alle CRUD-Operationen (`addItem`, `updateItem`, `removeItem`, `wasteItem`) unter Verwendung des `fridgeItemDao` innerhalb von `viewModelScope.launch { ... }`.",
+            "status": "offen",
+            "risiko": "mittel"
+        },
+        {
+            "id": 15,
+            "beschreibung": "**MainActivity.kt** (innerhalb des `FridgeItemCard` Composables):",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 16,
+            "beschreibung": "**1. Ablaufdatum-Logik**: Füge eine `val daysUntilExpiry = item.expiryDate?.let { TimeUnit.MILLISECONDS.toDays(it - System.currentTimeMillis()).toInt() }` Berechnung hinzu.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 17,
+            "beschreibung": "**2. Farbcodes**: Definiere eine `val expiryColor = remember(daysUntilExpiry) { ... }` Logik: Wenn `daysUntilExpiry != null`:\n    *   `< 0`: `Color.Red`\n    *   `0..3`: `Color.Orange`\n    *   `> 3`: `MaterialTheme.colorScheme.tertiary` (oder eine andere 'frische' Farbe)\n    *   `null`: `Color.Gray`",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 18,
+            "beschreibung": "**3. Visueller Indikator**: Wende diese `expiryColor` als `containerColor` des `Card`s oder als `BorderStroke` an. Alternativ kann ein kleiner Kreis oder eine Zeile am Rand der Karte in dieser Farbe hinzugefügt werden.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 19,
+            "beschreibung": "**4. Ablaufdatum-Text**: Zeige den Text 'Läuft ab: ${SimpleDateFormat(\"dd.MM.yyyy\", Locale.getDefault()).format(Date(item.expiryDate!!))}' oder 'Läuft in $daysUntilExpiry Tagen ab' prominent in der Karte an. Wenn `daysUntilExpiry!! < 0`, zeige 'ABGELAUFEN!' an.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 20,
+            "beschreibung": "**5. Bild Ladezustände**: Aktualisiere den `AsyncImage` Aufruf, um `placeholder = painterResource(R.drawable.placeholder_image)` und `error = painterResource(R.drawable.error_image)` Parameter zu verwenden. Erstelle entsprechende Platzhalter-Ressourcen im `res/drawable` Ordner.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 21,
+            "beschreibung": "**6. UI-Anpassungen**: Optimiere das Layout innerhalb der `FridgeItemCard` (z.B. durch `Row`s, `Column`s und `Spacer`s), um die neuen Informationen ansprechend darzustellen und die Lesbarkeit zu verbessern.",
+            "status": "offen",
+            "risiko": "niedrig"
+        },
+        {
+            "id": 22,
+            "beschreibung": "**MainActivity.kt** (innerhalb des `FridgeItemDialog` Composables):",
+            "status": "offen",
+            "risiko": "mittel"
+        },
+        {
+            "id": 23,
+            "beschreibung": "**1. Initialisierung für Bearbeiten**: Wenn `itemToEdit` im Dialog übergeben wird, initialisiere alle `rememberSaveable` Zustände des Dialogs (Name, Menge, Einheit, etc.) mit den Werten von `itemToEdit`.",
+            "status": "offen",
+            "risiko": "mittel"
+        },
+        {
+            "id": 24,
+            "beschreibung": "**2. Zusätzliche Eingabefelder**: Füge `OutlinedTextField`s und `Switch`/`Checkbox` für alle `FridgeItem`-Eigenschaften hinzu, die derzeit fehlen: `category`, `minStock`, `storageLocation`, `price`, `isOrganic`, `notes`.",
+            "status": "offen",
+            "risiko": "mittel"
+        },
+        {
+            "id": 25,
+            "beschreibung": "**3. Kategorie- und Lagerort-Auswahl**: Implementiere `ExposedDropdownMenuBox` für `category` und `storageLocation`, um dem Benutzer eine vordefinierte Liste von Optionen zur Auswahl zu stellen (z.B. 'Milchprodukte', 'Obst', 'Kühlschrank', 'Gefrierfach').",
+            "status": "offen",
+            "risiko": "mittel"
+        },
+        {
+            "id": 26,
+            "beschreibung": "**4. Bild-Erfassung**: Implementiere folgende Launcher und UI-Elemente:\n    *   `imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> /* Speichern der URI in item.imageUrl */ }`\n    *   `cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap -> /* Speichern des Bitmaps (oder Umwandlung in URI/Base64) in item.imageUrl */ }`\n    *   Füge Buttons 'Bild aus Galerie' und 'Bild aufnehmen' hinzu. Zeige das aktuelle `imageUrl` in einem `AsyncImage` an. Implementiere die Anforderung der `CAMERA` Berechtigung mit `rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission())`.",
+            "status": "offen",
+            "risiko": "mittel"
+        },
+        {
+            "id": 27,
+            "beschreibung": "**5. Barcode-Erfassung**: Füge einen Button 'Barcode scannen' hinzu. Für diese Iteration kann dieser Button eine Toast-Nachricht anzeigen ('Barcode-Scanner noch nicht integriert') und einen Dummy-Wert (`item.barcode = \"1234567890\"`) setzen. Eine vollständige Implementierung würde eine externe Bibliothek wie ML Kit erfordern, was außerhalb des Rahmens einer einzelnen `MainActivity.kt` liegt, aber das UI kann vorbereitet werden.",
+            "status": "offen",
+            "risiko": "mittel"
+        },
+        {
+            "id": 28,
+            "beschreibung": "**6. Dialog-Bestätigung**: Passe die Logik des 'Speichern'-Buttons an, um entweder `fridgeViewModel.addItem()` (wenn `itemToEdit == null`) oder `fridgeViewModel.updateItem()` (wenn `itemToEdit != null`) mit den aktualisierten Werten aufzurufen. Füge entsprechende Validierungen hinzu.",
+            "status": "offen",
+            "risiko": "mittel"
+        }
+    ]
+}

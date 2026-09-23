@@ -1,0 +1,538 @@
+{
+    "fehlerregeln": [
+        {
+            "zeit": "2026-06-21 15:18:42",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "ation/MainActivity.kt:417:88 Unresolved reference 'time'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:419:27 Cannot infer type for this parameter. Specify it explicitly.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:419:27 Not enough information to infer type argument for 'T'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:419:31 Cannot infer type for this parameter. Specify it explicitly.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:596:34 Argument type mismatch: actual type is 'R? (of fun <T, R> T.let)', but 'Long' was expected.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:596:52 Cannot infer type for this parameter. Specify it explicitly.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:596:56 Cannot infer type for this parameter. Specify it explicitly.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:631:50 Argument type mismatch: actual type is 'Long', but 'Date?' was expected."
+        },
+        {
+            "zeit": "2026-06-21 15:18:42",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "Task blockiert: Unbekannter Fehler oder wiederholte Probleme."
+        },
+        {
+            "zeit": "2026-06-21 15:19:56",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:268:45 Property delegate must have a 'getValue(Nothing?, KProperty0<*>)' method. None of the following functions is applicable:\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:268:88 Cannot infer type for this parameter. Specify it explicitly.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:268:88 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:"
+        },
+        {
+            "zeit": "2026-06-21 15:21:07",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:276:76 None of the following candidates is applicable:\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:282:80 None of the following candidates is applicable:"
+        },
+        {
+            "zeit": "2026-06-21 15:36:38",
+            "aufgabe": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:104:61 Unresolved reference 'item_name_cannot_be_empty'."
+        },
+        {
+            "zeit": "2026-06-21 15:40:19",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:137:7 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:"
+        },
+        {
+            "zeit": "2026-06-21 15:42:32",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:671:54 No value passed for parameter 'quantity'."
+        },
+        {
+            "zeit": "2026-06-21 15:44:16",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:480:18 Unresolved reference 'DatePicker'."
+        },
+        {
+            "zeit": "2026-06-21 15:44:16",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "Task blockiert: Unbekannter Fehler oder wiederholte Probleme."
+        },
+        {
+            "zeit": "2026-06-21 15:46:08",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:104:40 Property delegate must have a 'getValue(Nothing?, KProperty0<*>)' method. None of the following functions is applicable:\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:104:83 Cannot infer type for this parameter. Specify it explicitly.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:104:83 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:"
+        },
+        {
+            "zeit": "2026-06-22 14:01:50",
+            "aufgabe": "Kleine sichere Verbesserung umsetzen.",
+            "fehler": "Task blockiert: Zu viele Timeouts/leere Antworten."
+        },
+        {
+            "zeit": "2026-06-22 14:06:49",
+            "aufgabe": "Kleine sichere Verbesserung umsetzen.",
+            "fehler": "Zeitüberschreitung nach 180 Sekunden: C:\\KuehlschrankApp\\gradlew.bat assembleDebug --no-daemon --console=plain"
+        },
+        {
+            "zeit": "2026-06-22 14:08:17",
+            "aufgabe": "Kleine sichere Verbesserung umsetzen.",
+            "fehler": "n/MainActivity.kt:714:48 Unresolved reference 'inspiration_help_title'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:717:46 Unresolved reference 'how_to_add_purchases_question'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:718:46 Unresolved reference 'how_to_add_purchases_explanation'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:722:46 Unresolved reference 'recipe_search_title'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:724:76 Unresolved reference 'cd_restaurant_icon'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:726:50 Unresolved reference 'search_chefkoch'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:729:71 Unresolved reference 'cd_store_icon'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:731:50 Unresolved reference 'view_kaufda_flyers'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:735:86 Unresolved reference 'ok_button'."
+        },
+        {
+            "zeit": "2026-06-22 14:09:25",
+            "aufgabe": "Kleine sichere Verbesserung umsetzen.",
+            "fehler": "Task blockiert: Unbekannter Fehler oder wiederholte Probleme."
+        },
+        {
+            "zeit": "2026-06-22 14:17:31",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:748:34 Argument type mismatch: actual type is 'Long?', but 'Long' was expected."
+        },
+        {
+            "zeit": "2026-06-22 14:19:30",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:695:34 Argument type mismatch: actual type is 'Long?', but 'Long' was expected."
+        },
+        {
+            "zeit": "2026-06-22 14:22:36",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:761:54 No value passed for parameter 'quantity'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:798:35 @Composable invocations can only happen from the context of a @Composable function\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:930:17 Smart cast to 'Long' is impossible, because 'expiryDate' is a mutable property that could be mutated concurrently.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:930:43 Smart cast to 'Long' is impossible, because 'expiryDate' is a mutable property that could be mutated concurrently."
+        },
+        {
+            "zeit": "2026-06-22 14:22:36",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen.",
+            "fehler": "Task blockiert: Unbekannter Fehler oder wiederholte Probleme."
+        },
+        {
+            "zeit": "2026-06-22 14:23:51",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:148:33 Property delegate must have a 'getValue(Nothing?, KProperty0<*>)' method. None of the following functions is applicable:\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:148:76 Cannot infer type for this parameter. Specify it explicitly.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:148:76 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:"
+        },
+        {
+            "zeit": "2026-06-22 14:26:16",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen.",
+            "fehler": "e: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:101:60 Unresolved reference 'it'.\ne: file:///C:/KuehlschrankApp/app/src/main/java/com/example/myapplication/MainActivity.kt:112:58 Unresolved reference 'it'."
+        }
+    ],
+    "erfolgreiche_tasks": [
+        {
+            "zeit": "2026-06-21 14:22:41",
+            "aufgabe": "Füge eine Option im `ItemDialog` hinzu (z.B. ein 'Neue Kategorie hinzufügen'-Button), über die der Benutzer neue Kategorien zur Liste hinzufügen kann."
+        },
+        {
+            "zeit": "2026-06-21 14:27:10",
+            "aufgabe": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 14:29:27",
+            "aufgabe": "Ablaufdatum-Ampel in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 14:33:10",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 14:35:15",
+            "aufgabe": "Mengensteuerung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 14:58:13",
+            "aufgabe": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:07:23",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:10:50",
+            "aufgabe": "Mengensteuerung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:12:56",
+            "aufgabe": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:23:16",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:34:33",
+            "aufgabe": "Mengensteuerung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:37:59",
+            "aufgabe": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:47:51",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:49:48",
+            "aufgabe": "Mengensteuerung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-21 15:51:31",
+            "aufgabe": "Kleine sichere Verbesserung umsetzen."
+        },
+        {
+            "zeit": "2026-06-22 14:12:55",
+            "aufgabe": "Kleine sichere Verbesserung umsetzen."
+        },
+        {
+            "zeit": "2026-06-22 14:15:46",
+            "aufgabe": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-22 14:27:50",
+            "aufgabe": "Filter nach Lagerort in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-22 14:30:15",
+            "aufgabe": "Mengensteuerung in MainActivity.kt sauber umsetzen."
+        },
+        {
+            "zeit": "2026-06-22 14:32:50",
+            "aufgabe": "Schnelles Hinzufügen mit Validierung in MainActivity.kt sauber umsetzen."
+        }
+    ],
+    "angenommene_features": [
+        {
+            "zeit": "2026-06-21 14:23:08",
+            "titel": "Schnelles Hinzufügen mit Validierung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 14:23:08",
+            "titel": "Ablaufdatum-Ampel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 14:23:08",
+            "titel": "Filter nach Lagerort",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 14:23:08",
+            "titel": "Mengensteuerung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 14:56:01",
+            "titel": "Schnelles Hinzufügen mit Validierung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 14:56:01",
+            "titel": "Ablaufdatum-Ampel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 14:56:01",
+            "titel": "Filter nach Lagerort",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 14:56:01",
+            "titel": "Mengensteuerung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Schnelles Hinzufügen mit Validierung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Ablaufdatum-Ampel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Filter nach Lagerort",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Mengensteuerung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Schnelles Hinzufügen mit Validierung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Ablaufdatum-Ampel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Filter nach Lagerort",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Mengensteuerung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 1",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 2",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 3",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 4",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Schnelles Hinzufügen mit Validierung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Ablaufdatum-Ampel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Filter nach Lagerort",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Mengensteuerung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Schnelles Hinzufügen mit Validierung",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Ablaufdatum-Ampel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Filter nach Lagerort",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Mengensteuerung",
+            "score": 10,
+            "risiko": "niedrig"
+        }
+    ],
+    "abgelehnte_features": [
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Einkaufsliste aus Mindestbestand",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Leerer-Zustand und klare Hinweise",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Suchfeld für Lebensmittel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Sortierung nach Ablaufdatum",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Undo nach Löschen",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:11:20",
+            "titel": "Barrierefreie Material-3-Oberfläche",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Einkaufsliste aus Mindestbestand",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Leerer-Zustand und klare Hinweise",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Suchfeld für Lebensmittel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Sortierung nach Ablaufdatum",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Undo nach Löschen",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:34:57",
+            "titel": "Barrierefreie Material-3-Oberfläche",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 5",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 6",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 7",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 8",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 9",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-21 15:50:09",
+            "titel": "Verbesserung 10",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Einkaufsliste aus Mindestbestand",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Leerer-Zustand und klare Hinweise",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Suchfeld für Lebensmittel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Sortierung nach Ablaufdatum",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Undo nach Löschen",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:14:03",
+            "titel": "Barrierefreie Material-3-Oberfläche",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Einkaufsliste aus Mindestbestand",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Leerer-Zustand und klare Hinweise",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Suchfeld für Lebensmittel",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Sortierung nach Ablaufdatum",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Undo nach Löschen",
+            "score": 10,
+            "risiko": "niedrig"
+        },
+        {
+            "zeit": "2026-06-22 14:30:51",
+            "titel": "Barrierefreie Material-3-Oberfläche",
+            "score": 10,
+            "risiko": "niedrig"
+        }
+    ]
+}

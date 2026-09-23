@@ -1,0 +1,4 @@
+/build
+*.hprof
+.tmp.driveupload/
+.kotlin/errors/
