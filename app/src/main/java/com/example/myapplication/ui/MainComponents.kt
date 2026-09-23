@@ -427,7 +427,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                         }
                     }
                     1 -> ShoppingList(fridgeViewModel, fridgeViewModel.allShoppingItems.collectAsState(initial = emptyList()).value)
-                    2 -> MealPlanView(fridgeViewModel, mealPlans, allItems)
+                    2 -> PlanScreen(fridgeViewModel, mealPlans, allItems)
                     3 -> StatisticsView(fridgeViewModel, allItems, wastedItems, consumedItems)
                 }
             }
@@ -854,9 +854,17 @@ fun TopBarWithSearch(
 
     TopAppBar(
         title = { 
-            Column {
-                Text("FrischeRadar 🚀", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                Text("Kühlschrank & MHD Tracker", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Sensors,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Column {
+                    Text("FrischeRadar", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                    Text("Kühlschrank & MHD Tracker", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         },
         actions = {
@@ -1426,7 +1434,7 @@ fun FabActionBottomSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Option wählen 🍏", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Option wählen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             ListItem(headlineContent = { Text("Kassenbon scannen", fontWeight = FontWeight.Bold) }, supportingContent = { Text("Mit KI & Foto-Erkennung") }, leadingContent = { Icon(Icons.Default.ReceiptLong, null, tint = MaterialTheme.colorScheme.primary) }, modifier = Modifier.clickable { onScanReceipt() })
             ListItem(headlineContent = { Text("Barcode scannen") }, supportingContent = { Text("Einzelartikel per EAN Barcode") }, leadingContent = { Icon(Icons.Default.QrCodeScanner, null) }, modifier = Modifier.clickable { onScanBarcode() })
             ListItem(headlineContent = { Text("Multi-Scan (Barcodes)") }, supportingContent = { Text("Mehrere Artikel hintereinander") }, leadingContent = { Icon(Icons.Default.CenterFocusWeak, null) }, modifier = Modifier.clickable { onMultiScanBarcode() })
