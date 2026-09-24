@@ -2336,18 +2336,37 @@ fun SettingsDialog(
                     }
                 }
 
-                // Section: App-Icon Wahl (20 Launcher-Icons)
+                // Section: App-Icon Wahl (20 verschiedene Themes & Icons)
                 item {
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
                     Text("App-Icon (20 Varianten)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(6.dp))
+
+                    val iconTints = listOf(
+                        Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFFE53935), Color(0xFF9C27B0),
+                        Color(0xFFFF9800), Color(0xFF009688), Color(0xFFFFB300), Color(0xFFE91E63),
+                        Color(0xFF3F51B5), Color(0xFF00BCD4), Color(0xFF8BC34A), Color(0xFFCDDC39),
+                        Color(0xFFFF5722), Color(0xFF795548), Color(0xFF607D8B), Color(0xFF00E676),
+                        Color(0xFFFF1744), Color(0xFF651FFF), Color(0xFF00E5FF), Color(0xFFFFC400)
+                    )
+
+                    val iconNames = listOf(
+                        "Classic", "Ocean Blue", "Ruby Red", "Neon Purple",
+                        "Sunset Gold", "Emerald", "Amber", "Pink Blossom",
+                        "Deep Indigo", "Cyan Ice", "Lime Fresh", "Citrus",
+                        "Fiery Orange", "Wood Warm", "Slate Minimal", "Mint Bio",
+                        "Crimson", "Royal Violet", "Electric Cyan", "Gold Premium"
+                    )
+
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
                         items((1..20).toList()) { index ->
                             val isSelected = (tempAppIconIndex == index)
+                            val tintColor = iconTints.getOrElse(index - 1) { MaterialTheme.colorScheme.primary }
+                            val iconName = iconNames.getOrElse(index - 1) { "Variant $index" }
                             val resId = remember(index) {
                                 context.resources.getIdentifier(
                                     "ic_launcher_variant_%02d".format(Locale.US, index),
@@ -2361,30 +2380,47 @@ fun SettingsDialog(
                                 modifier = Modifier
                                     .border(
                                         width = if (isSelected) 2.5.dp else 0.dp,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        color = tintColor,
                                         shape = RoundedCornerShape(12.dp)
                                     )
                                     .clickable {
                                         tempAppIconIndex = index
                                     }
                             ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.padding(8.dp)
                                 ) {
-                                    if (resId != 0) {
-                                        Image(
-                                            painter = painterResource(id = resId),
-                                            contentDescription = "Launcher Icon $index",
-                                            modifier = Modifier.size(44.dp)
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Default.Apps,
-                                            contentDescription = "Icon $index",
-                                            modifier = Modifier.size(44.dp)
-                                        )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(tintColor.copy(alpha = 0.2f))
+                                    ) {
+                                        if (resId != 0) {
+                                            Image(
+                                                painter = painterResource(id = resId),
+                                                contentDescription = iconName,
+                                                colorFilter = ColorFilter.tint(tintColor),
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.Kitchen,
+                                                contentDescription = iconName,
+                                                tint = tintColor,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
                                     }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = iconName,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }

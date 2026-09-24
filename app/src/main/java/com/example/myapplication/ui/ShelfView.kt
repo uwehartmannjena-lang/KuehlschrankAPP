@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -279,52 +280,35 @@ fun ShelfProductItem(
         item.name.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?"
     }
 
-    Surface(
-        onClick = onEdit,
-        shape = RoundedCornerShape(12.dp),
-        color = Color.White.copy(alpha = 0.94f),
-        shadowElevation = 8.dp,
-        modifier = Modifier
-            .width(110.dp)
-            .wrapContentHeight()
-            .graphicsLayer {
-                shadowElevation = 8.dp.toPx()
-                shape = RoundedCornerShape(12.dp)
-                clip = true
-            }
+    // Sanftes Einblenden und Leichtes "Setzen" des Artikels auf das Regal
+    var isVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        isVisible = true
+    }
+
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn(animationSpec = tween(500, easing = LinearOutSlowInEasing)) +
+                slideInVertically(initialOffsetY = { -20 }, animationSpec = tween(500, easing = FastOutSlowInEasing))
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(8.dp)
+            modifier = Modifier
+                .width(96.dp)
+                .clickable { onEdit() }
+                .padding(bottom = 2.dp)
         ) {
-            // Status-Punkt & Menge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(statusColor)
-                )
-                Text(
-                    text = "${item.quantity}x",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF37474F)
-                )
-            }
-
-            Spacer(Modifier.height(6.dp))
-
-            // Produktbild / Anfangsbuchstabe
+            // Produkt-Container (Keine weiße Box, direkt frei auf dem Regalboden stehend mit Echtem Schlagschatten)
             Box(
                 modifier = Modifier
-                    .size(60.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFFECEFF1)),
+                    .size(72.dp)
+                    .graphicsLayer {
+                        shadowElevation = 10.dp.toPx()
+                        shape = RoundedCornerShape(16.dp)
+                        clip = true
+                    }
+                    .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(16.dp))
+                    .border(1.dp, Color(0x33000000), RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 if (!item.imageUrl.isNullOrBlank()) {
@@ -336,7 +320,7 @@ fun ShelfProductItem(
                         error = {
                             Text(
                                 text = initial,
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -345,21 +329,48 @@ fun ShelfProductItem(
                 } else {
                     Text(
                         text = initial,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+
+                // Menge Badge
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xDD263238),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                ) {
+                    Text(
+                        text = "${item.quantity}",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
+
+                // Frische-Indikator
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(statusColor)
+                )
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
 
-            // Name
+            // Produkt-Name (ohne weiße Box)
             Text(
                 text = item.name,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF263238),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1A237E),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -368,13 +379,13 @@ fun ShelfProductItem(
             Text(
                 text = when {
                     daysLeft == null -> "Kein MHD"
-                    daysLeft < 0 -> "Abgelaufen!"
-                    daysLeft == 0 -> "Heute fällig"
-                    else -> "Noch $daysLeft T."
+                    daysLeft < 0 -> "Abgelaufen"
+                    daysLeft == 0 -> "Heute"
+                    else -> "$daysLeft T."
                 },
-                fontSize = 10.sp,
+                fontSize = 9.sp,
                 color = statusColor,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Bold
             )
         }
     }
