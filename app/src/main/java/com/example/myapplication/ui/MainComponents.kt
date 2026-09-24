@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
@@ -1082,15 +1083,8 @@ fun ProductThumbnail(
     storageLocation: String,
     modifier: Modifier = Modifier
 ) {
-    val icon = when {
-        storageLocation.contains("Gefrierfach", true) || itemName.contains("TK", true) -> Icons.Default.AcUnit
-        category.contains("Milch", true) -> Icons.Default.WaterDrop
-        category.contains("Fleisch", true) || category.contains("Fisch", true) -> Icons.Default.SetMeal
-        category.contains("Brot", true) -> Icons.Default.Home
-        category.contains("Obst", true) || category.contains("Gemüse", true) -> Icons.Default.Eco
-        category.contains("Getränke", true) -> Icons.Default.WineBar
-        category.contains("Drogerie", true) -> Icons.Default.Soap
-        else -> Icons.Default.ShoppingCart
+    val initial = remember(itemName) {
+        itemName.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?"
     }
 
     Surface(
@@ -1109,11 +1103,21 @@ fun ProductThumbnail(
                         CircularProgressIndicator(modifier = Modifier.padding(8.dp).size(16.dp), strokeWidth = 2.dp)
                     },
                     error = {
-                        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                        Text(
+                            text = initial,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 )
             } else {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                Text(
+                    text = initial,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
@@ -2183,6 +2187,7 @@ fun SettingsDialog(
     var tempThemeColor by remember { mutableStateOf(viewModel.themeColor.value) }
     var tempFavoriteIconName by remember { mutableStateOf(viewModel.favoriteIconName.value) }
     var tempFavoriteIconColor by remember { mutableStateOf(viewModel.favoriteIconColor.value) }
+    var tempAppIconIndex by remember { mutableIntStateOf(viewModel.currentIconIndex.intValue) }
     var tempDietProfile by remember { mutableStateOf(viewModel.selectedDietProfile.value) }
     var tempSwipeLeft by remember { mutableStateOf(viewModel.swipeLeftAction.value) }
     var tempSwipeRight by remember { mutableStateOf(viewModel.swipeRightAction.value) }
@@ -2235,6 +2240,7 @@ fun SettingsDialog(
                 viewModel.setThemeColor(tempThemeColor)
                 viewModel.setFavoriteIcon(tempFavoriteIconName)
                 viewModel.setFavoriteIconColor(tempFavoriteIconColor)
+                viewModel.setAppIcon(context, tempAppIconIndex)
                 viewModel.setDietProfile(tempDietProfile)
                 viewModel.setSwipeLeftAction(tempSwipeLeft)
                 viewModel.setSwipeRightAction(tempSwipeRight)
@@ -2326,6 +2332,61 @@ fun SettingsDialog(
                                     )
                                     .clickable { tempFavoriteIconColor = color }
                             )
+                        }
+                    }
+                }
+
+                // Section: App-Icon Wahl (20 Launcher-Icons)
+                item {
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
+                    Text("App-Icon (20 Varianten)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(6.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items((1..20).toList()) { index ->
+                            val isSelected = (tempAppIconIndex == index)
+                            val resId = remember(index) {
+                                context.resources.getIdentifier(
+                                    "ic_launcher_variant_%02d".format(Locale.US, index),
+                                    "mipmap",
+                                    context.packageName
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier
+                                    .border(
+                                        width = if (isSelected) 2.5.dp else 0.dp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable {
+                                        tempAppIconIndex = index
+                                    }
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(8.dp)
+                                ) {
+                                    if (resId != 0) {
+                                        Image(
+                                            painter = painterResource(id = resId),
+                                            contentDescription = "Launcher Icon $index",
+                                            modifier = Modifier.size(44.dp)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Apps,
+                                            contentDescription = "Icon $index",
+                                            modifier = Modifier.size(44.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

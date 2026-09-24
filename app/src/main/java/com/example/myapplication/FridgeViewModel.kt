@@ -2,8 +2,10 @@ package com.example.myapplication
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
@@ -398,6 +400,36 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     }
 
     fun setThemeColor(color: Color) { themeColor.value = color; saveSetting("theme_color", color.toArgb()) }
+
+    fun setAppIcon(context: Context, index: Int) {
+        if (!LauncherIconVariants.isValid(index)) return
+        currentIconIndex.intValue = index
+        saveSetting("app_icon_index", index)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val pm = context.packageManager
+            val packageName = context.packageName
+
+            for (i in 1..LauncherIconVariants.count) {
+                val aliasClassName = LauncherIconVariants.aliasClassName(packageName, i)
+                val componentName = ComponentName(packageName, aliasClassName)
+                val newState = if (i == index) {
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                } else {
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                }
+                try {
+                    pm.setComponentEnabledSetting(
+                        componentName,
+                        newState,
+                        PackageManager.DONT_KILL_APP
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
     fun setFavoriteIconColor(color: Color) { favoriteIconColor.value = color; saveSetting("favorite_icon_color", color.toArgb()) }
     fun setCompactMode(enabled: Boolean) { isCompactMode.value = enabled; saveSetting("is_compact", enabled) }
     fun setCardCornerRadius(radius: Int) { cardCornerRadius.intValue = radius; saveSetting("corner_radius", radius) }
@@ -1761,11 +1793,15 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
             }
 
-            // 1. Gesäuberter Name
-            val cleanedQuery = ReceiptImportSanitizer.cleanSearchTerm(item.name)
+            // 1. Fuzzy Korrektur & Gesäuberter Name
+            val correctedName = ReceiptImportSanitizer.correctNameWithFuzzyMatching(item.name)
+            val cleanedQuery = ReceiptImportSanitizer.cleanSearchTerm(correctedName)
             var searchResponse = api.searchProduktByName(cleanedQuery)
 
             // 2. Fallback: Suche mit Roh-Namen
+            if (searchResponse.products.isNullOrEmpty() && correctedName != item.name) {
+                searchResponse = api.searchProduktByName(correctedName)
+            }
             if (searchResponse.products.isNullOrEmpty() && cleanedQuery != item.name) {
                 searchResponse = api.searchProduktByName(item.name)
             }
