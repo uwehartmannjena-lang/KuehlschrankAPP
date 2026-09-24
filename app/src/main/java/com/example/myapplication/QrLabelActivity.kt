@@ -17,7 +17,7 @@ import com.example.myapplication.ui.QrUtils
 class QrLabelActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val content = intent.getStringExtra("QR_CONTENT") ?: "Kühlschrank Profi"
+        val content = intent.getStringExtra("QR_CONTENT") ?: "FrischeRadar"
         val itemName = intent.getStringExtra("ITEM_NAME") ?: "Artikel"
         
         setContent {

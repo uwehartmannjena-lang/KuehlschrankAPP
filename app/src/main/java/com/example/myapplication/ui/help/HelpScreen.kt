@@ -132,7 +132,7 @@ fun HelpScreenContent(
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Interaktive Tour starten 🚀",
+                            "Interaktive Tour starten",
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer

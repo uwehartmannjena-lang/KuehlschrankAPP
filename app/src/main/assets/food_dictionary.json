@@ -1,0 +1,274 @@
+[
+  {
+    "name": "Vollmilch",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Milch", "M1lch", "H-Milch", "Frischmilch", "Alpenmilch", "Weidemilch", "Fettarme Milch"],
+    "abbreviations": ["MILCH", "M1LCH", "H-MILCH", "VOLLMILCH", "FRISCHM.", "ALPENM.", "WEIDEM.", "H MILCH"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 10
+  },
+  {
+    "name": "Butter",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Bvtter", "Süßrahmbutter", "Sauerrahmbutter", "Markenbutter", "Deutsche Markenbutter", "Bio Butter"],
+    "abbreviations": ["BUTTER", "BVTTER", "S.BUTTER", "MARKENB.", "BIO BUTTER", "SUEßRAHMB.", "MARKENBUTTER"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 21
+  },
+  {
+    "name": "Magerquark",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Quark", "Speisequark", "Kräuterquark", "Magerstufe", "Quarkcreme"],
+    "abbreviations": ["QUARK", "MAGERQUARK", "SPEISEQUARK", "KR.QUARK", "MAGERSTUFE"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 14
+  },
+  {
+    "name": "Naturjoghurt",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Joghurt", "Jogurt", "Fruchtjoghurt", "Griechischer Joghurt", "Jogurt Mild"],
+    "abbreviations": ["JOGHURT", "JOGURT", "NATURJOGH.", "GRIECH.JOGH.", "JOGHURT MILD"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 14
+  },
+  {
+    "name": "Gouda Käse",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Gouda", "G0uda", "Käse", "Kaese", "Scheibenkäse", "Emmentaler", "Butterkäse"],
+    "abbreviations": ["GOUDA", "G0UDA", "KAESE", "SCH.KAESE", "EMMENTALER", "BUTTERK.", "GOUDA SCHEIBEN"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 21
+  },
+  {
+    "name": "Frischkäse",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Frischkaese", "Kräuterfrischkäse", "Bresso", "Philadelphia", "Mirebee"],
+    "abbreviations": ["FRISCHK.", "FRISCHKAESE", "KR.FRISCHK.", "PHILADELPHIA"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 14
+  },
+  {
+    "name": "Schmand",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Sauerrahm", "Saure Sahne", "Crème Fraîche", "Creme Fraiche"],
+    "abbreviations": ["SCHMAND", "SAUERRAHM", "SAURE SAHNE", "CREME FRAICHE"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 14
+  },
+  {
+    "name": "Schlagsahne",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Sahne", "Sahneprodukt", "Kochsahne", "Kaffeesahne"],
+    "abbreviations": ["SCHLAGSAHNE", "SAHNE", "KOCHSAHNE", "KAFFEES."],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 10
+  },
+  {
+    "name": "Eier",
+    "category": "Kühlung & Milch",
+    "synonyms": ["Hühnereier", "Freilandeier", "Bio Eier", "Bodenhaltung"],
+    "abbreviations": ["EIER", "FREILANDEIER", "BIO EIER", "BODENH.", "BODENHALTUNG"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 21
+  },
+  {
+    "name": "Rinderhackfleisch",
+    "category": "Fleisch & Fisch",
+    "synonyms": ["Hackfleisch", "Hack", "Gemischtes Hack", "Schweinehack", "Hackepeter"],
+    "abbreviations": ["HACKFLEISCH", "HACK", "R.HACK", "SCHWEINEH.", "GEM.HACK", "HACKEPETER"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 2
+  },
+  {
+    "name": "Hähnchenbrustfilet",
+    "category": "Fleisch & Fisch",
+    "synonyms": ["Hähnchen", "Haehnchen", "Hähnchenbrust", "Putenbrust", "Geflügel", "Hänchen"],
+    "abbreviations": ["HAEHNCHEN", "HAEHNCH.", "PUTENBRUST", "GEFLUEGEL", "HAENCHEN"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 3
+  },
+  {
+    "name": "Bratwurst",
+    "category": "Fleisch & Fisch",
+    "synonyms": ["Rostbratwurst", "Nürnberger", "Grillwurst", "Bockwurst"],
+    "abbreviations": ["BRATWURST", "ROSTBRATW.", "NUERNBERGER", "BOCKWURST"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 5
+  },
+  {
+    "name": "Salami",
+    "category": "Fleisch & Fisch",
+    "synonyms": ["Salame", "Schinkensalami", "Cervelatwurst", "Geflügelsalami"],
+    "abbreviations": ["SALAMI", "SCHINKENSALAMI", "CERVELATW.", "GEFL.SALAMI"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 28
+  },
+  {
+    "name": "Kochschinken",
+    "category": "Fleisch & Fisch",
+    "synonyms": ["Schinken", "Hinterschinken", "Prosciutto", "Kasseler"],
+    "abbreviations": ["SCHINKEN", "KOCHSCHINKEN", "HINTERSCH.", "KASSELER"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 7
+  },
+  {
+    "name": "Lachsfilet",
+    "category": "Fleisch & Fisch",
+    "synonyms": ["Lachs", "Lachsscheiben", "Räucherlachs", "Wildlachs"],
+    "abbreviations": ["LACHS", "LACHSFILET", "RAEUCHERLACHS", "WILDLACHS"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 3
+  },
+  {
+    "name": "Thunfisch",
+    "category": "Fleisch & Fisch",
+    "synonyms": ["Thunfischfilet", "Thunfisch Dosen", "Thunfisch im eigenen Saft"],
+    "abbreviations": ["THUNFISCH", "THUNF.", "THUNFISCH D."],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 365
+  },
+  {
+    "name": "Baguette",
+    "category": "Brot & Backwaren",
+    "synonyms": ["Steinofenbaguette", "Kräuterbutterbaguette", "Brötchen", "Broetchen"],
+    "abbreviations": ["BAGUETTE", "STEINOFENB.", "BROETCHEN", "BROETCH."],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 4
+  },
+  {
+    "name": "Vollkornbrot",
+    "category": "Brot & Backwaren",
+    "synonyms": ["Brot", "Mischbrot", "Toastbrot", "Toast", "Graubrot", "Paderborner"],
+    "abbreviations": ["BROT", "VOLLKORNB.", "TOAST", "TOASTBROT", "MISCHBROT"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 5
+  },
+  {
+    "name": "Äpfel",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Aepfel", "Apfel", "Braeburn", "Elstar", "Gala", "Jonagold"],
+    "abbreviations": ["AEPFEL", "APFEL", "BRAEBURN", "ELSTAR", "GALA"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 14
+  },
+  {
+    "name": "Bananen",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Banane", "Bio Bananen", "Chiquita"],
+    "abbreviations": ["BANANEN", "BANANE", "BIO BANANEN"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 7
+  },
+  {
+    "name": "Tomaten",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Tomate", "Rispentomaten", "Strauchtomaten", "Cocktailtomaten", "Roma Tomaten"],
+    "abbreviations": ["TOMATEN", "TOMATE", "RISPENTOM.", "COCKTAILTOM."],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 7
+  },
+  {
+    "name": "Salatgurke",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Gurke", "Gurken", "Mini-Gurken"],
+    "abbreviations": ["GURKE", "GURKEN", "SALATGURKE", "MINI-GURKE"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 7
+  },
+  {
+    "name": "Paprika Mix",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Paprika", "Spitzpaprika", "Paprika rot", "Paprika gelb"],
+    "abbreviations": ["PAPRIKA", "SPITZPAPRIKA", "PAPRIKA MIX"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 10
+  },
+  {
+    "name": "Möhren",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Karotten", "Moehren", "Möhre", "Karotte", "Bundmöhren"],
+    "abbreviations": ["MOEHREN", "KAROTTEN", "MOEHRE", "KAROTTE"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 14
+  },
+  {
+    "name": "Brokkoli",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Brocoli", "Brokkoli frisch"],
+    "abbreviations": ["BROKKOLI", "BROCOLI"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 7
+  },
+  {
+    "name": "Zucchini",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Zuchini", "Zucchini grün"],
+    "abbreviations": ["ZUCCHINI", "ZUCHINI"],
+    "defaultStorageLocation": "Kühlschrank",
+    "defaultExpiryDays": 7
+  },
+  {
+    "name": "Speisekartoffeln",
+    "category": "Obst & Gemüse",
+    "synonyms": ["Kartoffeln", "Kartoffel", "Drillinge", "Festkochend", "Vorwiegend Festkochend"],
+    "abbreviations": ["KARTOFFELN", "KARTOFFEL", "DRILLINGE"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 30
+  },
+  {
+    "name": "Spaghetti",
+    "category": "Vorrat & Konserven",
+    "synonyms": ["Nudeln", "Penne", "Fusilli", "Pasta", "Teigwaren", "Rigatoni"],
+    "abbreviations": ["SPAGHETTI", "NUDELN", "PENNE", "FUSILLI", "PASTA"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 365
+  },
+  {
+    "name": "Basmati Reis",
+    "category": "Vorrat & Konserven",
+    "synonyms": ["Reis", "Langkornreis", "Jasminreis", "Kochbeutelreis"],
+    "abbreviations": ["REIS", "BASMATI", "LANGKORNREIS"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 365
+  },
+  {
+    "name": "Gehackte Tomaten",
+    "category": "Vorrat & Konserven",
+    "synonyms": ["Passierte Tomaten", "Tomatenmark", "Pizzatomaten", "Konserve"],
+    "abbreviations": ["TOMATENMARK", "PASS.TOMATEN", "GEH.TOMATEN"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 365
+  },
+  {
+    "name": "Haferflocken",
+    "category": "Vorrat & Konserven",
+    "synonyms": ["Hafer", "Kölln Flocken", "Zartflocken", "Kernige Flocken"],
+    "abbreviations": ["HAFERFLOCKEN", "HAFERFL.", "ZARTFLOCKEN"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 365
+  },
+  {
+    "name": "Mineralwasser",
+    "category": "Getränke",
+    "synonyms": ["Wasser", "Sprudel", "Medium Wasser", "Stilles Wasser", "Volvic", "Gerolsteiner"],
+    "abbreviations": ["MINERALWASSER", "WASSER", "SPRUDEL", "MEDIUM"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 180
+  },
+  {
+    "name": "Apfelsaft",
+    "category": "Getränke",
+    "synonyms": ["Saft", "Orangensaft", "Multivitaminsaft", "Apfelschorle"],
+    "abbreviations": ["APFELSAFT", "ORANGENSAFT", "SAFT", "MULTIVIT.SAFT", "APFELSCHORLE"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 180
+  },
+  {
+    "name": "Pils Bier",
+    "category": "Getränke",
+    "synonyms": ["Bier", "Pils", "Weizenbier", "Radler", "Kasten Bier"],
+    "abbreviations": ["BIER", "PILS", "WEIZEN", "RADLER"],
+    "defaultStorageLocation": "Vorratskammer",
+    "defaultExpiryDays": 180
+  }
+]

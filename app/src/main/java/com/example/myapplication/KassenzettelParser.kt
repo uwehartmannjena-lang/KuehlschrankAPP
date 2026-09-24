@@ -258,29 +258,26 @@ object KassenzettelParser {
             if (multMatch != null) {
                 // Check if the first group contains a number for quantity
                 val qtyStr = multMatch.groupValues[1]
-                pendingQty = if (qtyStr.contains(Regex("""[a-zA-Z]"""))) {
-                    1 // It's a weight measurement like '1,014 kg', so item qty is 1
-                } else {
-                    qtyStr.toIntOrNull() ?: 1
-                }
-                
-                val unitPriceStr = multMatch.groupValues[2].replace(',', '.')
-                pendingUnitPrice = unitPriceStr.toDoubleOrNull()
+                val parsedQty = if (qtyStr.contains(Regex("""[a-zA-Z]"""))) 1 else qtyStr.toIntOrNull() ?: 1
+                val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
                 
                 val lineNoMult = line.substring(multMatch.range.last + 1).trim()
                 val priceMatch = PRICE_REGEX.find(lineNoMult)
+                val lineTotal = if (priceMatch != null) {
+                    Math.abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: (parsedQty * unitPrice))
+                } else {
+                    Math.round(parsedQty * unitPrice * 100.0) / 100.0
+                }
 
-                // Steht auf derselben Zeile bereits der Gesamtpreis?
-                if (priceMatch != null && pendingName != null) {
-                    val totalPriceStr = priceMatch.groupValues[1].replace(',', '.')
-                    val unitPrice = pendingUnitPrice ?: 0.0
-                    val parsedTotal = totalPriceStr.toDoubleOrNull() ?: (pendingQty * unitPrice)
-                    val totalPrice = Math.abs(parsedTotal)
-                    addProductSafely(pendingName, totalPrice, pendingQty, items, corrections, supermarket)
+                if (pendingName != null) {
+                    addProductSafely(pendingName, lineTotal, parsedQty, items, corrections, supermarket)
                     foundFirstItem = true
                     pendingName = null
                     pendingQty = 1
                     pendingUnitPrice = null
+                } else {
+                    pendingQty = parsedQty
+                    pendingUnitPrice = unitPrice
                 }
                 continue
             }
@@ -342,6 +339,8 @@ object KassenzettelParser {
 
     private fun parseStandardReceipt(rawLines: List<String>, corrections: Map<String, String>): List<Product> {
         val items = mutableListOf<Product>()
+        var pendingName: String? = null
+        var pendingQty = 1
         val textSnippet = rawLines.take(5).joinToString(" ")
         val supermarket = supermarketProfiles.find { p -> 
             p.trigger.any { textSnippet.contains(it, ignoreCase = true) } 
@@ -352,11 +351,11 @@ object KassenzettelParser {
             if (line.isBlank()) continue
             val upper = line.uppercase()
 
-            if (FOOTER_STOP_WORDS.any { upper.startsWith(it) || upper.contains("SUMME ") || upper.contains("ZU ZAHLEN") }) {
+            if (FOOTER_STOP_WORDS.any { upper.startsWith(it) || upper.contains("SUMME") || upper.contains("ZU ZAHLEN") || upper.contains("GESAMT") }) {
                 break
             }
 
-            if (isNoise(upper) && !ALDI_MULT_REGEX.matches(line)) {
+            if (isNoise(upper) && !ALDI_MULT_REGEX.matches(line) && !LIDL_MULT_REGEX.matches(line) && !MULTIPLIER_REGEX.containsMatchIn(line)) {
                 if (upper.contains("RABATT") || upper.contains("PREISVORTEIL")) {
                     applyDiscountToLastItem(line, items)
                 }
@@ -375,6 +374,8 @@ object KassenzettelParser {
                 val priceStr = aldiMatch.groupValues[4].replace(',', '.')
                 val price = priceStr.toDoubleOrNull() ?: 0.0
                 addProductSafely(rawName, price, qty, items, corrections, supermarket)
+                pendingName = null
+                pendingQty = 1
                 continue
             }
 
@@ -386,21 +387,74 @@ object KassenzettelParser {
                 val priceStr = lidlMatch.groupValues[4].replace(',', '.')
                 val price = priceStr.toDoubleOrNull() ?: 0.0
                 addProductSafely(rawName, price, qty, items, corrections, supermarket)
+                pendingName = null
+                pendingQty = 1
                 continue
             }
 
-            // Standard (dm / Nahkauf / Rewe)
+            // Standalone Multiplikator Line (e.g. "2 x 0,79 A" or "1 x 0.99")
+            val multMatch = MULTIPLIER_REGEX.find(line)
+            if (multMatch != null) {
+                val qtyStr = multMatch.groupValues[1]
+                val parsedQty = if (qtyStr.contains(Regex("""[a-zA-Z]"""))) 1 else qtyStr.toIntOrNull() ?: 1
+                val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
+                
+                val lineNoMult = line.substring(multMatch.range.last + 1).trim()
+                val priceMatch = PRICE_REGEX.find(lineNoMult)
+                val lineTotal = if (priceMatch != null) {
+                    Math.abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: (parsedQty * unitPrice))
+                } else {
+                    Math.round(parsedQty * unitPrice * 100.0) / 100.0
+                }
+
+                if (pendingName != null) {
+                    addProductSafely(pendingName, lineTotal, parsedQty, items, corrections, supermarket)
+                    pendingName = null
+                    pendingQty = 1
+                } else {
+                    pendingQty = parsedQty
+                }
+                continue
+            }
+
+            // Standard line on same line (e.g. "Name 1,29 B")
             val stdMatch = STANDARD_LINE_REGEX.matchEntire(line)
-            if (stdMatch != null) {
+            if (stdMatch != null && !MULTIPLIER_REGEX.containsMatchIn(line)) {
                 val rawName = stdMatch.groupValues[1].trim()
                 val priceStr = stdMatch.groupValues[2].replace(',', '.')
                 val price = priceStr.toDoubleOrNull() ?: 0.0
-                addProductSafely(rawName, price, 1, items, corrections, supermarket)
+                addProductSafely(rawName, price, pendingQty, items, corrections, supermarket)
+                pendingName = null
+                pendingQty = 1
+                continue
+            }
+
+            // Separate line price (e.g. line 1: "FRISCHMILCH", line 2: "1,09 A")
+            val priceMatch = PRICE_REGEX.find(line)
+            if (priceMatch != null) {
+                val priceVal = Math.abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0)
+                val lineWithoutPrice = line.replace(PRICE_REGEX, "").replace(TAX_SUFFIX_REGEX, "").trim()
+                
+                if (pendingName != null && lineWithoutPrice.isEmpty() && priceVal > 0.05) {
+                    addProductSafely(pendingName, priceVal, pendingQty, items, corrections, supermarket)
+                    pendingName = null
+                    pendingQty = 1
+                } else if (lineWithoutPrice.length >= 3 && !isNoise(lineWithoutPrice.uppercase())) {
+                    addProductSafely(lineWithoutPrice, priceVal, pendingQty, items, corrections, supermarket)
+                    pendingName = null
+                    pendingQty = 1
+                }
                 continue
             }
 
             if (line.startsWith("-") || upper.contains("RABATT")) {
                 applyDiscountToLastItem(line, items)
+                continue
+            }
+
+            // Must be product name on its own line
+            if (line.length >= 3 && !isNoise(upper)) {
+                pendingName = line
             }
         }
 
@@ -432,8 +486,15 @@ object KassenzettelParser {
         if (cleanName.matches(Regex("""\d+\s*Stk.*""", RegexOption.IGNORE_CASE))) return
         if (cleanName.length < 2) return
 
+        val leadingQtyMatch = Regex("""^(\d+)\s*(?:5tk|stk|st|x)\s+""", RegexOption.IGNORE_CASE).find(cleanName)
+        var initialQty = qty
+        if (leadingQtyMatch != null && initialQty == 1) {
+            initialQty = leadingQtyMatch.groupValues[1].toIntOrNull() ?: 1
+        }
+
         var clean = cleanName
             .replace(Regex("""^\d+\s*(?:5tk|stk|st|x)\s*""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\d+[,.]\d+%\b""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+\d+[,.]\d+%\b""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+\d+[,.]\d{2}\s*€?$"""), "") // Trailing prices like " 1.99" or " 1,99 €"
             .replace(Regex("""\s+\d{1,2}\s*$"""), "") // Trailing digits (e.g. OCR errors for cents like " 99")
@@ -460,7 +521,7 @@ object KassenzettelParser {
         }
 
         for ((shortBrand, fullBrand) in BRAND_DATABASE) {
-            clean = clean.replace(Regex("""\b${Regex.escape(shortBrand)}\b""", RegexOption.IGNORE_CASE), fullBrand)
+            clean = clean.replace(Regex("""\b${Regex.escape(shortBrand)}""", RegexOption.IGNORE_CASE), fullBrand)
         }
 
         var finalName = applyFuzzyCorrections(clean, corrections)
@@ -477,14 +538,15 @@ object KassenzettelParser {
                 }
             }
 
-        var finalQty = if (qty >= 99 || qty <= 0) 1 else qty
-        val finalPrice = price
+        var finalQty = if (initialQty >= 99 || initialQty <= 0) 1 else initialQty
+        var finalPrice = price
         val finalUnit = determineSmartUnit(finalName, finalPrice, finalQty, rawName)
 
         // TWQ / Kisten Logik: Wenn Gesamtpreis z.B. 9.98 € ist und 1 Kiste ca. 4.99 € kostet -> 2 Kisten à 4,99 €!
         if (finalUnit == "Kiste" || finalName.lowercase().contains("wasser") || finalName.lowercase().contains("waldquell")) {
             if (finalPrice >= 7.00 && finalQty == 1) {
                 finalQty = round(finalPrice / 4.99).toInt().coerceAtLeast(2)
+                finalPrice = Math.round((finalPrice / finalQty) * 100.0) / 100.0
             }
         }
 

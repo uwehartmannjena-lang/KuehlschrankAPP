@@ -130,7 +130,7 @@ class KassenzettelScannerActivity : ComponentActivity() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val isFridgeMode = intent.getBooleanExtra("IS_FRIDGE_SCAN", false)
-            Text(if (isFridgeMode) "Vorrats-Scanner 🍏" else "Kassenbon Scanner (Premium)", style = MaterialTheme.typography.headlineMedium)
+            Text(if (isFridgeMode) "Vorrats-Scanner" else "Kassenbon Scanner (Premium)", style = MaterialTheme.typography.headlineMedium)
             Text(if (isFridgeMode) "Fotografiere mehrere Artikel gleichzeitig" else "Scanne deinen Beleg für den Auto-Import", fontSize = 12.sp)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -213,6 +213,7 @@ class KassenzettelScannerActivity : ComponentActivity() {
 
     private suspend fun analyzeReceiptOffline(bitmap: Bitmap): List<Product> = withContext(Dispatchers.IO) {
         try {
+            ReceiptImportSanitizer.loadDictionaryFromAssets(applicationContext)
             val image = com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0)
             val recognizer = com.google.mlkit.vision.text.TextRecognition.getClient(
                 com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS

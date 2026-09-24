@@ -372,7 +372,7 @@ object StatisticsHelper {
         val today = df.format(Date())
 
         return buildString {
-            appendLine("🍏 Kühlschrank Profi – Statistikbericht ($timeFrameTitle)")
+            appendLine("FrischeRadar – Statistikbericht ($timeFrameTitle)")
             appendLine("Stand: $today")
             appendLine("────────────────────────────")
             appendLine("📦 Aktiver Vorrat: $inventoryCount Artikel (${String.format(Locale.GERMANY, "%.2f €", inventoryValue)})")

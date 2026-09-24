@@ -63,7 +63,10 @@ data class ShoppingItem(
     val unit: String = "Stk.",
     val isChecked: Boolean = false,
     val priceEstimate: Double = 0.0,
-    val store: String? = null
+    val store: String? = null,
+    val note: String? = null,
+    val urgency: String = "NORMAL", // "URGENT", "NORMAL", "STOCK"
+    val category: String? = null
 )
 
 @Entity(tableName = "budget_config")

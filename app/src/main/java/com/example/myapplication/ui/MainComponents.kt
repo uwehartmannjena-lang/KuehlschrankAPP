@@ -77,6 +77,7 @@ import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.Product
+import com.example.myapplication.data.SeasonHelper
 import com.example.myapplication.data.WastedItem
 import com.example.myapplication.data.StatisticsHelper
 import com.example.myapplication.data.StatisticsTimeFrame
@@ -402,6 +403,14 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                             }
                             "tree" -> {
                                 TreeView(
+                                    items = displayedItems,
+                                    viewModel = fridgeViewModel,
+                                    onEdit = { itemToEditForSheet = it; showItemSheet = true },
+                                    onLongClick = { itemForInfoDialog = it }
+                                )
+                            }
+                            "shelf" -> {
+                                ShelfView(
                                     items = displayedItems,
                                     viewModel = fridgeViewModel,
                                     onEdit = { itemToEditForSheet = it; showItemSheet = true },
@@ -946,7 +955,8 @@ fun FilterAndSortSection(viewModel: FridgeViewModel) {
         "carousel" to Pair(Icons.Default.ViewCarousel, "Karussell"),
         "kanban" to Pair(Icons.Default.ViewColumn, "Board (Kanban)"),
         "tree" to Pair(Icons.Default.AccountTree, "Baumansicht"),
-        "calendar" to Pair(Icons.Default.CalendarMonth, "Kalender")
+        "calendar" to Pair(Icons.Default.CalendarMonth, "Kalender"),
+        "shelf" to Pair(Icons.Default.Kitchen, "Regal-Ansicht")
     )
 
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
@@ -1395,9 +1405,41 @@ fun ModernFridgeItemCard(
                             }
                         }
                     }
+
+                    // MHD-Fortschrittsbalken (Batterie-Look)
+                    if (item.expiryDate != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val totalDuration = (item.expiryDate!! - item.purchaseDate).coerceAtLeast(1L)
+                        val passedDuration = (System.currentTimeMillis() - item.purchaseDate).coerceAtLeast(0L)
+                        val progress = (1f - (passedDuration.toFloat() / totalDuration.toFloat())).coerceIn(0f, 1f)
+                        val barColor = when {
+                            progress > 0.5f -> Color(0xFF4CAF50)
+                            progress > 0.15f -> Color(0xFFFF9800)
+                            else -> Color(0xFFF44336)
+                        }
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth(0.6f)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = barColor,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Vorratsschutz-Icon
+                    if (item.minStock > 0) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = "Vorratsschutz aktiv",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
                     if (item.isFavorite) {
                         Icon(
                             imageVector = getFavoriteIconVector(viewModel.favoriteIconName.value),
@@ -1577,75 +1619,7 @@ fun LocationTile(label: String, icon: ImageVector, isSelected: Boolean, modifier
 
 @Composable
 fun ShoppingList(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
-    var newItemName by remember { mutableStateOf("") }
-    val recommendations by viewModel.recommendations.collectAsState(initial = emptyList())
-    val frequentItems = remember(recommendations) { recommendations.sortedByDescending { it.totalConsumed }.take(10) }
-
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = newItemName,
-                onValueChange = { newItemName = it },
-                label = { Text("Einkaufsartikel hinzufügen") },
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            IconButton(onClick = {
-                if (newItemName.isNotBlank()) {
-                    viewModel.addToShoppingList(ShoppingItem(name = newItemName))
-                    newItemName = ""
-                }
-            }) { Icon(Icons.Default.AddCircle, "Hinzufügen", tint = viewModel.themeColor.value, modifier = Modifier.size(36.dp)) }
-        }
-        
-        if (frequentItems.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Text("Schnellstart (Oft gekauft)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                items(frequentItems, key = { it.itemName }) { pattern ->
-                    FilterChip(
-                        selected = false,
-                        onClick = { viewModel.addToShoppingList(ShoppingItem(name = pattern.itemName, unit = pattern.unit)) },
-                        label = { Text(pattern.itemName) },
-                        leadingIcon = { Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)) }
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        
-        val groupedItems = remember(items) {
-            items.groupBy { CategoryDetector.detectCategory(it.name) }
-                .toSortedMap(compareBy { it.ordinal })
-        }
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            groupedItems.forEach { (category, categoryItems) ->
-                item(key = "header_${category.name}") {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-                        Icon(category.icon, null, tint = viewModel.themeColor.value, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(category.displayName, style = MaterialTheme.typography.titleMedium, color = viewModel.themeColor.value)
-                    }
-                }
-                items(categoryItems, key = { it.id }) { item ->
-                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = item.isChecked, onCheckedChange = { viewModel.toggleShoppingItem(item) })
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(item.name, style = MaterialTheme.typography.bodyLarge)
-                                if (item.quantity > 1 || item.unit != "Stk.") {
-                                    Text("${item.quantity} ${item.unit}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            IconButton(onClick = { viewModel.removeFromShoppingList(item) }) { Icon(Icons.Default.Delete, "Löschen") }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    ShoppingListScreen(viewModel = viewModel, items = items)
 }
 
 @Composable
@@ -2214,10 +2188,6 @@ fun SettingsDialog(
     var tempSwipeRight by remember { mutableStateOf(viewModel.swipeRightAction.value) }
     var tempSwipeUp by remember { mutableStateOf(viewModel.swipeUpAction.value) }
     var tempSwipeDown by remember { mutableStateOf(viewModel.swipeDownAction.value) }
-    var tempBringUuid by remember { mutableStateOf(viewModel.bringUuid.value) }
-    var tempBringEmail by remember { mutableStateOf(viewModel.bringEmail.value) }
-    var tempBringPassword by remember { mutableStateOf(viewModel.bringPassword.value) }
-    var listMenuExpanded by remember { mutableStateOf(false) }
 
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.restoreBackup(context, it) }
@@ -2270,9 +2240,6 @@ fun SettingsDialog(
                 viewModel.setSwipeRightAction(tempSwipeRight)
                 viewModel.setSwipeUpAction(tempSwipeUp)
                 viewModel.setSwipeDownAction(tempSwipeDown)
-                viewModel.setBringUuid(tempBringUuid)
-                viewModel.setBringEmail(tempBringEmail)
-                viewModel.setBringPassword(tempBringPassword)
                 onDismiss()
             }) { Text("Speichern") }
         },
@@ -2452,35 +2419,18 @@ fun SettingsDialog(
                     )
                 }
 
-                // Section 5: Bring! & Backup
+                // Section 5: Daten-Backup & Verwaltung
                 item {
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Text("Bring! Integration & Daten", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(value = tempBringEmail, onValueChange = { tempBringEmail = it }, label = { Text("Bring! E-Mail") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = tempBringPassword, onValueChange = { tempBringPassword = it }, label = { Text("Bring! Passwort") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                    Button(onClick = { viewModel.loginToBring() }, modifier = Modifier.fillMaxWidth()) { Text("Bei Bring! anmelden") }
-                    
-                    if (viewModel.bringLists.isNotEmpty()) {
-                        Box {
-                            OutlinedButton(onClick = { listMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                                Text(viewModel.bringLists.find { it.uuid == tempBringUuid }?.name ?: "Liste wählen")
-                            }
-                            DropdownMenu(expanded = listMenuExpanded, onDismissRequest = { listMenuExpanded = false }) {
-                                viewModel.bringLists.forEach { list ->
-                                    DropdownMenuItem(text = { Text(list.name) }, onClick = { tempBringUuid = list.uuid; listMenuExpanded = false })
-                                }
-                            }
-                        }
-                    }
-
+                    Text("Daten-Backup & Verwaltung", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.exportBackup(context) }, modifier = Modifier.weight(1f)) { Text("Backup erstellen") }
                         Button(onClick = { restoreLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) { Text("Backup laden") }
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = { viewModel.clearInventory() },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -2610,6 +2560,22 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
                     else -> "🟢 Noch $daysLeft Tage haltbar"
                 }
                 Text(statusInfo, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+
+                // Lagertipp
+                val storageTip = remember(item.name) { SeasonHelper.getStorageTip(item.name) }
+                if (storageTip != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(8.dp)) {
+                            Icon(Icons.Default.Lightbulb, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(storageTip, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

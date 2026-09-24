@@ -184,7 +184,7 @@ class GeminiRepository {
             }
 
             val prompt = """
-                Du bist ein kreativer Koch-Assistent für die App 'Kühlschrank Profi'.
+                Du bist ein kreativer Koch-Assistent für die App 'FrischeRadar'.
                 Hier ist mein aktueller Bestand im Kühlschrank:
                 $inventoryText
                 

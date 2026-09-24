@@ -30,6 +30,7 @@ import com.example.myapplication.data.CachedProduct
 import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.ConsumptionPattern
 import com.example.myapplication.data.DealWorker
+import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.FridgeItem
 import com.example.myapplication.data.FridgeItemDao
@@ -285,7 +286,6 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         install(ContentNegotiation) { kotlinx.serialization.json.Json { ignoreUnknownKeys = true } }
     }
     private val offerRepository = com.example.myapplication.data.OfferRepository(httpClient)
-    val bringApi = com.example.myapplication.data.BringApi(httpClient)
     private val geminiRepository = GeminiRepository()
 
     val dealAlertStores = mutableStateOf(setOf("Kaufland", "Lidl", "Rewe", "Aldi", "Edeka", "dm"))
@@ -371,10 +371,6 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         selectedDietProfile.value = prefs.getString("diet_profile", "Standard") ?: "Standard"
         currentHouseholdId.value = prefs.getString("current_household", "default") ?: "default"
         currentUserRole.value = prefs.getString("user_role", "Erwachsener") ?: "Erwachsener"
-        bringUuid.value = prefs.getString("bring_uuid", "") ?: ""
-        bringToken.value = prefs.getString("bring_token", "") ?: ""
-        bringEmail.value = prefs.getString("bring_email", "") ?: ""
-        bringPassword.value = prefs.getString("bring_password", "") ?: ""
         favoriteIconColor.value = Color(prefs.getInt("favorite_icon_color", Color(0xFFFFB300).toArgb()))
 
         val savedWatchlist = prefs.getStringSet("global_watchlist", emptySet()) ?: emptySet()
@@ -403,9 +399,6 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
     fun setThemeColor(color: Color) { themeColor.value = color; saveSetting("theme_color", color.toArgb()) }
     fun setFavoriteIconColor(color: Color) { favoriteIconColor.value = color; saveSetting("favorite_icon_color", color.toArgb()) }
-    fun setBringUuid(uuid: String) { bringUuid.value = uuid; saveSetting("bring_uuid", uuid) }
-    fun setBringEmail(email: String) { bringEmail.value = email; saveSetting("bring_email", email) }
-    fun setBringPassword(pass: String) { bringPassword.value = pass; saveSetting("bring_password", pass) }
     fun setCompactMode(enabled: Boolean) { isCompactMode.value = enabled; saveSetting("is_compact", enabled) }
     fun setCardCornerRadius(radius: Int) { cardCornerRadius.intValue = radius; saveSetting("corner_radius", radius) }
     fun setExpiryWarningDays(days: Int) { expiryWarningDays.intValue = days; saveSetting("expiry_warning", days) }
@@ -630,7 +623,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, json)
                 val date = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date())
-                putExtra(Intent.EXTRA_SUBJECT, "Kühlschrank Profi Backup $date")
+                putExtra(Intent.EXTRA_SUBJECT, "FrischeRadar Backup $date")
             }
             context.startActivity(Intent.createChooser(intent, "Backup speichern"))
         }
@@ -718,6 +711,13 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                     return@launch
                 }
 
+                val existingItems = dao.getItemsByImportHash(item.importHash ?: "")
+                val existing = if (existingItems.isNotEmpty()) existingItems.first() else dao.getAllFridgeItems().first().find { it.id == item.id }
+
+                if (existing != null && existing.quantity > item.minStock && item.quantity <= item.minStock) {
+                     addToShoppingList(ShoppingItem(name = item.name, quantity = item.minStock - item.quantity + 1, unit = item.unit, urgency = "STOCK", note = "Vorratsschutz"))
+                }
+
                 teachItemCorrection(item, newName = item.name)
 
                 dao.updateItem(item)
@@ -754,11 +754,16 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             ))
 
             dao.insertConsumedItem(ConsumedItem(name = item.name, quantity = 1, unit = item.unit, category = item.category, kcal = item.kcal))
-            if (item.quantity > 1) {
-                dao.updateItem(item.copy(quantity = item.quantity - 1))
+            
+            val newQuantity = item.quantity - 1
+            if (newQuantity > 0) {
+                dao.updateItem(item.copy(quantity = newQuantity))
+                if (newQuantity <= item.minStock) {
+                    addToShoppingList(ShoppingItem(name = item.name, quantity = 1, unit = item.unit, urgency = "STOCK", note = "Vorrat unterschritten"))
+                }
             } else {
                 dao.deleteItem(item)
-                addToShoppingList(ShoppingItem(name = item.name, quantity = 1, unit = item.unit))
+                addToShoppingList(ShoppingItem(name = item.name, quantity = 1, unit = item.unit, urgency = "STOCK", note = "Aufgebraucht"))
             }
             logAction("Verbraucht", item.name)
         }
@@ -795,54 +800,239 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
     fun shareShoppingList(context: Context, shoppingItems: List<ShoppingItem>) {
         if (shoppingItems.isEmpty()) return
-
-        // Ansatz 1: Android Share-Intent (ACTION_SEND)
-        val exportText = shoppingItems.joinToString("\n") { item ->
-            if (item.quantity > 1) "${item.name}, ${item.quantity} ${item.unit}" else item.name
-        }
-
+        val shareText = generateShoppingListShareText(shoppingItems)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Einkaufsliste")
-            putExtra(Intent.EXTRA_TEXT, exportText)
+            putExtra(Intent.EXTRA_SUBJECT, "Einkaufsliste - Kühlschrank Profi")
+            putExtra(Intent.EXTRA_TEXT, shareText)
         }
-        context.startActivity(Intent.createChooser(intent, "Einkaufsliste senden an..."))
+        context.startActivity(Intent.createChooser(intent, "Einkaufsliste teilen via..."))
+    }
+
+    fun generateShoppingListShareText(items: List<ShoppingItem>): String {
+        if (items.isEmpty()) return "Meine Einkaufsliste ist leer."
+
+        val sb = StringBuilder()
+        sb.append("🛒 *Einkaufsliste - Kühlschrank Profi* 🍏\n\n")
+
+        val unchecked = items.filter { !it.isChecked }
+        val checked = items.filter { it.isChecked }
+
+        val grouped = unchecked.groupBy { CategoryDetector.detectCategory(it.name) }
+            .toSortedMap(compareBy<FoodCategory> { it.aisleOrder })
+
+        grouped.forEach { (cat, catItems) ->
+            sb.append("${cat.displayName}:\n")
+            catItems.forEach { item ->
+                val qtyStr = if (item.quantity > 1 || item.unit != "Stk.") "${item.quantity} ${item.unit} " else ""
+                val urgencyTag = if (item.urgency == "URGENT") "‼️ " else ""
+                val noteTag = if (!item.note.isNullOrBlank()) " (${item.note})" else ""
+                val priceTag = if (item.priceEstimate > 0) " [ca. ${String.format(Locale.GERMANY, "%.2f €", item.priceEstimate * item.quantity)}]" else ""
+                sb.append(" • $urgencyTag$qtyStr${item.name}$noteTag$priceTag\n")
+            }
+            sb.append("\n")
+        }
+
+        if (checked.isNotEmpty()) {
+            sb.append("✅ *Bereits im Einkaufswagen:* (${checked.size})\n")
+            checked.forEach { item ->
+                sb.append(" • ~${item.name}~\n")
+            }
+            sb.append("\n")
+        }
+
+        val totalEstimate = items.sumOf { it.quantity * it.priceEstimate }
+        if (totalEstimate > 0) {
+            sb.append("💰 *Geschätzter Gesamtwert:* ca. ${String.format(Locale.GERMANY, "%.2f €", totalEstimate)}")
+        }
+
+        return sb.toString().trim()
     }
 
     // Ansatz 4: Zwischenablage (Clipboard-Export)
     fun copyShoppingListToClipboard(context: Context, items: List<ShoppingItem>) {
         if (items.isEmpty()) return
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = items.joinToString("\n") { "• ${it.name} (${it.quantity} ${it.unit})" }
+        val text = generateShoppingListShareText(items)
         val clip = ClipData.newPlainText("Einkaufsliste", text)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(context, "Einkaufsliste in Zwischenablage kopiert", Toast.LENGTH_SHORT).show()
     }
 
-    fun addToShoppingList(item: ShoppingItem) { viewModelScope.launch { dao.insertShoppingItem(item) } }
-    fun removeFromShoppingList(item: ShoppingItem) { viewModelScope.launch { dao.deleteShoppingItem(item) } }
-
-    val bringUuid = mutableStateOf("")
-    val bringToken = mutableStateOf("")
-    val bringEmail = mutableStateOf("")
-    val bringPassword = mutableStateOf("")
-    val bringLists = mutableStateListOf<com.example.myapplication.data.BringApi.BringList>()
-
-    fun loginToBring() {
-        viewModelScope.launch {
-            isSyncing.value = true
-            val success = bringApi.login(bringEmail.value, bringPassword.value)
-            if (success) {
-                val lists = bringApi.getLists()
-                bringLists.clear()
-                bringLists.addAll(lists)
-                Toast.makeText(applicationContext, "Erfolgreich bei Bring! angemeldet", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(applicationContext, "Login bei Bring! fehlgeschlagen", Toast.LENGTH_LONG).show()
+    suspend fun getEstimatedPrice(itemName: String): Double {
+        try {
+            val history = dao.getHistoryByName(itemName)
+            if (history.isNotEmpty()) {
+                val valid = history.firstOrNull { it.price > 0 }
+                if (valid != null) return valid.price
             }
-            isSyncing.value = false
+            val existing = allFridgeItems.first().find { it.name.equals(itemName, ignoreCase = true) }
+            if (existing != null && existing.price > 0.0) {
+                return existing.price
+            }
+        } catch (_: Exception) {}
+        return 0.0
+    }
+
+    fun addQuickInputShoppingItems(input: String) {
+        if (input.isBlank()) return
+        viewModelScope.launch {
+            val rawItems = input.split(',', '\n').map { it.trim() }.filter { it.isNotBlank() }
+            for (raw in rawItems) {
+                val parsed = parseShoppingInputItem(raw)
+                if (parsed.name.isNotBlank()) {
+                    val estPrice = getEstimatedPrice(parsed.name)
+                    val cat = CategoryDetector.detectCategory(parsed.name)
+                    dao.insertShoppingItem(
+                        ShoppingItem(
+                            name = parsed.name,
+                            quantity = parsed.quantity,
+                            unit = parsed.unit,
+                            priceEstimate = estPrice,
+                            category = cat.displayName
+                        )
+                    )
+                }
+            }
         }
     }
+
+    fun parseSpeechInputToShoppingList(spokenText: String) {
+        if (spokenText.isBlank()) return
+        viewModelScope.launch {
+            // "Zwei Äpfel und 3x Milch sowie 1 Packung Butter"
+            val textToParse = spokenText.lowercase()
+                .replace(" und ", ",")
+                .replace(" sowie ", ",")
+                .replace(" dazu ", ",")
+                .replace("ein ", "1 ")
+                .replace("eine ", "1 ")
+                .replace("zwei ", "2 ")
+                .replace("drei ", "3 ")
+                .replace("vier ", "4 ")
+                .replace("fünf ", "5 ")
+                .replace("sechs ", "6 ")
+                .replace("sieben ", "7 ")
+                .replace("acht ", "8 ")
+                .replace("neun ", "9 ")
+                .replace("zehn ", "10 ")
+
+            val rawItems = textToParse.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            for (raw in rawItems) {
+                val parsed = parseShoppingInputItem(raw)
+                if (parsed.name.isNotBlank()) {
+                    val formattedName = parsed.name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                    val estPrice = getEstimatedPrice(formattedName)
+                    val cat = CategoryDetector.detectCategory(formattedName)
+                    dao.insertShoppingItem(
+                        ShoppingItem(
+                            name = formattedName,
+                            quantity = parsed.quantity,
+                            unit = parsed.unit,
+                            priceEstimate = estPrice,
+                            category = cat.displayName
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateShoppingItemQuantity(item: ShoppingItem, newQuantity: Int) {
+        if (newQuantity <= 0) {
+            removeFromShoppingList(item)
+        } else {
+            viewModelScope.launch {
+                dao.insertShoppingItem(item.copy(quantity = newQuantity))
+            }
+        }
+    }
+
+    fun updateShoppingItemNote(item: ShoppingItem, note: String?) {
+        viewModelScope.launch {
+            dao.insertShoppingItem(item.copy(note = note?.takeIf { it.isNotBlank() }))
+        }
+    }
+
+    fun updateShoppingItemUrgency(item: ShoppingItem, urgency: String) {
+        viewModelScope.launch {
+            dao.insertShoppingItem(item.copy(urgency = urgency))
+        }
+    }
+
+    fun updateShoppingItemPrice(item: ShoppingItem, price: Double) {
+        viewModelScope.launch {
+            dao.insertShoppingItem(item.copy(priceEstimate = price.coerceAtLeast(0.0)))
+        }
+    }
+
+    fun clearCheckedShoppingItems() {
+        viewModelScope.launch {
+            val list = dao.getAllShoppingItems().first()
+            list.filter { it.isChecked }.forEach { item ->
+                dao.deleteShoppingItem(item)
+            }
+        }
+    }
+
+    fun transferShoppingItemToInventory(
+        item: ShoppingItem,
+        targetLocation: String = "Kühlschrank",
+        customExpiryDays: Int? = null
+    ) {
+        viewModelScope.launch {
+            val cat = CategoryDetector.detectCategory(item.name)
+            val days = customExpiryDays ?: cat.expiryDays
+            val expiryMs = System.currentTimeMillis() + (days * 24 * 60 * 60 * 1000L)
+
+            val fridgeItem = FridgeItem(
+                name = item.name,
+                quantity = item.quantity,
+                unit = item.unit,
+                category = cat.displayName,
+                storageLocation = targetLocation,
+                expiryDate = expiryMs,
+                price = item.priceEstimate,
+                purchaseDate = System.currentTimeMillis()
+            )
+            dao.insertItem(fridgeItem)
+            dao.insertShoppingItem(item.copy(isChecked = true))
+            logAction("Eingeräumt", item.name)
+        }
+    }
+
+    fun transferAllCheckedShoppingItemsToInventory(targetLocation: String = "Kühlschrank") {
+        viewModelScope.launch {
+            val list = dao.getAllShoppingItems().first()
+            val checked = list.filter { it.isChecked }
+            for (item in checked) {
+                val cat = CategoryDetector.detectCategory(item.name)
+                val expiryMs = System.currentTimeMillis() + (cat.expiryDays * 24 * 60 * 60 * 1000L)
+                val fridgeItem = FridgeItem(
+                    name = item.name,
+                    quantity = item.quantity,
+                    unit = item.unit,
+                    category = cat.displayName,
+                    storageLocation = targetLocation,
+                    expiryDate = expiryMs,
+                    price = item.priceEstimate,
+                    purchaseDate = System.currentTimeMillis()
+                )
+                dao.insertItem(fridgeItem)
+                dao.deleteShoppingItem(item)
+                logAction("Eingeräumt", item.name)
+            }
+        }
+    }
+
+    fun addToShoppingList(item: ShoppingItem) {
+        viewModelScope.launch {
+            val estPrice = if (item.priceEstimate == 0.0) getEstimatedPrice(item.name) else item.priceEstimate
+            val cat = if (item.category.isNullOrBlank()) CategoryDetector.detectCategory(item.name).displayName else item.category
+            dao.insertShoppingItem(item.copy(priceEstimate = estPrice, category = cat))
+        }
+    }
+    fun removeFromShoppingList(item: ShoppingItem) { viewModelScope.launch { dao.deleteShoppingItem(item) } }
 
     fun addMealPlan(plan: MealPlan) { viewModelScope.launch { dao.insertMealPlan(plan) } }
     fun deleteMealPlan(id: String) { viewModelScope.launch { dao.deleteMealPlan(id) } }
@@ -1365,6 +1555,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
     fun handleScannedProducts(rawProducts: List<Product>, sourceId: String = "SCAN") {
         viewModelScope.launch {
+            ReceiptImportSanitizer.loadDictionaryFromAssets(applicationContext)
             val products = ReceiptImportSanitizer.prepareForImport(rawProducts)
             if (products.isEmpty()) {
                 withContext(Dispatchers.Main) {
@@ -1664,4 +1855,69 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     }
 
     suspend fun compareRetailerPrices(items: List<ShoppingItem>): Map<String, Double> = offerRepository.calculateBestRetailer(items)
+}
+
+data class ParsedShoppingInput(
+    val name: String,
+    val quantity: Int = 1,
+    val unit: String = "Stk."
+)
+
+fun parseShoppingInputItem(raw: String): ParsedShoppingInput {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return ParsedShoppingInput("")
+
+    val regexWithUnit = Regex("""^(\d+(?:[.,]\d+)?)\s*(x|stk|stück|g|kg|l|ml|pck|packung|dose|flasche|fl|glas|beutel|bund)?\.?\s+(.+)""", RegexOption.IGNORE_CASE)
+    val match = regexWithUnit.find(trimmed)
+    if (match != null) {
+        val qtyStr = match.groupValues[1].replace(',', '.')
+        val qty = qtyStr.toDoubleOrNull()?.toInt()?.coerceAtLeast(1) ?: 1
+        val unitRaw = match.groupValues[2].lowercase()
+        val itemName = match.groupValues[3].trim()
+        val unit = when (unitRaw) {
+            "x", "stk", "stück" -> "Stk."
+            "g" -> "g"
+            "kg" -> "kg"
+            "l" -> "L"
+            "ml" -> "ml"
+            "pck", "packung" -> "Pck."
+            "dose" -> "Dose"
+            "flasche", "fl" -> "Fl."
+            "glas" -> "Glas"
+            "beutel" -> "Beutel"
+            "bund" -> "Bund"
+            else -> "Stk."
+        }
+        if (itemName.isNotBlank()) {
+            return ParsedShoppingInput(itemName, qty, unit)
+        }
+    }
+
+    val regexSuffix = Regex("""^(.+?)\s+(\d+(?:[.,]\d+)?)\s*(x|stk|stück|g|kg|l|ml|pck|packung|dose|flasche|fl|glas|beutel|bund)?\.?$""", RegexOption.IGNORE_CASE)
+    val matchSuffix = regexSuffix.find(trimmed)
+    if (matchSuffix != null) {
+        val itemName = matchSuffix.groupValues[1].trim()
+        val qtyStr = matchSuffix.groupValues[2].replace(',', '.')
+        val qty = qtyStr.toDoubleOrNull()?.toInt()?.coerceAtLeast(1) ?: 1
+        val unitRaw = matchSuffix.groupValues[3].lowercase()
+        val unit = when (unitRaw) {
+            "x", "stk", "stück" -> "Stk."
+            "g" -> "g"
+            "kg" -> "kg"
+            "l" -> "L"
+            "ml" -> "ml"
+            "pck", "packung" -> "Pck."
+            "dose" -> "Dose"
+            "flasche", "fl" -> "Fl."
+            "glas" -> "Glas"
+            "beutel" -> "Beutel"
+            "bund" -> "Bund"
+            else -> "Stk."
+        }
+        if (itemName.isNotBlank()) {
+            return ParsedShoppingInput(itemName, qty, unit)
+        }
+    }
+
+    return ParsedShoppingInput(trimmed, 1, "Stk.")
 }

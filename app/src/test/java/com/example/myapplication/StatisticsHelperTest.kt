@@ -99,7 +99,7 @@ class StatisticsHelperTest {
             freshnessScore = 90
         )
 
-        assertTrue(report.contains("Kühlschrank Profi"))
+        assertTrue(report.contains("FrischeRadar"))
         assertTrue(report.contains("Dieser Monat"))
         assertTrue(report.contains("35,50 €"))
         assertTrue(report.contains("90 %"))

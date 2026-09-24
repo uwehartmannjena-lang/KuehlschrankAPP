@@ -98,10 +98,15 @@ class ExpiryWorker(private val context: Context, workerParams: WorkerParameters)
             val dao = AppDatabase.getDatabase(context).fridgeItemDao()
             val warningDays = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("expiry_warning", 3)
             val now = System.currentTimeMillis()
+            val tomorrow = now + 86400000L // +1 Tag
             
             val items = dao.getAllFridgeItems().first()
             val expiringItems = items.filter { 
                 it.expiryDate != null && (it.expiryDate!! - now) < TimeUnit.DAYS.toMillis(warningDays.toLong()) 
+            }
+            
+            val criticalItems = items.filter {
+                it.expiryDate != null && it.expiryDate!! <= tomorrow
             }
             
             val freezerBurnItems = items.filter {
@@ -114,7 +119,7 @@ class ExpiryWorker(private val context: Context, workerParams: WorkerParameters)
                 } else {
                     "${freezerBurnItems.size} Artikel zu lange eingefroren (Gefrierbrand-Gefahr)!"
                 }
-                sendNotification(msg)
+                sendNotification(msg, criticalItems.size)
             }
             Result.success()
         } catch (e: Exception) {
@@ -122,12 +127,16 @@ class ExpiryWorker(private val context: Context, workerParams: WorkerParameters)
         }
     }
 
-    private fun sendNotification(message: String) {
+    private fun sendNotification(message: String, badgeCount: Int) {
         val builder = NotificationCompat.Builder(context, "EXPIRY_ALERTS")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("🍏 Kühlschrank Profi")
+            .setContentTitle("FrischeRadar")
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+        if (badgeCount > 0) {
+            builder.setNumber(badgeCount)
+        }
 
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(context).notify(202, builder.build())

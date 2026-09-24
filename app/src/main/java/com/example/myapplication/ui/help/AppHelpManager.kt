@@ -131,7 +131,7 @@ object AppHelpManager {
     val onboardingSteps: List<OnboardingStep> = listOf(
         OnboardingStep(
             id = "welcome",
-            title = "Willkommen beim FrischeRadar! 🚀",
+            title = "Willkommen beim FrischeRadar!",
             description = "Dein intelligenter Begleiter für Kühlschrank, Vorrat, Mindesthaltbarkeit und Schnäppchen-Jagd.",
             icon = Icons.Default.Celebration
         ),
