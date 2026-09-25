@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import com.example.myapplication.FridgeViewModel
 import com.example.myapplication.data.FridgeItem
+import kotlinx.coroutines.delay
 import java.util.concurrent.TimeUnit
 
 enum class StorageZoneType(val title: String) {
@@ -45,10 +47,16 @@ fun ShelfView(
     onEdit: (FridgeItem) -> Unit,
     onLongClick: (FridgeItem) -> Unit
 ) {
-    // Animation: "Tür öffnen" Animation (Tür schwingt auf -> Fade-In + Horizontal Slide + Scale)
+    // 1. "Tür öffnen" Animation: Sanfter Licht-In-Licht-Effekt von Dunkel ins Helle
+    val lightProgress = remember { Animatable(0f) }
     var isDoorOpen by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         isDoorOpen = true
+        lightProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 900, easing = LinearOutSlowInEasing)
+        )
     }
 
     // ScrollState für 3D-Parallax-Effekt beim Scrollen durch die Fächer
@@ -79,37 +87,48 @@ fun ShelfView(
         mapped.toSortedMap(compareBy { order.indexOf(it.second).takeIf { idx -> idx != -1 } ?: 99 })
     }
 
-    AnimatedVisibility(
-        visible = isDoorOpen,
-        enter = fadeIn(animationSpec = tween(650, easing = LinearOutSlowInEasing)) +
-                slideInHorizontally(initialOffsetX = { -it / 2 }, animationSpec = tween(650, easing = FastOutSlowInEasing)) +
-                scaleIn(initialScale = 0.92f, animationSpec = tween(650, easing = FastOutSlowInEasing))
-    ) {
-        LazyColumn(
-            state = scrollState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        AnimatedVisibility(
+            visible = isDoorOpen,
+            enter = fadeIn(animationSpec = tween(700)) +
+                    scaleIn(initialScale = 0.94f, animationSpec = tween(700, easing = FastOutSlowInEasing))
         ) {
-            item { Spacer(Modifier.height(2.dp)) }
+            LazyColumn(
+                state = scrollState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .graphicsLayer { alpha = lightProgress.value },
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item { Spacer(Modifier.height(2.dp)) }
 
-            shelves.forEach { (zoneInfo, shelfItems) ->
-                val (zoneType, shelfName) = zoneInfo
-                item(key = "shelf_$shelfName") {
-                    PhotorealisticShelfContainer(
-                        zoneType = zoneType,
-                        shelfName = shelfName,
-                        shelfItems = shelfItems,
-                        scrollState = scrollState,
-                        viewModel = viewModel,
-                        onEdit = onEdit,
-                        onLongClick = onLongClick
-                    )
+                shelves.forEach { (zoneInfo, shelfItems) ->
+                    val (zoneType, shelfName) = zoneInfo
+                    item(key = "shelf_$shelfName") {
+                        PhotorealisticShelfContainer(
+                            zoneType = zoneType,
+                            shelfName = shelfName,
+                            shelfItems = shelfItems,
+                            scrollState = scrollState,
+                            viewModel = viewModel,
+                            onEdit = onEdit,
+                            onLongClick = onLongClick
+                        )
+                    }
                 }
-            }
 
-            item { Spacer(Modifier.height(80.dp)) }
+                item { Spacer(Modifier.height(80.dp)) }
+            }
+        }
+
+        // Dunkle Tür-Schatten-Überlagerung für das "Licht einschalten"
+        if (lightProgress.value < 1f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = (1f - lightProgress.value) * 0.85f))
+            )
         }
     }
 }
@@ -212,15 +231,16 @@ fun PhotorealisticShelfContainer(
 
             Spacer(Modifier.height(4.dp))
 
-            // Artikel exakt auf dem Regalboden platziert
+            // Artikel exakt auf dem Regalboden platziert (Staggered Animation)
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(shelfItems, key = { it.id }) { item ->
+                itemsIndexed(shelfItems, key = { _, item -> item.id }) { index, item ->
                     ShelfProductItem(
                         item = item,
+                        index = index,
                         viewModel = viewModel,
                         onEdit = { onEdit(item) },
                         onLongClick = { onLongClick(item) }
@@ -259,6 +279,7 @@ fun PhotorealisticShelfContainer(
 @Composable
 fun ShelfProductItem(
     item: FridgeItem,
+    index: Int = 0,
     viewModel: FridgeViewModel,
     onEdit: () -> Unit,
     onLongClick: () -> Unit
@@ -280,16 +301,20 @@ fun ShelfProductItem(
         item.name.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?"
     }
 
-    // Sanftes Einblenden und Leichtes "Setzen" des Artikels auf das Regal
+    // 2. Artikel-Einflug (Staggered Animation) & 3. Entnahme/Hinzufügen Animation (scaleIn + scaleOut + fade)
     var isVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(item.id) {
+        delay((index * 60L).coerceAtMost(300L))
         isVisible = true
     }
 
     AnimatedVisibility(
         visible = isVisible,
-        enter = fadeIn(animationSpec = tween(500, easing = LinearOutSlowInEasing)) +
-                slideInVertically(initialOffsetY = { -20 }, animationSpec = tween(500, easing = FastOutSlowInEasing))
+        enter = fadeIn(animationSpec = tween(400)) +
+                scaleIn(initialScale = 0.5f, animationSpec = tween(400, easing = FastOutSlowInEasing)) +
+                slideInVertically(initialOffsetY = { 30 }, animationSpec = tween(400, easing = FastOutSlowInEasing)),
+        exit = fadeOut(animationSpec = tween(300)) +
+               scaleOut(targetScale = 0.2f, animationSpec = tween(300, easing = FastOutLinearInEasing))
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -298,17 +323,11 @@ fun ShelfProductItem(
                 .clickable { onEdit() }
                 .padding(bottom = 2.dp)
         ) {
-            // Produkt-Container (Keine weiße Box, direkt frei auf dem Regalboden stehend mit Echtem Schlagschatten)
+            // Produkt-Container (Freigestellt, direkt über dem Hintergrundbild schwebend mit Schlagschatten)
             Box(
                 modifier = Modifier
                     .size(72.dp)
-                    .graphicsLayer {
-                        shadowElevation = 10.dp.toPx()
-                        shape = RoundedCornerShape(16.dp)
-                        clip = true
-                    }
-                    .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(16.dp))
-                    .border(1.dp, Color(0x33000000), RoundedCornerShape(16.dp)),
+                    .shadow(elevation = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (!item.imageUrl.isNullOrBlank()) {

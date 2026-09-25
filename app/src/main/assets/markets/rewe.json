@@ -1,0 +1,9 @@
+[
+  {
+    "receipt_pattern": "ja! Gouda",
+    "clean_name": "Gouda",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 14
+  }
+]

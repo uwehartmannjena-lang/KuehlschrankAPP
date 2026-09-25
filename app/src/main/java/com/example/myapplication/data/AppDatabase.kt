@@ -11,8 +11,9 @@ import androidx.room.RoomDatabase
     LoyaltyCard::class, LearningEntry::class, ShoppingItem::class, 
     MealPlan::class, ConsumptionPattern::class,
     Household::class, HouseholdLog::class, UserProfile::class,
-    BudgetConfig::class, Receipt::class, CachedProduct::class
-], version = 27, exportSchema = false)
+    BudgetConfig::class, Receipt::class, CachedProduct::class, UserCorrection::class,
+    MarketProductEntry::class, MarketProductFts::class
+], version = 29, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun fridgeItemDao(): FridgeItemDao
 

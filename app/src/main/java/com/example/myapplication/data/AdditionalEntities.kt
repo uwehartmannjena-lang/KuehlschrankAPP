@@ -1,6 +1,7 @@
 package com.example.myapplication.data
 
 import androidx.room.Entity
+import androidx.room.Fts4
 import androidx.room.PrimaryKey
 import java.util.UUID
 
@@ -55,6 +56,16 @@ data class LearningEntry(
     val usageCount: Int = 1
 )
 
+@Entity(tableName = "UserCorrections")
+data class UserCorrection(
+    @PrimaryKey val rawReceiptText: String,
+    val correctedName: String,
+    val imageUrl: String? = null,
+    val category: String? = null,
+    val storageLocation: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "shopping_list")
 data class ShoppingItem(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -73,4 +84,23 @@ data class ShoppingItem(
 data class BudgetConfig(
     @PrimaryKey val monthYear: String, // z.B. "2023-10"
     val limit: Double
+)
+
+@Entity(tableName = "market_dictionary")
+data class MarketProductEntry(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val market: String = "general",
+    val receiptPattern: String,
+    val cleanName: String,
+    val category: String = "SONSTIGES",
+    val defaultStorage: String = "Kühlschrank",
+    val defaultShelfLifeDays: Int = 7
+)
+
+@Fts4(contentEntity = MarketProductEntry::class)
+@Entity(tableName = "market_dictionary_fts")
+data class MarketProductFts(
+    val receiptPattern: String,
+    val cleanName: String,
+    val category: String
 )

@@ -31,6 +31,8 @@ import java.util.concurrent.TimeUnit
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.app.PendingIntent
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : ComponentActivity() {
     private var nfcAdapter: NfcAdapter? = null
@@ -199,14 +201,16 @@ class MainActivity : ComponentActivity() {
                     } catch (_: Exception) {}
 
                     val mimeType = context.contentResolver.getType(uri) ?: type ?: ""
-                    
                     val isPdf = mimeType == "application/pdf" || 
                                 uri.toString().lowercase().endsWith(".pdf") || 
                                 isPdfStream(context, uri)
-                    
+
+                    val cachedFile = copyUriToCache(context, uri, if (isPdf) "shared_receipt.pdf" else "shared_receipt.jpg")
+                    val cachedUri = if (cachedFile != null && cachedFile.length() > 0) Uri.fromFile(cachedFile) else uri
+
                     when {
-                        isPdf -> viewModel.importFromPdf(context, uri)
-                        else -> viewModel.importFromImage(context, uri)
+                        isPdf -> viewModel.importFromPdf(context, cachedUri)
+                        else -> viewModel.importFromImage(context, cachedUri)
                     }
                 } else if (Intent.ACTION_SEND == action && type?.startsWith("text/") == true) {
                     intent.getStringExtra(Intent.EXTRA_TEXT)?.let { 
@@ -218,6 +222,21 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Fehler beim Verarbeiten", e)
             Toast.makeText(context, "Inhalt konnte nicht verarbeitet werden", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun copyUriToCache(context: Context, uri: Uri, fileName: String): File? {
+        return try {
+            val cacheFile = File(context.cacheDir, fileName)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(cacheFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (cacheFile.exists() && cacheFile.length() > 0) cacheFile else null
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Fehler beim Kopieren der URI in den Cache: $uri", e)
+            null
         }
     }
 }

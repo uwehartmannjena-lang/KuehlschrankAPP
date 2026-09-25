@@ -44,6 +44,7 @@ import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.OpenFoodFactsApi
 import com.example.myapplication.data.PriceRecord
 import com.example.myapplication.data.Product
+import com.example.myapplication.data.ProductRepository
 import com.example.myapplication.data.ShoppingItem
 import com.example.myapplication.data.StoreOffer
 import com.example.myapplication.data.WastedItem
@@ -87,6 +88,20 @@ class FridgeViewModelFactory(private val dao: FridgeItemDao, private val context
 }
 
 class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Context) : ViewModel() {
+    private val productRepository by lazy {
+        ProductRepository(dao, OpenFoodFactsApi.create())
+    }
+
+    suspend fun fetchProductImage(ocrText: String): String {
+        return productRepository.fetchProductImage(ocrText)
+    }
+
+    fun saveUserCorrection(ocrText: String, correctProductId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            productRepository.saveUserCorrection(ocrText, correctProductId)
+        }
+    }
+
     val allFridgeItems = dao.getAllFridgeItems()
     val wastedItems = dao.getAllWastedItems()
     val consumedItems = dao.getAllConsumedItems()
@@ -567,6 +582,12 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     fun updateCandidateName(candidateId: String, newName: String) {
         importCandidates.value = importCandidates.value.map {
             if (it.id == candidateId) it.copy(name = newName) else it
+        }
+    }
+
+    fun updateCandidateImageUrl(candidateId: String, newImageUrl: String) {
+        importCandidates.value = importCandidates.value.map {
+            if (it.id == candidateId) it.copy(imageUrl = newImageUrl) else it
         }
     }
 
@@ -1147,7 +1168,6 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             try {
                 val fileName = getFileName(context, uri) ?: "unknown_pdf"
 
-                // Temp-Datei im Cache erstellen, damit sowohl PDFBox als auch PdfRenderer stabil darauf zugreifen können
                 val tempFile = File(context.cacheDir, "temp_shared_receipt.pdf")
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempFile).use { output ->
@@ -1163,96 +1183,32 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                     return@launch
                 }
 
-                // Render 1. Seite als Vorschau-Bild
-                try {
-                    val pfd = ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
-                    val renderer = PdfRenderer(pfd)
-                    if (renderer.pageCount > 0) {
-                        val page = renderer.openPage(0)
-                        val bitmap = Bitmap.createBitmap((page.width * 1.5f).toInt(), (page.height * 1.5f).toInt(), Bitmap.Config.ARGB_8888)
-                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                        val preview = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
-                        withContext(Dispatchers.Main) { receiptBitmap.value = preview }
-                        bitmap.recycle()
-                        page.close()
-                    }
-                    renderer.close()
-                    pfd.close()
-                } catch (e: Exception) {
-                    Log.e("FridgeViewModel", "Fehler bei PDF Vorschau Rendering", e)
-                }
-
-                // Text per PDFBox extrahieren
-                val document = PDDocument.load(tempFile)
-                val allProducts = mutableListOf<Product>()
-
-                for (pageIndex in 0 until document.numberOfPages) {
-                    val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
-                    stripper.startPage = pageIndex + 1
-                    stripper.endPage = pageIndex + 1
-                    val text = stripper.getText(document)
-                    if (text.isNotBlank()) {
-                        allProducts.addAll(KassenzettelParser.parseReceiptText(text))
-                    }
-                }
-                document.close()
-
-                if (allProducts.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        handleScannedProducts(allProducts, fileName)
-                    }
-                    tempFile.delete()
-                    return@launch
-                }
-
-                // Fallback auf OCR
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Kein digitaler Text gefunden, nutze OCR...", Toast.LENGTH_SHORT).show()
-                }
-
-                val pfd = ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
-                val renderer = PdfRenderer(pfd)
-                val allProductsOcr = mutableListOf<Product>()
                 val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
+                val (pdfProducts, previewBmp) = PdfReceiptHelper.processPdf(context, tempFile, recognizer, corrections)
 
-                var firstPageBitmap: Bitmap? = null
-
-                for (pageIndex in 0 until renderer.pageCount) {
-                    val page = renderer.openPage(pageIndex)
-                    val scale = 2.0f
-                    val bitmap = Bitmap.createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                    
-                    if (firstPageBitmap == null) firstPageBitmap = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
-
-                    val image = InputImage.fromBitmap(bitmap, 0)
-                    val visionText = Tasks.await(recognizer.process(image))
-                    if (visionText.text.isNotBlank()) {
-                        val products = KassenzettelParser.parseReceipt(visionText, corrections)
-                        allProductsOcr.addAll(products)
-                    }
-                    bitmap.recycle()
-                    page.close()
+                if (previewBmp != null) {
+                    withContext(Dispatchers.Main) { receiptBitmap.value = previewBmp }
                 }
-                renderer.close()
-                pfd.close()
+
+                val finalProducts = pdfProducts.toMutableList()
+
+                if (finalProducts.isEmpty() || finalProducts.sumOf { it.price } <= 0.0) {
+                    if (previewBmp != null) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(applicationContext, "Verwende KI-Fallback für PDF...", Toast.LENGTH_SHORT).show()
+                        }
+                        val aiProducts = geminiRepository.analyzeReceipt(previewBmp)
+                        if (aiProducts.isNotEmpty()) {
+                            finalProducts.clear()
+                            finalProducts.addAll(aiProducts)
+                        }
+                    }
+                }
+
                 tempFile.delete()
 
-                if (allProductsOcr.isEmpty() || allProductsOcr.sumOf { it.price } <= 0.0) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(applicationContext, "OCR unvollständig. KI-Fallback wird gestartet...", Toast.LENGTH_SHORT).show()
-                    }
-                    if (firstPageBitmap != null) {
-                        val aiProducts = geminiRepository.analyzeReceipt(firstPageBitmap)
-                        allProductsOcr.clear()
-                        allProductsOcr.addAll(aiProducts)
-                    }
-                }
-                
-                firstPageBitmap?.recycle()
-
                 withContext(Dispatchers.Main) {
-                    handleScannedProducts(allProductsOcr, fileName)
+                    handleScannedProducts(finalProducts, fileName)
                 }
             } catch (e: Exception) {
                 Log.e("FridgeViewModel", "PDF Fehler", e)
@@ -1588,6 +1544,11 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     fun handleScannedProducts(rawProducts: List<Product>, sourceId: String = "SCAN") {
         viewModelScope.launch {
             ReceiptImportSanitizer.loadDictionaryFromAssets(applicationContext)
+            
+            val fullText = rawProducts.joinToString(" ") { it.rawText ?: "" }
+            MarketDictionaryHelper.detectMarket(fullText)
+            MarketDictionaryHelper.loadDictionaries(applicationContext)
+            
             val products = ReceiptImportSanitizer.prepareForImport(rawProducts)
             if (products.isEmpty()) {
                 withContext(Dispatchers.Main) {
@@ -1610,7 +1571,9 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                     imageUrl = p.imageUrl, allergens = p.allergens, kcal = p.kcal,
                     notes = itemNotes,
                     boundingBox = p.boundingBox, purchaseDate = p.purchaseDate ?: System.currentTimeMillis(),
-                    importHash = hash
+                    importHash = hash,
+                    storageLocation = p.defaultStorage ?: "Kühlschrank",
+                    expiryDate = p.expiryDays?.let { (p.purchaseDate ?: System.currentTimeMillis()) + it * 24L * 60L * 60L * 1000L }
                 ).apply { this.isDuplicate = duplicate }
 
                 val enriched = enrichItemWithSmartLogic(item, correctionsCopy)
@@ -1629,8 +1592,8 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             withContext(Dispatchers.Main) {
                 importCandidates.value = newItems
                 recognizedCount.intValue = newItems.size
-                // By default, select items that are NOT household and NOT duplicate
-                selectedItems.value = newItems.filter { it.storageLocation != "Haushalt" && !it.isDuplicate }.map { it.id }.toSet()
+                // Select all scanned items by default
+                selectedItems.value = newItems.map { it.id }.toSet()
                 showImportPreview.value = true
 
                 if (newItems.all { it.isDuplicate }) {
@@ -1840,7 +1803,21 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
     fun confirmAndImport() {
         viewModelScope.launch {
-            val toImport = importCandidates.value.filter { selectedItems.value.contains(it.id) }
+            val candidates = importCandidates.value
+            var toImport = candidates.filter { selectedItems.value.contains(it.id) }
+
+            if (toImport.isEmpty() && candidates.isNotEmpty()) {
+                toImport = candidates
+            }
+
+            if (toImport.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(applicationContext, "Keine Artikel zum Speichern vorhanden.", Toast.LENGTH_SHORT).show()
+                }
+                showImportPreview.value = false
+                return@launch
+            }
+
             toImport.forEach { item ->
                 // Finale Korrektur abspeichern, falls der Name manuell geändert wurde
                 teachItemCorrection(item, newName = item.name)

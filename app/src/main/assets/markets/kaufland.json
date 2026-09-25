@@ -1,0 +1,219 @@
+[
+  {
+    "receipt_pattern": "K-Classic Naturjoghurt 3.5%",
+    "clean_name": "Naturjoghurt",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 10
+  },
+  {
+    "receipt_pattern": "K-Classic Vollmilch 3.5%",
+    "clean_name": "Vollmilch",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 7
+  },
+  {
+    "receipt_pattern": "K-Classic H-Milch 1.5%",
+    "clean_name": "H-Milch",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 14
+  },
+  {
+    "receipt_pattern": "K-Classic Speisequark 40%",
+    "clean_name": "Speisequark",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 10
+  },
+  {
+    "receipt_pattern": "K-Classic Schlagsahne 30%",
+    "clean_name": "Schlagsahne",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 10
+  },
+  {
+    "receipt_pattern": "K-Classic Markenbutter 250g",
+    "clean_name": "Butter",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 21
+  },
+  {
+    "receipt_pattern": "K-Classic Gouda Scheiben",
+    "clean_name": "Gouda Käse",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 14
+  },
+  {
+    "receipt_pattern": "Purland Rinderhackfleisch 500g",
+    "clean_name": "Rinderhackfleisch",
+    "category": "FLEISCH",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 3
+  },
+  {
+    "receipt_pattern": "Purland Schweinehackfleisch 500g",
+    "clean_name": "Schweinehackfleisch",
+    "category": "FLEISCH",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 3
+  },
+  {
+    "receipt_pattern": "Purland Hackfleisch gemischt",
+    "clean_name": "Hackfleisch gemischt",
+    "category": "FLEISCH",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 3
+  },
+  {
+    "receipt_pattern": "Purland Hähnchenbrustfilet 400g",
+    "clean_name": "Hähnchenbrustfilet",
+    "category": "FLEISCH",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 4
+  },
+  {
+    "receipt_pattern": "Purland Delikatess Schinken",
+    "clean_name": "Kochschinken",
+    "category": "FLEISCH",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 7
+  },
+  {
+    "receipt_pattern": "Purland Wiener Würstchen 300g",
+    "clean_name": "Wiener Würstchen",
+    "category": "FLEISCH",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 10
+  },
+  {
+    "receipt_pattern": "Purland Thüringer Rostbratwurst",
+    "clean_name": "Rostbratwurst",
+    "category": "FLEISCH",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 5
+  },
+  {
+    "receipt_pattern": "Bananen lose",
+    "clean_name": "Bananen",
+    "category": "OBST",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 7
+  },
+  {
+    "receipt_pattern": "Bio Bananen",
+    "clean_name": "Bio Bananen",
+    "category": "OBST",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 7
+  },
+  {
+    "receipt_pattern": "Äpfel Gala 1kg",
+    "clean_name": "Äpfel Gala",
+    "category": "OBST",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 14
+  },
+  {
+    "receipt_pattern": "Rispentomaten 500g",
+    "clean_name": "Rispentomaten",
+    "category": "GEMÜSE",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 7
+  },
+  {
+    "receipt_pattern": "Salatgurke Stück",
+    "clean_name": "Salatgurke",
+    "category": "GEMÜSE",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 7
+  },
+  {
+    "receipt_pattern": "Paprika Mix 500g",
+    "clean_name": "Paprika Mix",
+    "category": "GEMÜSE",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 10
+  },
+  {
+    "receipt_pattern": "Speisekartoffeln 2.5kg",
+    "clean_name": "Speisekartoffeln",
+    "category": "GEMÜSE",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 21
+  },
+  {
+    "receipt_pattern": "Möhren 1kg",
+    "clean_name": "Möhren",
+    "category": "GEMÜSE",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 14
+  },
+  {
+    "receipt_pattern": "Bevola Cremedusche 300ml",
+    "clean_name": "Duschgel",
+    "category": "DROGERIE",
+    "default_storage": "Haushalt",
+    "default_shelf_life_days": 365
+  },
+  {
+    "receipt_pattern": "Bevola Pflegeshampoo 250ml",
+    "clean_name": "Shampoo",
+    "category": "DROGERIE",
+    "default_storage": "Haushalt",
+    "default_shelf_life_days": 365
+  },
+  {
+    "receipt_pattern": "Bevola Flüssigseife 500ml",
+    "clean_name": "Flüssigseife",
+    "category": "DROGERIE",
+    "default_storage": "Haushalt",
+    "default_shelf_life_days": 365
+  },
+  {
+    "receipt_pattern": "K-Classic Küchenrollen 4er",
+    "clean_name": "Küchenrolle",
+    "category": "DROGERIE",
+    "default_storage": "Haushalt",
+    "default_shelf_life_days": 365
+  },
+  {
+    "receipt_pattern": "K-Classic Toilettenpapier 8x150",
+    "clean_name": "Toilettenpapier",
+    "category": "DROGERIE",
+    "default_storage": "Haushalt",
+    "default_shelf_life_days": 365
+  },
+  {
+    "receipt_pattern": "K-Classic Mineralwasser Medium 1.5L",
+    "clean_name": "Mineralwasser Medium",
+    "category": "GETRÄNKE",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 180
+  },
+  {
+    "receipt_pattern": "K-Classic Apfelsaft 100% 1L",
+    "clean_name": "Apfelsaft",
+    "category": "GETRÄNKE",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 90
+  },
+  {
+    "receipt_pattern": "K-Classic Orangensaft 1L",
+    "clean_name": "Orangensaft",
+    "category": "GETRÄNKE",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 90
+  },
+  {
+    "receipt_pattern": "K-Classic Cola 1.5L",
+    "clean_name": "Cola",
+    "category": "GETRÄNKE",
+    "default_storage": "Vorratskammer",
+    "default_shelf_life_days": 180
+  }
+]

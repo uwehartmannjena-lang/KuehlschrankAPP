@@ -1,0 +1,16 @@
+[
+  {
+    "receipt_pattern": "Milsani Quark",
+    "clean_name": "Quark",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 10
+  },
+  {
+    "receipt_pattern": "Gut Bio Eier",
+    "clean_name": "Eier",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 14
+  }
+]

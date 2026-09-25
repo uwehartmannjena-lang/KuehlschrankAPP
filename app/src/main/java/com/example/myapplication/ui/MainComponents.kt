@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import kotlinx.coroutines.launch
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
@@ -595,7 +596,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
             }
         }
 
-        if (showPaywall && !isSubscribed) {
+        if (showPaywall && !isSubscribed && !fridgeViewModel.showImportPreview.value) {
             PaywallDialog(
                 viewModel = fridgeViewModel,
                 onDismiss = { showPaywall = false }
@@ -616,10 +617,99 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
 }
 
 @Composable
+fun CorrectArticleDialog(
+    item: FridgeItem,
+    viewModel: FridgeViewModel,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    val ocrText = remember(item) {
+        item.notes.lineSequence().firstOrNull { it.startsWith("RAW:") }?.substringAfter("RAW:")?.substringBefore("@")?.trim() ?: item.name
+    }
+    var searchQuery by remember { mutableStateOf(ocrText) }
+    var imageUrlInput by remember { mutableStateOf(item.imageUrl ?: "") }
+    var isSearching by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Artikel korrigieren ✏️", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Original OCR-Text: \"$ocrText\"", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Produkt-Suchbegriff / EAN") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        isSearching = true
+                        scope.launch {
+                            val fetchedUrl = viewModel.fetchProductImage(searchQuery)
+                            if (fetchedUrl.isNotBlank()) {
+                                imageUrlInput = fetchedUrl
+                            }
+                            isSearching = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSearching && searchQuery.isNotBlank()
+                ) {
+                    if (isSearching) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Bild per API suchen 🔍")
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (imageUrlInput.isNotBlank()) {
+                        SubcomposeAsyncImage(
+                            model = imageUrlInput,
+                            contentDescription = searchQuery,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Fastfood,
+                            contentDescription = searchQuery,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(imageUrlInput) },
+                enabled = imageUrlInput.isNotBlank()
+            ) {
+                Text("Speichern")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Abbrechen") }
+        }
+    )
+}
+
+@Composable
 fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
     val candidates = viewModel.importCandidates.value
     val context = LocalContext.current
     var showFullReceiptImage by remember { mutableStateOf(false) }
+    var selectedCandidateForCorrection by remember { mutableStateOf<FridgeItem?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -718,7 +808,9 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
                                     category = candidate.category,
                                     itemName = candidate.name,
                                     storageLocation = candidate.storageLocation,
-                                    modifier = Modifier.size(34.dp)
+                                    modifier = Modifier.size(34.dp).clickable {
+                                        selectedCandidateForCorrection = candidate
+                                    }
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -765,6 +857,21 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
             }
         }
     )
+
+    selectedCandidateForCorrection?.let { candidate ->
+        CorrectArticleDialog(
+            item = candidate,
+            viewModel = viewModel,
+            onDismiss = { selectedCandidateForCorrection = null },
+            onSave = { newImageUrl ->
+                val ocrText = candidate.notes.lineSequence().firstOrNull { it.startsWith("RAW:") }?.substringAfter("RAW:")?.substringBefore("@")?.trim() ?: candidate.name
+                viewModel.saveUserCorrection(ocrText, newImageUrl)
+                viewModel.updateCandidateImageUrl(candidate.id, newImageUrl)
+                selectedCandidateForCorrection = null
+                Toast.makeText(context, "Korrektur gelernt & gespeichert!", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 
     if (showFullReceiptImage && viewModel.receiptBitmap.value != null) {
         AlertDialog(
@@ -1112,11 +1219,11 @@ fun ProductThumbnail(
                     }
                 )
             } else {
-                Text(
-                    text = initial,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                Icon(
+                    imageVector = Icons.Default.Fastfood,
+                    contentDescription = itemName,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(4.dp).fillMaxSize()
                 )
             }
         }
@@ -2396,14 +2503,12 @@ fun SettingsDialog(
                                         modifier = Modifier
                                             .size(44.dp)
                                             .clip(CircleShape)
-                                            .background(tintColor.copy(alpha = 0.2f))
                                     ) {
                                         if (resId != 0) {
                                             Image(
                                                 painter = painterResource(id = resId),
                                                 contentDescription = iconName,
-                                                colorFilter = ColorFilter.tint(tintColor),
-                                                modifier = Modifier.size(32.dp)
+                                                modifier = Modifier.size(36.dp)
                                             )
                                         } else {
                                             Icon(

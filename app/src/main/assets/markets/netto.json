@@ -1,0 +1,16 @@
+[
+  {
+    "receipt_pattern": "BioBio Vollmilch",
+    "clean_name": "Vollmilch",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 10
+  },
+  {
+    "receipt_pattern": "Gutes Land Butter",
+    "clean_name": "Butter",
+    "category": "KÜHLUNG",
+    "default_storage": "Kühlschrank",
+    "default_shelf_life_days": 14
+  }
+]

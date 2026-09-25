@@ -85,6 +85,18 @@ interface FridgeItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLearningEntry(entry: LearningEntry)
 
+    @Query("SELECT * FROM UserCorrections WHERE rawReceiptText = :raw")
+    suspend fun getUserCorrection(raw: String): UserCorrection?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUserCorrection(correction: UserCorrection)
+
+    @Query("SELECT * FROM UserCorrections")
+    fun getAllUserCorrections(): Flow<List<UserCorrection>>
+
+    @Query("SELECT * FROM UserCorrections")
+    suspend fun getAllUserCorrectionsSync(): List<UserCorrection>
+
     @Query("SELECT * FROM learning_data")
     fun getAllLearningData(): Flow<List<LearningEntry>>
 
@@ -125,6 +137,30 @@ interface FridgeItemDao {
 
     @Query("SELECT importHash FROM fridge_items WHERE importHash IS NOT NULL")
     fun getImportHashes(): Flow<List<String>>
+
+    // Market Dictionary FTS & Fast SQLite Index
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMarketProducts(entries: List<MarketProductEntry>)
+
+    @Query("SELECT COUNT(*) FROM market_dictionary")
+    suspend fun getMarketProductCount(): Int
+
+    @Query("""
+        SELECT m.* FROM market_dictionary m
+        JOIN market_dictionary_fts fts ON m.rowid = fts.docid
+        WHERE market_dictionary_fts MATCH :query
+        LIMIT 50
+    """)
+    suspend fun searchMarketProductsFts(query: String): List<MarketProductEntry>
+
+    @Query("SELECT * FROM market_dictionary WHERE receiptPattern LIKE '%' || :query || '%' OR cleanName LIKE '%' || :query || '%' LIMIT 100")
+    suspend fun searchMarketProductsLike(query: String): List<MarketProductEntry>
+
+    @Query("SELECT * FROM market_dictionary WHERE market = :market OR market = 'general' LIMIT 20000")
+    suspend fun getAllMarketProductsForMarket(market: String): List<MarketProductEntry>
+
+    @Query("SELECT * FROM market_dictionary LIMIT 20000")
+    suspend fun getAllMarketProducts(): List<MarketProductEntry>
 
     @Query("SELECT * FROM fridge_items WHERE importHash = :hash")
     suspend fun getItemsByImportHash(hash: String): List<FridgeItem>

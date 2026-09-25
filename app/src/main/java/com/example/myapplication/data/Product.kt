@@ -15,5 +15,7 @@ data class Product(
     val boundingBox: String? = null,
     val category: String = "SONSTIGES",
     val supermarket: String? = null,
-    val purchaseDate: Long? = null
+    val purchaseDate: Long? = null,
+    val defaultStorage: String? = null,
+    val expiryDays: Int? = null
 ) : Serializable

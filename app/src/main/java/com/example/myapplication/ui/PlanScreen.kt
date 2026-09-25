@@ -252,7 +252,11 @@ fun TodayPlanTab(
 
                         Spacer(Modifier.height(8.dp))
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             topExpiring.forEach { item ->
                                 val color = getItemUrgencyColor(item.expiryDate)
                                 FilterChip(
@@ -542,20 +546,26 @@ fun MealPlanCard(
                 Button(
                     onClick = onCooked,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).widthIn(min = 120.dp)
                 ) {
                     Icon(Icons.Default.Done, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Gekocht! 🍳", fontSize = 12.sp)
+                    Text("Gekocht! 🍳", fontSize = 12.sp, maxLines = 1)
                 }
 
                 OutlinedButton(
-                    onClick = { ChefkochHelper.openChefkochUrl(context, plan.recipeTitle) },
-                    modifier = Modifier.weight(1f)
+                    onClick = { 
+                        if (plan.recipeTitle == "Neues Gericht") {
+                            ChefkochHelper.openChefkoch(context, emptyList())
+                        } else {
+                            ChefkochHelper.openChefkochUrl(context, plan.recipeTitle)
+                        }
+                    },
+                    modifier = Modifier.weight(1f).widthIn(min = 120.dp)
                 ) {
                     Icon(Icons.Default.Restaurant, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Rezept 👨‍🍳", fontSize = 12.sp)
+                    Text("Rezept 👨‍🍳", fontSize = 12.sp, maxLines = 1)
                 }
 
                 IconButton(onClick = onAddMissing) {

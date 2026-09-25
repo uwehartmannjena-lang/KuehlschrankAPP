@@ -155,4 +155,30 @@ class KassenzettelParserTest {
         assertEquals(2.98, products[1].price, 0.001)
         assertEquals(2, products[1].quantity)
     }
+
+    @Test
+    fun `test filter market address with PLZ and legal forms and stop at cash payment`() {
+        val text = """
+            REWE Markt GmbH & Co. KG
+            Musterstraße 12
+            07743 Jena
+            Tel. 03641/123456
+            St.-Nr. 123/456/7890
+            FRISCHMILCH
+            1,09 A
+            BANANEN
+            2 x 0,79 A
+            BAR 10,00
+            RÜCKGELD 7,33
+        """.trimIndent()
+
+        val products = KassenzettelParser.parseReceiptText(text)
+
+        assertEquals(2, products.size)
+        assertEquals("Frischmilch", products[0].name)
+        assertEquals(1.09, products[0].price, 0.001)
+        assertEquals("Bananen", products[1].name)
+        assertEquals(2, products[1].quantity)
+        assertEquals(0.79, products[1].price, 0.001)
+    }
 }

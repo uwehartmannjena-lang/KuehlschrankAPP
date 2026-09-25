@@ -16,8 +16,9 @@ object KassenzettelParser {
     private var supermarketProfiles: List<SupermarketProfile> = emptyList()
 
     private val PRICE_REGEX = Regex("""(-?\d+[,.]\d{2})""")
-    private val TAX_SUFFIX_REGEX = Regex("""\s+[AB12*#€]\b""")
-    private val MULTIPLIER_REGEX = Regex("""^(\d+(?:[,.]\d+)?\s*(?:kg|g|l|ml|stk|stück)?)\s*(?:[*xX]|Stk\.?\s*[aáà])\s*(\d+[,.]\d{2})""", RegexOption.IGNORE_CASE)
+    private val TAX_SUFFIX_REGEX = Regex("""\s+(?:[AB12*#€]\s*|\d\s*)*$""")
+    private val MULTIPLIER_REGEX = Regex("""^(\d+(?:[,.]\d+)?)\s*(?:kg|g|l|ml|stk|stück)?\s*[*xX]\s*(\d+[,.]\d{2})""", RegexOption.IGNORE_CASE)
+    private val WEIGHING_REGEX = Regex("""^(\d+[,.]\d+)\s*(kg|g)\s*[*xX]\s*(\d+[,.]\d{2})\s*(?:€/kg|EUR/kg|€|EUR)?(?:\s+(-?\d+[,.]\d{2}))?""", RegexOption.IGNORE_CASE)
 
     // Aldi: "8 x 0,89 € ASTRA URTYP DOSE 7,12 € 2"
     private val ALDI_MULT_REGEX = Regex(
@@ -31,9 +32,9 @@ object KassenzettelParser {
         RegexOption.IGNORE_CASE
     )
 
-    // Standard: "Name 1,29 B" oder "Name 0,85 2"
+    // Standard: "Name 1,29 B" oder "Name 0,85 2" oder "Kart.vfk 2,5kg 1,39 2"
     private val STANDARD_LINE_REGEX = Regex(
-        """^(.*?)\s+(-?\d+[,.]\d{2})\s*(?:€\s*)?[AB12]?$"""
+        """^(.*?)\s+(-?\d+[,.]\d{2})\s*(?:€\s*)?(?:[AB12*#€]\s*|\d\s*)*$"""
     )
 
     private val FOOTER_STOP_WORDS = setOf(
@@ -41,20 +42,30 @@ object KassenzettelParser {
         "BARGELD", "GEG. BAR", "RÜCKGELD", "ZAHLBETRAG", "GUTHABEN",
         "STEUER %", "KUNDENBELEG", "TERMINAL", "VISA", "GIROCARD",
         "MASTERCARD", "TSE-SIGNATUR", "PAYBACK", "LIDL PAY", "EC-CASH",
-        "EMV-AID", "TERMINAL-ID", "TRACE", "BELEG-NR", "KARTEN-NR"
+        "EMV-AID", "TERMINAL-ID", "TRACE", "BELEG-NR", "KARTEN-NR",
+        "BAR", "KREDITKARTE", "EC-KARTE"
     )
 
     // KOPF- UND WÄHRUNGSMÜLL FILTERN (inklusive "EUR", "PREIS", "DE12345...")
     private val IGNORE_KEYWORDS = setOf(
         "PFANDWERT", "PFAND", "LEERGUT", "PAPIERTRAGETASCHE", "KNOTENBEUTEL",
         "BELEGKOPIE", "BONKOPIE", "HERZLICH WILLKOMMEN", "VIELEN DANK",
-        "KAUFLAND", "LIDL", "REWE", "NAHKAUF", "ALDI", "DM-DROGERIE",
-        "STRASSE", "STR.", "WEIMAR", "JENA", "ERFURT", "GMBH", "UST-ID", "DE1", "DE2",
+        "KAUFLAND", "LIDL", "REWE", "NAHKAUF", "ALDI", "DM-DROGERIE", "GLOBUS",
+        "STRASSE", "STR.", "WEIMAR", "JENA", "ERFURT", "ISSERSTEDT", "GMBH", "UST-ID", "DE1", "DE2",
         "EUR", "PREIS EUR", "PREIS", "SUMME", "RABATT", "SOFORT-RABATT", "AKTION", "PFANDRÜCKGABE"
     )
 
     // Erweitertes Marken- & Artikel-Lexikon für Thüringen
     private val BRAND_DATABASE = mapOf(
+        "KART.VFK 2,5KG" to "Kartoffeln",
+        "KART.VFK" to "Kartoffeln",
+        "FIN. HÄHNCHENBRUST C" to "Hähnchenbrust",
+        "FIN. HÄHNCHENBRUST" to "Hähnchenbrust",
+        "FIN. HÄHNCHENBR" to "Hähnchenbrust",
+        "KLOSSTEIG 750 G" to "Kloßteig",
+        "KLOSSTEIG" to "Kloßteig",
+        "KLOßTEIG" to "Kloßteig",
+        "K.BLATTSPINAT" to "K-Classic Blattspinat",
         "TH.WQ. MEDIUM" to "Thüringer Waldquell Medium",
         "TH.WQ. CLASSIC" to "Thüringer Waldquell Classic",
         "TH.WQ." to "Thüringer Waldquell",
@@ -108,12 +119,7 @@ object KassenzettelParser {
         "SENS EXPRESSREIS" to "Ben's Original Expressreis",
         "CAROTTENKRÜSTCHEN" to "Karottenkrüstchen",
         "CATSAN" to "Catsan Katzenstreu",
-        "CLC" to "K-Classic",
-        "MEG. FEINESÜSSRAHM" to "Meggler Feine Süßrahmbutter",
-        "SENS EXPRESSREIS" to "Ben's Original Expressreis",
-        "CAROTTENKRÜSTCHEN" to "Karottenkrüstchen",
         "K-CLASSIC" to "K-Classic",
-        "KLC" to "K-Classic",
         "GUT&G" to "Gut & Günstig",
         "G&G" to "Gut & Günstig",
         "CORNEDBEEF" to "Corned Beef",
@@ -182,7 +188,9 @@ object KassenzettelParser {
         }
 
         // Metadaten an Produkte hängen
-        return products.map { it.copy(supermarket = supermarket, purchaseDate = purchaseDate) }
+        val result = products.map { it.copy(supermarket = supermarket, purchaseDate = purchaseDate) }
+        println("DEBUG PARSE_RECEIPT_TEXT RESULT: $result")
+        return result
     }
 
     private fun detectSupermarket(text: String): String? {
@@ -228,18 +236,18 @@ object KassenzettelParser {
             if (line.isBlank()) continue
             val upper = line.uppercase()
 
-            // 1. Abbruch bei Kassenbereich
-            if (FOOTER_STOP_WORDS.any { upper.startsWith(it) || upper.contains("SUMME ") || upper.contains("KARTENZAHLUNG") }) {
+            // 1. Abbruch bei Kassenbereich / Summenzeile (erst wenn bereits Artikel vorhanden sind)
+            if (items.isNotEmpty() && isStopLine(upper)) {
                 break
             }
 
             // 2. Kopf- und Stördaten ignorieren
-            if (isNoise(upper) && !upper.contains("RABATT") && !line.startsWith("-")) {
+            if (isHeaderOrNoiseLine(line, upper) && !upper.contains("RABATT") && !line.startsWith("-")) {
                 if (!foundFirstItem) pendingName = null
                 continue
             }
 
-            // 3. Rabatte (z. B. "K Card XTRA Rabatt -5,00")
+            // 3. Rabatte
             if (upper.contains("RABATT") || upper.contains("SPAREN") || line.startsWith("-")) {
                 val discountMatch = PRICE_REGEX.find(line)
                 if (discountMatch != null && items.isNotEmpty()) {
@@ -253,12 +261,11 @@ object KassenzettelParser {
                 continue
             }
 
-            // 4. Multiplikator (z. B. "2 * 4,99" oder "1,014 kg * 0,99")
+            // 4. Multiplikator
             val multMatch = MULTIPLIER_REGEX.find(line)
             if (multMatch != null) {
-                // Check if the first group contains a number for quantity
-                val qtyStr = multMatch.groupValues[1]
-                val parsedQty = if (qtyStr.contains(Regex("""[a-zA-Z]"""))) 1 else qtyStr.toIntOrNull() ?: 1
+                val qtyStr = multMatch.groupValues[1].replace(',', '.')
+                val parsedQty = if (qtyStr.contains('.')) 1 else qtyStr.toIntOrNull() ?: 1
                 val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
                 
                 val lineNoMult = line.substring(multMatch.range.last + 1).trim()
@@ -282,7 +289,7 @@ object KassenzettelParser {
                 continue
             }
 
-            // 5. Preiszeile (z. B. "9,98 A" oder "THÜRINGER WALDQUELL MEDIUM 9,98" oder "2,39 B Kuschelweich")
+            // 5. Preiszeile
             val priceMatch = PRICE_REGEX.find(line)
             if (priceMatch != null) {
                 val priceStr = priceMatch.groupValues[1].replace(',', '.')
@@ -294,7 +301,6 @@ object KassenzettelParser {
                 val lineWithoutPrice = line.replace(PRICE_REGEX, "").replace(TAX_SUFFIX_REGEX, "").trim()
 
                 if (pendingName != null && lineWithoutPrice.isEmpty() && priceVal > 0.05) {
-                    // This line is JUST a price (e.g. "2,18 A"), and we have a pending item.
                     val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && pendingUnitPrice > 0.0 && Math.abs(priceVal - pendingUnitPrice) < 0.05) {
                         pendingQty * pendingUnitPrice
                     } else priceVal
@@ -304,11 +310,10 @@ object KassenzettelParser {
                     pendingQty = 1
                     pendingUnitPrice = null
                 } else {
-                    if (pendingName == null && inlineArticle.length >= 3 && !isNoise(inlineArticle.uppercase())) {
+                    if (pendingName == null && inlineArticle.length >= 3 && !isHeaderOrNoiseLine(inlineArticle, inlineArticle.uppercase())) {
                         pendingName = inlineArticle
                     }
 
-                    // 5a. Preis dem wartenden Artikel mit der gemerkten Stückzahl zuweisen
                     if (pendingName != null && priceVal > 0.05) {
                         val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && pendingUnitPrice > 0.0 && Math.abs(priceVal - pendingUnitPrice) < 0.05) {
                             pendingQty * pendingUnitPrice
@@ -320,16 +325,15 @@ object KassenzettelParser {
                         pendingUnitPrice = null
                     }
 
-                    // 5b. Prüfen, ob dahinter der nächste Artikelname steht
                     var nextArticle = line.substring(priceMatch.range.last + 1)
                     nextArticle = TAX_SUFFIX_REGEX.replace(nextArticle, "")
                     nextArticle = nextArticle.replace(Regex("""^[-*#\s.+]+"""), "").trim()
 
-                    if (nextArticle.length >= 3 && !isNoise(nextArticle.uppercase())) {
+                    if (nextArticle.length >= 3 && !isHeaderOrNoiseLine(nextArticle, nextArticle.uppercase())) {
                         pendingName = nextArticle
                     }
                 }
-            } else if (line.length >= 3 && !isNoise(upper)) {
+            } else if (line.length >= 3 && !isHeaderOrNoiseLine(line, upper)) {
                 pendingName = line
             }
         }
@@ -341,6 +345,7 @@ object KassenzettelParser {
         val items = mutableListOf<Product>()
         var pendingName: String? = null
         var pendingQty = 1
+
         val textSnippet = rawLines.take(5).joinToString(" ")
         val supermarket = supermarketProfiles.find { p -> 
             p.trigger.any { textSnippet.contains(it, ignoreCase = true) } 
@@ -351,18 +356,51 @@ object KassenzettelParser {
             if (line.isBlank()) continue
             val upper = line.uppercase()
 
-            if (FOOTER_STOP_WORDS.any { upper.startsWith(it) || upper.contains("SUMME") || upper.contains("ZU ZAHLEN") || upper.contains("GESAMT") }) {
+            // 1. Stopp-Bedingung absichern: Sobald Summen- oder Abschlusszeile nach Artikeln erkannt wird -> break
+            if (items.isNotEmpty() && isStopLine(upper)) {
                 break
             }
 
-            if (isNoise(upper) && !ALDI_MULT_REGEX.matches(line) && !LIDL_MULT_REGEX.matches(line) && !MULTIPLIER_REGEX.containsMatchIn(line)) {
+            // 2. Marktadresse / Kopfdaten zuverlässig ignorieren
+            if (isHeaderOrNoiseLine(line, upper) && !ALDI_MULT_REGEX.matches(line) && !LIDL_MULT_REGEX.matches(line) && !MULTIPLIER_REGEX.containsMatchIn(line)) {
                 if (upper.contains("RABATT") || upper.contains("PREISVORTEIL")) {
                     applyDiscountToLastItem(line, items)
                 }
                 continue
             }
 
-            if (line.contains("kg x", ignoreCase = true) || line.contains("EUR/kg", ignoreCase = true)) {
+            // 0. EAN-Zeilen (#4000582188093)
+            val eanMatch = Regex("""^#\s*(\d{8,14})""").find(line)
+            if (eanMatch != null) {
+                val eanCode = eanMatch.groupValues[1]
+                if (items.isNotEmpty()) {
+                    items[items.lastIndex] = items.last().copy(barcode = eanCode)
+                }
+                continue
+            }
+
+            // 1. Wiegeartikel (z. B. "0,224 kg x 4,99 €/kg" oder "1.234 kg x 0,80")
+            val weighMatch = WEIGHING_REGEX.find(line)
+            if (weighMatch != null) {
+                val weightVal = weighMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 1.0
+                val unitPrice = weighMatch.groupValues[3].replace(',', '.').toDoubleOrNull() ?: 0.0
+                val g4 = weighMatch.groupValues.getOrNull(4) ?: ""
+                val lineTotal = if (g4.isNotBlank()) {
+                    Math.abs(g4.replace(',', '.').toDoubleOrNull() ?: (weightVal * unitPrice))
+                } else {
+                    Math.round(weightVal * unitPrice * 100.0) / 100.0
+                }
+
+                if (pendingName != null) {
+                    addProductSafely(pendingName, lineTotal, 1, items, corrections, supermarket)
+                    pendingName = null
+                    pendingQty = 1
+                } else if (items.isNotEmpty()) {
+                    val last = items.last()
+                    val updatedPrice = if (lineTotal > 0.05) lineTotal else last.price
+                    items[items.lastIndex] = last.copy(price = updatedPrice, unit = "kg")
+                    pendingQty = 1
+                }
                 continue
             }
 
@@ -392,23 +430,23 @@ object KassenzettelParser {
                 continue
             }
 
-            // Standalone Multiplikator Line (e.g. "2 x 0,79 A" or "1 x 0.99")
+            // Standalone Multiplikator Line (e.g. "2 x 0,79 A" oder "1 x 0.99")
             val multMatch = MULTIPLIER_REGEX.find(line)
             if (multMatch != null) {
-                val qtyStr = multMatch.groupValues[1]
-                val parsedQty = if (qtyStr.contains(Regex("""[a-zA-Z]"""))) 1 else qtyStr.toIntOrNull() ?: 1
+                val qtyStr = multMatch.groupValues[1].replace(',', '.')
+                val parsedQty = if (qtyStr.contains('.')) 1 else qtyStr.toIntOrNull() ?: 1
                 val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
                 
                 val lineNoMult = line.substring(multMatch.range.last + 1).trim()
-                val priceMatch = PRICE_REGEX.find(lineNoMult)
-                val lineTotal = if (priceMatch != null) {
-                    Math.abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: (parsedQty * unitPrice))
+                val priceMatchOnLine = PRICE_REGEX.find(lineNoMult)
+                val linePrice = if (priceMatchOnLine != null) {
+                    Math.abs(priceMatchOnLine.groupValues[1].replace(',', '.').toDoubleOrNull() ?: (parsedQty * unitPrice))
                 } else {
-                    Math.round(parsedQty * unitPrice * 100.0) / 100.0
+                    unitPrice
                 }
 
                 if (pendingName != null) {
-                    addProductSafely(pendingName, lineTotal, parsedQty, items, corrections, supermarket)
+                    addProductSafely(pendingName, linePrice, parsedQty, items, corrections, supermarket)
                     pendingName = null
                     pendingQty = 1
                 } else {
@@ -423,23 +461,33 @@ object KassenzettelParser {
                 val rawName = stdMatch.groupValues[1].trim()
                 val priceStr = stdMatch.groupValues[2].replace(',', '.')
                 val price = priceStr.toDoubleOrNull() ?: 0.0
-                addProductSafely(rawName, price, pendingQty, items, corrections, supermarket)
-                pendingName = null
-                pendingQty = 1
-                continue
+
+                if (rawName.count { it.isLetter() } >= 2) {
+                    addProductSafely(rawName, price, pendingQty, items, corrections, supermarket)
+                    pendingName = null
+                    pendingQty = 1
+                    continue
+                }
             }
 
-            // Separate line price (e.g. line 1: "FRISCHMILCH", line 2: "1,09 A")
+            // Separate line price (e.g. line 1: "FRISCHMILCH", line 2: "1,09 A" or "* 0,88 A")
             val priceMatch = PRICE_REGEX.find(line)
             if (priceMatch != null) {
                 val priceVal = Math.abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0)
-                val lineWithoutPrice = line.replace(PRICE_REGEX, "").replace(TAX_SUFFIX_REGEX, "").trim()
-                
+                val lineWithoutPrice = line.replace(PRICE_REGEX, "")
+                    .replace(Regex("""^[*#\s.-]+"""), "")
+                    .replace(Regex("""[AB12*#€0-9\s]+$"""), "")
+                    .trim()
                 if (pendingName != null && lineWithoutPrice.isEmpty() && priceVal > 0.05) {
                     addProductSafely(pendingName, priceVal, pendingQty, items, corrections, supermarket)
                     pendingName = null
                     pendingQty = 1
-                } else if (lineWithoutPrice.length >= 3 && !isNoise(lineWithoutPrice.uppercase())) {
+                } else if (pendingName == null && lineWithoutPrice.isEmpty() && items.isNotEmpty() && priceVal > 0.05) {
+                    val last = items.last()
+                    if (last.quantity > 1) {
+                        items[items.lastIndex] = last.copy(price = priceVal)
+                    }
+                } else if (lineWithoutPrice.length >= 3 && !isHeaderOrNoiseLine(lineWithoutPrice, lineWithoutPrice.uppercase())) {
                     addProductSafely(lineWithoutPrice, priceVal, pendingQty, items, corrections, supermarket)
                     pendingName = null
                     pendingQty = 1
@@ -447,13 +495,13 @@ object KassenzettelParser {
                 continue
             }
 
-            if (line.startsWith("-") || upper.contains("RABATT")) {
+            if (line.startsWith("-") || upper.contains("RABATT") || upper.contains("PREISVORTEIL")) {
                 applyDiscountToLastItem(line, items)
                 continue
             }
 
             // Must be product name on its own line
-            if (line.length >= 3 && !isNoise(upper)) {
+            if (line.length >= 3 && !isHeaderOrNoiseLine(line, upper)) {
                 pendingName = line
             }
         }
@@ -461,8 +509,39 @@ object KassenzettelParser {
         return bundleIdenticalProducts(items)
     }
 
+    private fun isStopLine(upper: String): Boolean {
+        if (FOOTER_STOP_WORDS.any { upper.contains(it) }) return true
+        if (Regex("""\bBAR\b""").containsMatchIn(upper)) return true
+        return false
+    }
+
+    private fun isHeaderOrNoiseLine(line: String, upper: String): Boolean {
+        // PLZ (5 Ziffern)
+        if (Regex("""\b\d{5}\b""").containsMatchIn(line)) return true
+        // Straßen & Orte (wie Jena-Isserstedt)
+        if (upper.contains("STRASSE") || upper.contains("STRAßE") || upper.contains("STR.") ||
+            Regex("""\bSTR\b""").containsMatchIn(upper) || upper.contains("WEG") || upper.contains("GASSE") ||
+            upper.contains("ALLEE") || upper.contains("PLATZ") || upper.contains("HAUSNR") || upper.contains("PLZ") ||
+            upper.contains("ISSERSTEDT") || upper.contains("JENA")) return true
+        // Rechtsformen
+        if (upper.contains("GMBH") || upper.contains("CO. KG") || upper.contains("CO.KG") ||
+            upper.contains(" CO KG") || Regex("""\bKG\b""").containsMatchIn(upper) ||
+            Regex("""\bAG\b""").containsMatchIn(upper) || upper.contains("E.K.") || upper.contains("E.V.")) return true
+        // Telefon / Steuernummern
+        if (upper.contains("TEL") || upper.contains("TELEFON") || upper.contains("FON") || upper.contains("FAX") ||
+            upper.contains("UST-ID") || upper.contains("ST-NR") || upper.contains("STNR") || upper.contains("ST.-NR") ||
+            upper.contains("STEUER") || Regex("""\bDE\d+""").containsMatchIn(upper) ||
+            Regex("""(?:\+49|0\d{2,4})[\s/-]?\d{5,}""").containsMatchIn(line) ||
+            Regex("""\b\d{3,5}[/-]\d{3,8}\b""").containsMatchIn(line)) return true
+
+        return isNoise(upper)
+    }
+
     private fun isNoise(upper: String): Boolean {
+        if (upper.isBlank()) return true
+        if (upper.startsWith("#") || upper.matches(Regex("""^#\d+.*"""))) return true
         if (upper == "EUR" || upper == "PREIS EUR" || upper == "PREIS" || upper == "LEERGUT" || upper.startsWith("PFAND")) return true
+        if (upper.contains("STRASSE") || upper.contains("STRAßE") || upper.contains("STR.") || upper.contains("HAUSNR") || upper.contains("PLZ")) return true
         if (upper.matches(Regex("""^DE\d+.*""", RegexOption.IGNORE_CASE)) ||
             upper.matches(Regex("""^UST[-.\s]*ID.*""", RegexOption.IGNORE_CASE)) ||
             upper.matches(Regex("""^ST[-.\s]*NR.*""", RegexOption.IGNORE_CASE)) ||
@@ -483,6 +562,8 @@ object KassenzettelParser {
         if (price <= 0.05 || price > 250.0) return
 
         val cleanName = rawName.trim()
+        val upperRaw = cleanName.uppercase()
+        if (isHeaderOrNoiseLine(cleanName, upperRaw) || isStopLine(upperRaw)) return
         if (cleanName.matches(Regex("""\d+\s*Stk.*""", RegexOption.IGNORE_CASE))) return
         if (cleanName.length < 2) return
 
@@ -494,14 +575,14 @@ object KassenzettelParser {
 
         var clean = cleanName
             .replace(Regex("""^\d+\s*(?:5tk|stk|st|x)\s*""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\d+[,.]\d+%\b""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\s+\d+[,.]\d+%\b""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\b\d+([.,]\d+)?%"""), "")
             .replace(Regex("""\s+\d+[,.]\d{2}\s*€?$"""), "") // Trailing prices like " 1.99" or " 1,99 €"
             .replace(Regex("""\s+\d{1,2}\s*$"""), "") // Trailing digits (e.g. OCR errors for cents like " 99")
             .replace(Regex("""[,.]\d{2}\s*$"""), "") // Trailing .99 or ,99 directly attached
             .replace(Regex("""\s+-QS\b""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""^[-*#\s.+]+"""), "")
             .replace(Regex("""[-*#\s.+]+$"""), "")
+            .replace(Regex("""\s+"""), " ")
             .trim()
 
         val cleanUpper = clean.uppercase()
@@ -640,7 +721,7 @@ object KassenzettelParser {
             // 4. Glas (Marmelade, Honig, Senf, Gurken, Kirschen, Pesto, Nutella)
             combined.contains("glas") || combined.contains("marmelade") || combined.contains("konfitüre") ||
             combined.contains("honig") || combined.contains("senf") || combined.contains("nutella") ||
-            combined.contains("apfelmus") || combined.contains("gewürzgurken") || combined.contains("gurken") ||
+            combined.contains("apfelmus") || combined.contains("gewürzgurten") || combined.contains("gurken") ||
             combined.contains("rotkohl") || combined.contains("sauerkraut") || combined.contains("sauerkirschen") ||
             combined.contains("pesto") || combined.contains("oliven") || combined.contains("kapern") ||
             combined.contains("babybrei") -> "Glas"
