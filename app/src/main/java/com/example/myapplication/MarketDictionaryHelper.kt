@@ -108,36 +108,134 @@ object MarketDictionaryHelper {
         }
     }
 
+    fun getSuggestions(query: String, context: Context, limit: Int = 5): List<String> {
+        val q = query.lowercase().trim()
+        if (q.isBlank()) return emptyList()
+
+        val results = mutableListOf<String>()
+
+        marketDictionary.values.forEach { entry ->
+            if (entry.clean_name.lowercase().contains(q) || entry.receipt_pattern.lowercase().contains(q)) {
+                results.add(entry.clean_name)
+            }
+        }
+        generalDictionary.values.forEach { entry ->
+            if (entry.clean_name.lowercase().contains(q) || entry.receipt_pattern.lowercase().contains(q)) {
+                results.add(entry.clean_name)
+            }
+        }
+
+        if (results.size < limit) {
+            try {
+                runBlocking(Dispatchers.IO) {
+                    val dbDao = MarketProductDatabase.getInstance(context).marketProductDao()
+                    val dbEntries = dbDao.searchMarketProductsLike(q)
+                    dbEntries.forEach { entry ->
+                        results.add(entry.cleanName)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        // Fuzzy Fallback falls nichts gefunden
+        if (results.isEmpty()) {
+            val tokens = q.split(Regex("""\s+""")).filter { it.length >= 2 }
+            if (tokens.isNotEmpty()) {
+                val bestToken = tokens.maxByOrNull { it.length } ?: tokens.first()
+                marketDictionary.values.forEach { entry ->
+                    if (entry.clean_name.lowercase().contains(bestToken)) results.add(entry.clean_name)
+                }
+                generalDictionary.values.forEach { entry ->
+                    if (entry.clean_name.lowercase().contains(bestToken)) results.add(entry.clean_name)
+                }
+                try {
+                    runBlocking(Dispatchers.IO) {
+                        val dbDao = MarketProductDatabase.getInstance(context).marketProductDao()
+                        val dbEntries = dbDao.searchMarketProductsLike(bestToken)
+                        dbEntries.forEach { entry -> results.add(entry.cleanName) }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+
+        return results
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedByDescending { it.lowercase().startsWith(q) }
+            .take(limit)
+    }
+
     /**
-     * Sucht zuerst im marktspezifischen, dann im generellen Wörterbuch via Exakt, DB-FTS und Levenshtein-Distanz.
+     * 11. Lern-Vorrang -> Smart Guessing (Tokens) -> DB LIKE %:word% -> Levenshtein-Fallback -> Beautifier.
      */
     fun findBestMatch(rawLine: String, context: Context? = null): MarketDictionaryEntry? {
-        val cleaned = ReceiptImportSanitizer.cleanReceiptText(rawLine).lowercase().trim()
-        if (cleaned.length < 2) return null
+        // 11. Lern-Vorrang: ZUERST UserLearnedCorrections prüfen
+        val learned = ReceiptImportSanitizer.getLearnedCorrection(rawLine)
+        if (learned != null) {
+            return MarketDictionaryEntry(
+                receipt_pattern = rawLine,
+                clean_name = learned,
+                category = "SONSTIGES",
+                default_storage = "Kühlschrank",
+                default_shelf_life_days = 7
+            )
+        }
 
-        // 1. Exakter Match im In-Memory Speicher
+        // 1, 2, 3, 13. Pre-Sanitization & Abfangen von kurzen/leeren Zeilen (< 3 Zeichen)
+        val cleaned = ReceiptImportSanitizer.cleanReceiptText(rawLine).lowercase().trim()
+        if (cleaned.length < 3) return null
+
+        // Exakter Match im In-Memory Speicher
         marketDictionary[cleaned]?.let { return it }
         generalDictionary[cleaned]?.let { return it }
 
-        // 2. DB Lookup über MarketProductDatabase
+        // 4 & 5. Smart-Guessing: Reststring zerlegen, längstes Token nehmen
+        val ignoreTokens = setOf("der", "die", "das", "mit", "von", "und", "für", "dem", "den")
+        val words = cleaned.split(Regex("""\s+"""))
+            .map { it.trim() }
+            .filter { it.length >= 2 && it !in ignoreTokens }
+
+        val longestWord = words.maxByOrNull { it.length }
+
+        if (longestWord != null) {
+            val marketMatch = marketDictionary.values.find {
+                it.receipt_pattern.lowercase().contains(longestWord) || it.clean_name.lowercase().contains(longestWord)
+            }
+            if (marketMatch != null) return marketMatch
+
+            val genMatch = generalDictionary.values.find {
+                it.receipt_pattern.lowercase().contains(longestWord) || it.clean_name.lowercase().contains(longestWord)
+            }
+            if (genMatch != null) return genMatch
+        }
+
+        // 5 & 15. Asynchrone DB Token-Suche via LIKE %:word% mit Try-Catch & Null-Sicherheit
         if (context != null) {
             try {
                 var entry: MarketProductEntry? = null
                 runBlocking(Dispatchers.IO) {
-                    val dao = MarketProductDatabase.getInstance(context).marketProductDao()
-                    if (currentMarket != "general") {
-                        entry = dao.findExactMatchByMarket(cleaned, currentMarket)
-                    }
-                    if (entry == null) {
-                        entry = dao.findExactMatchGeneral(cleaned)
-                    }
-                    if (entry == null) {
-                        val ftsResults = dao.searchMarketProductsFts(cleaned)
-                        entry = ftsResults.find { it.market == currentMarket } ?: ftsResults.firstOrNull()
-                    }
-                    if (entry == null) {
-                        val likeResults = dao.searchMarketProductsLike(cleaned)
-                        entry = likeResults.find { it.market == currentMarket } ?: likeResults.firstOrNull()
+                    try {
+                        val dao = MarketProductDatabase.getInstance(context).marketProductDao()
+                        if (currentMarket != "general") {
+                            entry = dao.findExactMatchByMarket(cleaned, currentMarket)
+                        }
+                        if (entry == null) {
+                            entry = dao.findExactMatchGeneral(cleaned)
+                        }
+                        if (entry == null && longestWord != null) {
+                            val likeResults = dao.searchMarketProductsLike(longestWord)
+                            entry = likeResults.find { it.market == currentMarket } ?: likeResults.firstOrNull()
+                        }
+                        if (entry == null && cleaned.isNotBlank()) {
+                            val ftsResults = dao.searchMarketProductsFts(cleaned)
+                            entry = ftsResults.find { it.market == currentMarket } ?: ftsResults.firstOrNull()
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
                 val found = entry
@@ -155,7 +253,7 @@ object MarketDictionaryHelper {
             }
         }
 
-        // 3. Fuzzy Match via Levenshtein Distanz
+        // 6. Levenshtein-Fallback über gecachte Klar-Namen
         var bestEntry: MarketDictionaryEntry? = null
         var minDistance = Int.MAX_VALUE
 

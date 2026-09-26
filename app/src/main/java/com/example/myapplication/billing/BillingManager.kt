@@ -21,6 +21,9 @@ class BillingManager(private val context: Context, private val coroutineScope: C
     private lateinit var billingClient: BillingClient
     private val subProductId = "pro_subscription_monthly" // Platzhalter für Play Store ID
 
+    private var reconnectAttempts = 0
+    private val maxReconnectAttempts = 3
+
     fun startConnection() {
         billingClient = BillingClient.newBuilder(context)
             .setListener(this)
@@ -31,40 +34,68 @@ class BillingManager(private val context: Context, private val coroutineScope: C
     }
 
     private fun connectToPlayBilling() {
+        if (!::billingClient.isInitialized) return
+
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    reconnectAttempts = 0
+                    Log.d("BillingManager", "Billing setup finished successfully")
                     queryPurchases()
                     queryProductDetails()
+                } else {
+                    Log.w(
+                        "BillingManager",
+                        "Billing setup failed with code ${billingResult.responseCode}: ${billingResult.debugMessage}"
+                    )
                 }
             }
 
             override fun onBillingServiceDisconnected() {
-                // Retry connection
-                connectToPlayBilling()
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++
+                    Log.w("BillingManager", "Billing service disconnected. Retry attempt $reconnectAttempts/$maxReconnectAttempts")
+                    connectToPlayBilling()
+                } else {
+                    Log.e("BillingManager", "Billing service disconnected. Max retry attempts reached.")
+                }
             }
         })
     }
 
     fun queryPurchases() {
-        if (!billingClient.isReady) {
-            Log.e("BillingManager", "BillingClient is not ready")
+        if (!::billingClient.isInitialized || !billingClient.isReady) {
+            Log.w("BillingManager", "BillingClient is not ready for queryPurchases")
             return
         }
 
         coroutineScope.launch {
-            val params = QueryPurchasesParams.newBuilder()
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build()
+            try {
+                val params = QueryPurchasesParams.newBuilder()
+                    .setProductType(BillingClient.ProductType.SUBS)
+                    .build()
 
-            val purchasesResult = billingClient.queryPurchasesAsync(params)
-            if (purchasesResult.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                processPurchases(purchasesResult.purchasesList)
+                val purchasesResult = billingClient.queryPurchasesAsync(params)
+                if (purchasesResult.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    processPurchases(purchasesResult.purchasesList)
+                } else {
+                    Log.w(
+                        "BillingManager",
+                        "Query purchases failed with code ${purchasesResult.billingResult.responseCode}: ${purchasesResult.billingResult.debugMessage}"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("BillingManager", "Error querying purchases", e)
             }
         }
     }
 
     private fun queryProductDetails() {
+        if (!::billingClient.isInitialized || !billingClient.isReady) {
+            Log.w("BillingManager", "BillingClient is not ready for queryProductDetails")
+            return
+        }
+
         val queryProductDetailsParams = QueryProductDetailsParams.newBuilder()
             .setProductList(
                 listOf(
@@ -77,8 +108,29 @@ class BillingManager(private val context: Context, private val coroutineScope: C
             .build()
 
         billingClient.queryProductDetailsAsync(queryProductDetailsParams) { billingResult, productDetailsList ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
-                _subscriptionDetails.value = productDetailsList.first()
+            when (billingResult.responseCode) {
+                BillingClient.BillingResponseCode.OK -> {
+                    if (productDetailsList.isNotEmpty()) {
+                        _subscriptionDetails.value = productDetailsList.first()
+                        Log.d("BillingManager", "Fetched product details successfully: ${productDetailsList.first()}")
+                    } else {
+                        Log.w("BillingManager", "Product details list is empty for SKU: $subProductId")
+                    }
+                }
+                BillingClient.BillingResponseCode.ITEM_UNAVAILABLE,
+                BillingClient.BillingResponseCode.DEVELOPER_ERROR -> {
+                    Log.w(
+                        "BillingManager",
+                        "Product details unavailable (code ${billingResult.responseCode}: ${billingResult.debugMessage}). " +
+                        "This occurs if package is not published or item '$subProductId' is not configured in Google Play Console."
+                    )
+                }
+                else -> {
+                    Log.e(
+                        "BillingManager",
+                        "Failed to query product details (code ${billingResult.responseCode}: ${billingResult.debugMessage})"
+                    )
+                }
             }
         }
     }
@@ -107,7 +159,7 @@ class BillingManager(private val context: Context, private val coroutineScope: C
         } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
             Log.i("BillingManager", "User canceled purchase")
         } else {
-            Log.e("BillingManager", "Purchase failed: \${billingResult.responseCode}")
+            Log.e("BillingManager", "Purchase failed: ${billingResult.responseCode}")
         }
     }
 

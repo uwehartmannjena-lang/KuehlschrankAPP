@@ -48,7 +48,7 @@
         </activity>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant01"
+            android:name="${applicationId}.LauncherVariant01"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_01"
             android:label="@string/app_name"
@@ -62,7 +62,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant02"
+            android:name="${applicationId}.LauncherVariant02"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_02"
             android:label="@string/app_name"
@@ -76,7 +76,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant03"
+            android:name="${applicationId}.LauncherVariant03"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_03"
             android:label="@string/app_name"
@@ -90,7 +90,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant04"
+            android:name="${applicationId}.LauncherVariant04"
             android:enabled="true"
             android:icon="@mipmap/ic_launcher_variant_04"
             android:label="@string/app_name"
@@ -104,7 +104,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant05"
+            android:name="${applicationId}.LauncherVariant05"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_05"
             android:label="@string/app_name"
@@ -118,7 +118,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant06"
+            android:name="${applicationId}.LauncherVariant06"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_06"
             android:label="@string/app_name"
@@ -132,7 +132,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant07"
+            android:name="${applicationId}.LauncherVariant07"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_07"
             android:label="@string/app_name"
@@ -146,7 +146,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant08"
+            android:name="${applicationId}.LauncherVariant08"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_08"
             android:label="@string/app_name"
@@ -160,7 +160,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant09"
+            android:name="${applicationId}.LauncherVariant09"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_09"
             android:label="@string/app_name"
@@ -174,7 +174,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant10"
+            android:name="${applicationId}.LauncherVariant10"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_10"
             android:label="@string/app_name"
@@ -188,7 +188,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant11"
+            android:name="${applicationId}.LauncherVariant11"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_11"
             android:label="@string/app_name"
@@ -202,7 +202,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant12"
+            android:name="${applicationId}.LauncherVariant12"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_12"
             android:label="@string/app_name"
@@ -216,7 +216,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant13"
+            android:name="${applicationId}.LauncherVariant13"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_13"
             android:label="@string/app_name"
@@ -230,7 +230,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant14"
+            android:name="${applicationId}.LauncherVariant14"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_14"
             android:label="@string/app_name"
@@ -244,7 +244,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant15"
+            android:name="${applicationId}.LauncherVariant15"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_15"
             android:label="@string/app_name"
@@ -258,7 +258,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant16"
+            android:name="${applicationId}.LauncherVariant16"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_16"
             android:label="@string/app_name"
@@ -272,7 +272,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant17"
+            android:name="${applicationId}.LauncherVariant17"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_17"
             android:label="@string/app_name"
@@ -286,7 +286,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant18"
+            android:name="${applicationId}.LauncherVariant18"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_18"
             android:label="@string/app_name"
@@ -300,7 +300,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant19"
+            android:name="${applicationId}.LauncherVariant19"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_19"
             android:label="@string/app_name"
@@ -314,7 +314,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant20"
+            android:name="${applicationId}.LauncherVariant20"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_20"
             android:label="@string/app_name"
@@ -328,7 +328,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant21"
+            android:name="${applicationId}.LauncherVariant21"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_21"
             android:label="@string/app_name"
@@ -342,7 +342,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant22"
+            android:name="${applicationId}.LauncherVariant22"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_22"
             android:label="@string/app_name"
@@ -356,7 +356,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant23"
+            android:name="${applicationId}.LauncherVariant23"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_23"
             android:label="@string/app_name"
@@ -370,7 +370,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant24"
+            android:name="${applicationId}.LauncherVariant24"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_24"
             android:label="@string/app_name"
@@ -384,7 +384,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name="com.example.myapplication.LauncherVariant25"
+            android:name="${applicationId}.LauncherVariant25"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_variant_25"
             android:label="@string/app_name"
@@ -428,7 +428,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.example.myapplication.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

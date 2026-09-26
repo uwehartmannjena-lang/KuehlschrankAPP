@@ -11,9 +11,9 @@ import androidx.room.RoomDatabase
     LoyaltyCard::class, LearningEntry::class, ShoppingItem::class, 
     MealPlan::class, ConsumptionPattern::class,
     Household::class, HouseholdLog::class, UserProfile::class,
-    BudgetConfig::class, Receipt::class, CachedProduct::class, UserCorrection::class,
+    BudgetConfig::class, Receipt::class, CachedProduct::class, UserCorrection::class, UserLearnedCorrection::class,
     MarketProductEntry::class, MarketProductFts::class
-], version = 29, exportSchema = false)
+], version = 32, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun fridgeItemDao(): FridgeItemDao
 
@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "fridge_database"
                 )
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
                 instance

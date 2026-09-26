@@ -116,6 +116,9 @@ object KassenzettelParser {
         "LIGHT ROHSCHINKEN" to "Rohschinken Light",
         "CLC" to "K-Classic",
         "MEG. FEINESÜSSRAHM" to "Meggler Feine Süßrahmbutter",
+        "MEG.FEINESÜSSRAHM" to "Meggler Feine Süßrahmbutter",
+        "WM-CHIA-KRÜSTCHEN" to "Weltmeister Chia Krüstchen",
+        "WM CHIA KRÜSTCHEN" to "Weltmeister Chia Krüstchen",
         "SENS EXPRESSREIS" to "Ben's Original Expressreis",
         "CAROTTENKRÜSTCHEN" to "Karottenkrüstchen",
         "CATSAN" to "Catsan Katzenstreu",
@@ -236,14 +239,15 @@ object KassenzettelParser {
             if (line.isBlank()) continue
             val upper = line.uppercase()
 
-            // 1. Abbruch bei Kassenbereich / Summenzeile (erst wenn bereits Artikel vorhanden sind)
-            if (items.isNotEmpty() && isStopLine(upper)) {
+            // 1. Abbruch bei Kassenbereich / Summenzeile
+            if (isStopLine(upper)) {
+                pendingName = null
                 break
             }
 
             // 2. Kopf- und Stördaten ignorieren
             if (isHeaderOrNoiseLine(line, upper) && !upper.contains("RABATT") && !line.startsWith("-")) {
-                if (!foundFirstItem) pendingName = null
+                pendingName = null
                 continue
             }
 
@@ -356,8 +360,9 @@ object KassenzettelParser {
             if (line.isBlank()) continue
             val upper = line.uppercase()
 
-            // 1. Stopp-Bedingung absichern: Sobald Summen- oder Abschlusszeile nach Artikeln erkannt wird -> break
-            if (items.isNotEmpty() && isStopLine(upper)) {
+            // 1. Stopp-Bedingung absichern: Sobald Summen- oder Abschlusszeile erkannt wird -> break
+            if (isStopLine(upper)) {
+                pendingName = null
                 break
             }
 
@@ -366,6 +371,7 @@ object KassenzettelParser {
                 if (upper.contains("RABATT") || upper.contains("PREISVORTEIL")) {
                     applyDiscountToLastItem(line, items)
                 }
+                pendingName = null
                 continue
             }
 

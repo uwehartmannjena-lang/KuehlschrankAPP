@@ -43,6 +43,7 @@ import com.example.myapplication.data.LearningEntry
 import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.OpenFoodFactsApi
 import com.example.myapplication.data.PriceRecord
+import com.example.myapplication.data.UserLearnedCorrection
 import com.example.myapplication.data.Product
 import com.example.myapplication.data.ProductRepository
 import com.example.myapplication.data.ShoppingItem
@@ -591,6 +592,17 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         }
     }
 
+    fun updateCandidateDetails(candidateId: String, newName: String? = null, newImageUrl: String? = null) {
+        importCandidates.value = importCandidates.value.map { candidate ->
+            if (candidate.id == candidateId) {
+                candidate.copy(
+                    name = newName?.takeIf { it.isNotBlank() } ?: candidate.name,
+                    imageUrl = newImageUrl?.takeIf { it.isNotBlank() } ?: candidate.imageUrl
+                )
+            } else candidate
+        }
+    }
+
     fun teachItemCorrection(oldItem: FridgeItem, newName: String? = null, newLocation: String? = null, newCategory: String? = null, newUnit: String? = null) {
         val rawName = extractRawName(oldItem)
         val finalNewName = newName?.trim() ?: oldItem.name.trim()
@@ -608,9 +620,16 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 )
                 dao.insertLearningEntry(updated)
 
+                val userLearned = UserLearnedCorrection(
+                    receiptRawText = rawName,
+                    correctedName = finalNewName
+                )
+                dao.insertUserLearnedCorrection(userLearned)
+
                 withContext(Dispatchers.Main) {
                     learnedCorrections[rawName] = updated.correctedName
                     learnedEntriesMap[rawName] = updated
+                    ReceiptImportSanitizer.addLearnedCorrection(rawName, finalNewName)
                 }
             }
         }
@@ -1102,11 +1121,17 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             try {
                 val fileName = getFileName(context, uri) ?: "unknown_image"
 
-                // Temp-Datei im Cache erstellen, damit unseekable Streams aus Drittanbieter-Apps stabil dekodiert werden
                 val tempFile = File(context.cacheDir, "temp_shared_image.jpg")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
+                if (uri.scheme == "file" && uri.path != null && File(uri.path!!).exists() && File(uri.path!!).length() > 0) {
+                    val srcFile = File(uri.path!!)
+                    if (srcFile.absolutePath != tempFile.absolutePath) {
+                        srcFile.copyTo(tempFile, overwrite = true)
+                    }
+                } else {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
 
@@ -1136,7 +1161,11 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                     val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
 
                     val visionText = Tasks.await(recognizer.process(image))
-                    var products = KassenzettelParser.parseReceipt(visionText, corrections)
+                    var products = try {
+                        KassenzettelParser.parseReceipt(visionText, corrections)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
 
                     if (products.isEmpty() || products.sumOf { it.price } <= 0.0) {
                         withContext(Dispatchers.Main) {
@@ -1151,6 +1180,9 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
             } catch (e: Exception) {
                 Log.e("FridgeViewModel", "Fehler beim Bild-Import", e)
+                withContext(Dispatchers.Main) {
+                    handleScannedProducts(emptyList(), "ERROR")
+                }
             } finally {
                 withContext(Dispatchers.Main) { isSyncing.value = false }
             }
@@ -1169,9 +1201,16 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 val fileName = getFileName(context, uri) ?: "unknown_pdf"
 
                 val tempFile = File(context.cacheDir, "temp_shared_receipt.pdf")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
+                if (uri.scheme == "file" && uri.path != null && File(uri.path!!).exists() && File(uri.path!!).length() > 0) {
+                    val srcFile = File(uri.path!!)
+                    if (srcFile.absolutePath != tempFile.absolutePath) {
+                        srcFile.copyTo(tempFile, overwrite = true)
+                    }
+                } else {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
 
@@ -1212,6 +1251,9 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
             } catch (e: Exception) {
                 Log.e("FridgeViewModel", "PDF Fehler", e)
+                withContext(Dispatchers.Main) {
+                    handleScannedProducts(emptyList(), "ERROR")
+                }
             } finally {
                 withContext(Dispatchers.Main) { isSyncing.value = false }
             }
@@ -1557,7 +1599,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 return@launch
             }
 
-            val existingHashes = dao.getImportHashes().first().toSet()
+            val existingHashes = dao.getImportHashes().toSet()
             val correctionsCopy = learnedCorrections.toMap()
 
             val newItems = products.mapNotNull { p ->

@@ -2,6 +2,7 @@ package com.example.myapplication
 
 import android.content.Context
 import com.example.myapplication.data.AppDatabase
+import com.example.myapplication.data.MarketProductDatabase
 import com.example.myapplication.data.MarketProductEntry
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -36,7 +37,7 @@ object MarketDictionaryImporter {
                 )
             }
 
-            val dao = AppDatabase.getDatabase(context).fridgeItemDao()
+            val dao = MarketProductDatabase.getInstance(context).marketProductDao()
             roomEntries.chunked(500).forEach { chunk ->
                 dao.insertMarketProducts(chunk)
             }
@@ -74,7 +75,7 @@ object MarketDictionaryImporter {
                 line = reader.readLine()
             }
 
-            val dao = AppDatabase.getDatabase(context).fridgeItemDao()
+            val dao = MarketProductDatabase.getInstance(context).marketProductDao()
             entries.chunked(500).forEach { chunk ->
                 dao.insertMarketProducts(chunk)
             }
@@ -87,7 +88,7 @@ object MarketDictionaryImporter {
      * Befüllt die Room-Datenbank initial aus den vorhandenen Assets (kaufland.json, general.json, etc.).
      */
     suspend fun seedDatabaseFromAssets(context: Context) = withContext(Dispatchers.IO) {
-        val dao = AppDatabase.getDatabase(context).fridgeItemDao()
+        val dao = MarketProductDatabase.getInstance(context).marketProductDao()
         if (dao.getMarketProductCount() > 0) return@withContext // Bereits befüllt
 
         val markets = listOf("kaufland", "lidl", "aldi", "rewe", "edeka", "netto", "general")

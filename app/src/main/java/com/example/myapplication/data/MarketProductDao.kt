@@ -15,12 +15,26 @@ interface MarketProductDao {
         SELECT m.* FROM market_dictionary m
         JOIN market_dictionary_fts fts ON m.rowid = fts.docid
         WHERE market_dictionary_fts MATCH :query
+        ORDER BY m.purchase_count DESC
         LIMIT 50
     """)
     suspend fun searchMarketProductsFts(query: String): List<MarketProductEntry>
 
-    @Query("SELECT * FROM market_dictionary WHERE receiptPattern LIKE '%' || :query || '%' OR cleanName LIKE '%' || :query || '%' LIMIT 100")
+    @Query("""
+        SELECT m.* FROM market_dictionary m
+        JOIN market_dictionary_fts fts ON m.rowid = fts.docid
+        WHERE market_dictionary_fts MATCH :query
+        AND (:marketId IS NULL OR m.market_id = :marketId)
+        ORDER BY m.purchase_count DESC
+        LIMIT 50
+    """)
+    suspend fun searchMarketProductsFtsOptionalMarket(query: String, marketId: String?): List<MarketProductEntry>
+
+    @Query("SELECT * FROM market_dictionary WHERE LOWER(receiptPattern) LIKE '%' || LOWER(:query) || '%' OR LOWER(cleanName) LIKE '%' || LOWER(:query) || '%' ORDER BY purchase_count DESC LIMIT 100")
     suspend fun searchMarketProductsLike(query: String): List<MarketProductEntry>
+
+    @Query("SELECT * FROM market_dictionary WHERE LOWER(receiptPattern) LIKE '%' || LOWER(:query) || '%' OR LOWER(cleanName) LIKE '%' || LOWER(:query) || '%' ORDER BY purchase_count DESC LIMIT 5")
+    suspend fun searchTop5MarketProductsLike(query: String): List<MarketProductEntry>
 
     @Query("SELECT * FROM market_dictionary WHERE market = :market OR market = 'general' LIMIT 20000")
     suspend fun getAllMarketProductsForMarket(market: String): List<MarketProductEntry>

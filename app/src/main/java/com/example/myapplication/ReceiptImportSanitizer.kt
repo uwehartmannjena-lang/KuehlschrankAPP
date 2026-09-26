@@ -1,9 +1,12 @@
 package com.example.myapplication
 
 import android.content.Context
+import com.example.myapplication.data.AppDatabase
 import com.example.myapplication.data.Product
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import java.util.Locale
 
 data class FoodDictionaryEntry(
@@ -21,6 +24,39 @@ data class FoodDictionaryEntry(
 object ReceiptImportSanitizer {
 
     private var dictionary: List<FoodDictionaryEntry> = emptyList()
+    private val learnedCorrections: MutableMap<String, String> = HashMap()
+
+    fun loadLearnedCorrections(context: Context) {
+        try {
+            val db = AppDatabase.getDatabase(context)
+            runBlocking(Dispatchers.IO) {
+                val list = db.fridgeItemDao().getAllUserLearnedCorrectionsSync()
+                for (item in list) {
+                    learnedCorrections[item.receiptRawText.lowercase().trim()] = item.correctedName
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun setLearnedCorrections(map: Map<String, String>) {
+        learnedCorrections.clear()
+        for ((k, v) in map) {
+            learnedCorrections[k.lowercase().trim()] = v
+        }
+    }
+
+    fun addLearnedCorrection(rawText: String, correctedName: String) {
+        if (rawText.isNotBlank() && correctedName.isNotBlank()) {
+            learnedCorrections[rawText.lowercase().trim()] = correctedName
+        }
+    }
+
+    fun getLearnedCorrection(rawText: String): String? {
+        if (rawText.isBlank()) return null
+        return learnedCorrections[rawText.lowercase().trim()]
+    }
 
     private val fallbackDictionary: List<FoodDictionaryEntry> = listOf(
         FoodDictionaryEntry("Vollmilch", "Kühlung & Milch", listOf("Milch", "M1lch", "H-Milch", "Frischmilch"), listOf("MILCH", "M1LCH", "VOLLMILCH")),
@@ -65,14 +101,12 @@ object ReceiptImportSanitizer {
         try {
             val jsonString = context.assets.open("food_dictionary.json").bufferedReader().use { it.readText() }
             loadDictionaryFromJson(jsonString)
+            loadLearnedCorrections(context)
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    /**
-     * Berechnet die Levenshtein-Distanz zwischen zwei Zeichenketten.
-     */
     fun calculateLevenshteinDistance(s1: String, s2: String): Int {
         val a = s1.lowercase()
         val b = s2.lowercase()
@@ -85,18 +119,15 @@ object ReceiptImportSanitizer {
             for (j in 1..b.length) {
                 val cost = if (a[i - 1] == b[j - 1]) 0 else 1
                 dp[i][j] = minOf(
-                    dp[i - 1][j] + 1,       // Deletion
-                    dp[i][j - 1] + 1,       // Insertion
-                    dp[i - 1][j - 1] + cost // Substitution
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + cost
                 )
             }
         }
         return dp[a.length][b.length]
     }
 
-    /**
-     * Normalisiert typische OCR-Zeichenfehler (z.B. '1' -> 'i', '0' -> 'o', 'v' -> 'u').
-     */
     fun normalizeOcrChars(input: String): String {
         return input
             .replace('1', 'i')
@@ -107,10 +138,23 @@ object ReceiptImportSanitizer {
             .trim()
     }
 
-    /**
-     * Sucht den besten Wörterbucheintrag mittels Levenshtein-Distanz und OCR-Korrektur.
-     */
+    fun toTitleCase(input: String): String {
+        if (input.isBlank()) return ""
+        return input.trim()
+            .lowercase(Locale.GERMAN)
+            .split(Regex("""\s+"""))
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { word ->
+                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
+            }
+    }
+
     fun findBestMatch(rawText: String): FoodDictionaryEntry? {
+        val learned = getLearnedCorrection(rawText)
+        if (learned != null) {
+            return FoodDictionaryEntry(learned)
+        }
+
         val cleaned = cleanSearchTerm(rawText)
         if (cleaned.length < 3) return null
 
@@ -151,20 +195,21 @@ object ReceiptImportSanitizer {
         return bestEntry
     }
 
-    /**
-     * Korrigiert einen OCR-Namen mit Fuzzy Matching ("M1lch" -> "Vollmilch", "Bvtter" -> "Butter").
-     */
     fun correctNameWithFuzzyMatching(rawName: String): String {
+        val learned = getLearnedCorrection(rawName)
+        if (learned != null) return learned
+
         val match = findBestMatch(rawName)
-        return match?.name ?: cleanSearchTerm(rawName)
+        if (match != null) return match.name
+        val cleaned = cleanSearchTerm(rawName)
+        return toTitleCase(cleaned)
     }
 
-    /**
-     * 4. Harte Map für Kürzel-Übersetzung.
-     */
     private val HARD_TRANSLATIONS = mapOf(
         "BAUTZ." to "",
+        "BAUTZ" to "",
         "PRES." to "",
+        "PRES" to "",
         "ES." to "",
         "Kbb Lachsfil." to "Lachsfilet",
         "Kbb Lachsfil" to "Lachsfilet",
@@ -185,51 +230,69 @@ object ReceiptImportSanitizer {
         "Edelschi." to "Edelschimmel",
         "Kn. Fixe" to "Knorr Fix",
         "TH.WQ." to "Thüringer Waldquell",
-        "Gut&G." to "Gut & Günstig"
+        "TH.WQ" to "Thüringer Waldquell",
+        "TH WQ" to "Thüringer Waldquell",
+        "Gut&G." to "Gut & Günstig",
+        "Meg.feinesüssrahm" to "Meggler Feine Süßrahmbutter",
+        "Meg.feinesuessrahm" to "Meggler Feine Süßrahmbutter",
+        "Wm-chia-krüstchen" to "Weltmeister Chia Krüstchen",
+        "Wm-chia-kruestchen" to "Weltmeister Chia Krüstchen"
     )
 
-    /**
-     * Regex-Engine in cleanReceiptText(rawText: String) zur drastischen Verbesserung der API-Suchergebnisse:
-     * 1. Regex für EAN-Zeilen (#...), Preise & Steuerkürzel (z.B. "1,39 2", "2,49 2", "1,99 B", "0,49 A", "1,29") am Ende entfernen.
-     * 2. Regex für Prozente, Mengen & Multiplikatoren entfernen (z.B. "1,5%", "2 *", "5x", "3x" am Anfang oder mittig).
-     * 3. Regex für Einheiten entfernen (z.B. "Kg", "g", "ml", "L", "Stück", "St.").
-     * 4. Harte Map für Kürzel-Übersetzung anwenden ("Gefl." -> "Geflügel", "KLC" -> "K-Classic", Globus-Kürzel).
-     * 5. Bereinigung: Sonderzeichen (-, *, +) durch Leerzeichen ersetzen und trimmen.
-     */
     fun cleanReceiptText(rawText: String): String {
         var text = rawText
 
-        // 0. EAN/Barcode-Zeilen (#4000582188093) entfernen
-        text = text.replace(Regex("""^#\d+.*""", RegexOption.IGNORE_CASE), "")
-                   .replace(Regex("""#\d+"""), "")
+        // 11. Lern-Vorrang: ZUERST UserLearnedCorrections prüfen
+        val learned = getLearnedCorrection(text)
+        if (learned != null) return learned
 
-        // 1. Regex für Preise & Steuerkürzel/Zeilenend-Kennzeichen entfernen (z.B. "1,99 B", "1,39 2", "2,49 2", "0,49 A", "1,29")
-        text = text.replace(Regex("""\s+\d+[,.]\d{2}\s*[A-Za-z0-9*#€]?\s*$"""), "")
-                   .replace(Regex("""\d+[,.]\d{2}\s*€?"""), "")
-                   .replace(Regex("""\s+[AB12*#€0-9]\s*$"""), "")
-
-        // 2. Regex für Prozente, Mengen & Multiplikatoren (z.B. "1,5%", "2 *", "5x", "3x")
-        text = text.replace(Regex("""\b\d+([.,]\d+)?%\b"""), "")
-                   .replace(Regex("""^\s*\d+\s*[*xX]\s*""", RegexOption.IGNORE_CASE), "")
-                   .replace(Regex("""\b\d+\s*[*xX]\b""", RegexOption.IGNORE_CASE), "")
-
-        // 3. Regex für Einheiten entfernen ("Kg", "g", "ml", "L", "Stück", "St.") & führendes K.
-        text = text.replace(Regex("""\b\d+([.,]\d+)?\s*(kg|g|ml|l|stück|stk|st)\b""", RegexOption.IGNORE_CASE), "")
-                   .replace(Regex("""\b(kg|g|ml|l|stück|stk|st)\b""", RegexOption.IGNORE_CASE), "")
-                   .replace(Regex("""^K[.-]\s*""", RegexOption.IGNORE_CASE), "")
-
-        // 4. Harte Map für Kürzel-Übersetzung
+        // 1. Zuerst gezielte Übersetzungen für bekannte Kürzel anwenden (z.B. "TH.WQ." -> "Thüringer Waldquell")
         for ((key, value) in HARD_TRANSLATIONS) {
             text = text.replace(key, value, ignoreCase = true)
         }
 
-        // Zahlen- und Grammanhänge am Zeilenende ("Tomaten 425", "Katzenfutter 5") entfernen
-        text = text.replace(Regex("""\s+\d+$"""), "")
+        // Quantitäten & Einheiten VOR dem Ersetzen von Kommas/Punkten entfernen ("1,5l" -> "")
+        text = text.replace(Regex("""\b\d+([.,]\d+)?\s*(kg|g|ml|l|stück|stk|st)\b""", RegexOption.IGNORE_CASE), " ")
 
-        // 5. Sonderzeichen (-, *, +) durch Leerzeichen ersetzen und .trim()
-        return text.replace(Regex("""[-*+]"""), " ")
-                   .replace(Regex("""\s+"""), " ")
-                   .trim()
+        // 1. Zwingend ALLE Punkte (.), Kommas (,) und Unterstriche (_) durch Leerzeichen ersetzen
+        text = text.replace('.', ' ').replace(',', ' ').replace('_', ' ')
+
+        text = text.replace(Regex("""^#\d+.*""", RegexOption.IGNORE_CASE), "")
+                   .replace(Regex("""#\d+"""), "")
+
+        text = text.replace(Regex("""\s+\d+[,.]\d{2}\s*[A-Za-z0-9*#€]?\s*$"""), "")
+                   .replace(Regex("""\d+[,.]\d{2}\s*€?"""), "")
+                   .replace(Regex("""\s+[AB12*#€0-9]\s*$"""), "")
+
+        text = text.replace(Regex("""\b\d+([.,]\d+)?%\b"""), "")
+                   .replace(Regex("""^\s*\d+\s*[*xX]\s*""", RegexOption.IGNORE_CASE), "")
+                   .replace(Regex("""\b\d+\s*[*xX]\b""", RegexOption.IGNORE_CASE), "")
+
+        // 2 & 3. Kaufland/Globus-Kürzel & Füllwörter/Gewichtsanhängsel aggressiv entfernen
+        text = text.replace(Regex("""(?i)\b(k[- ]?classic|kpur|kfav|k|allg\s*büble|allg|büble|purland|spreewh|meg|bautz|dit|fin|pres|möv)\b"""), " ")
+                   .replace(Regex("""(?i)\b(xxl|disc|gem|ms\s+l|ger\d+g|\d+g|\d+kg|\d+ml|\d+l)\b"""), " ")
+
+        val cleaned = text.replace(Regex("""[-*+_/\\():;!?#,="'<>]"""), " ")
+                          .replace(Regex("""\s+"""), " ")
+                          .trim()
+
+        // 13. Leere Zeilen (< 3 Zeichen) abfangen
+        if (cleaned.length < 3) return ""
+
+        return cleaned
+    }
+
+    fun intelligentSanitize(input: String): String {
+        var text = input.lowercase(Locale.GERMAN)
+        
+        text = text.replace(Regex("""\b(klc|ja!|ja)\b"""), " ")
+        text = text.replace(Regex("""\b\d+([.,]\d+)?\s*(g|kg|ml|l)\b"""), " ")
+        text = text.replace(Regex("""[.,*\-]"""), " ")
+        
+        val stopWords = setOf("der", "die", "das", "mit", "im", "in", "für", "von", "und", "aus", "bei", "den", "dem")
+        val words = text.split(Regex("""\s+""")).filter { it.isNotBlank() && it !in stopWords }
+        
+        return words.joinToString(" ")
     }
 
     @Deprecated("Use cleanReceiptText instead", ReplaceWith("cleanReceiptText(rawName)"))
@@ -248,19 +311,19 @@ object ReceiptImportSanitizer {
                 cleanNameUpper.matches(Regex("""^BON\d+.*""", RegexOption.IGNORE_CASE)) ||
                 cleanNameUpper.matches(Regex("""^NR\.?\s*\d+.*""", RegexOption.IGNORE_CASE)) ||
                 cleanNameUpper.matches(Regex("""^PREIS.*""", RegexOption.IGNORE_CASE)) ||
-                cleanNameUpper.matches(Regex("""^\d{5}\s+[A-ZÄÖÜß-]+$""")) || // PLZ + Ort z.B. 99425 Weimar
+                cleanNameUpper.matches(Regex("""^\d{5}\s+[A-ZÄÖÜß-]+$""")) ||
                 cleanNameUpper.matches(Regex("""^\d+\s*(KG|G|ML|L|STÜCK|STK|ST)$""")) ||
                 cleanNameUpper.contains("PFANDARTIKEL") ||
                 cleanNameUpper.contains("PFAND") || cleanNameUpper.contains("LEERGUT") ||
                 cleanNameUpper.contains("TEL.") || cleanNameUpper.contains("TEL:") || cleanNameUpper.contains("TEL ") ||
-                cleanNameUpper.startsWith("TEL") || cleanNameUpper.matches(Regex("""^0\d{3,5}[/-]?\d+.*""")) || // Telefonnummer z.B. 03641/46440
+                cleanNameUpper.startsWith("TEL") || cleanNameUpper.matches(Regex("""^0\d{3,5}[/-]?\d+.*""")) ||
                 cleanNameUpper.contains("GMBH") || cleanNameUpper.contains("FILIALE") ||
                 cleanNameUpper.contains("STRASSE") || cleanNameUpper.contains("STR.") ||
                 cleanNameUpper.contains("FAX") || cleanNameUpper.contains("K CARD") ||
                 cleanNameUpper.contains("RABATT") || cleanNameUpper.contains("KARTENZAHLUNG") ||
                 cleanNameUpper.contains("GUTSCHRIFT") || cleanNameUpper.contains("STEUER") ||
                 cleanNameUpper.contains("BRUTTO") || cleanNameUpper == "EUR" ||
-                cleanNameUpper == "SUMME" || cleanNameUpper == "WEIMAR"
+                cleanNameUpper == "SUMME" || cleanNameUpper == "WEIMAR" || cleanNameUpper == "ISSERSTEDT"
 
             product.name.length >= 3 &&
                 product.name != "___IGNORE___" &&
@@ -272,14 +335,30 @@ object ReceiptImportSanitizer {
             if (safeQty >= 99 || safeQty <= 0) safeQty = 1
 
             val trimmedName = product.name.trim()
+            val learned = getLearnedCorrection(trimmedName) ?: getLearnedCorrection(product.rawText ?: "")
             val marketMatch = MarketDictionaryHelper.findBestMatch(trimmedName)
             val dictionaryMatch = findBestMatch(trimmedName)
             val isAlreadyClean = trimmedName.lowercase() in setOf("milch", "butter", "käse", "brot", "eier", "reis", "wasser", "bier", "gurke", "tomaten", "äpfel", "bananen")
+
+            // 12. Kategorie- & Haltbarkeit-Sicherheit bei Smart-Guess / Lernautomatik
             val finalName = when {
+                learned != null -> learned
                 marketMatch != null -> marketMatch.clean_name
                 isAlreadyClean -> trimmedName
                 dictionaryMatch != null && dictionaryMatch.name.equals(trimmedName, ignoreCase = true) -> dictionaryMatch.name
-                else -> trimmedName
+                else -> {
+                    val cleaned = cleanReceiptText(trimmedName)
+                    val beautyName = toTitleCase(cleaned)
+                    if (beautyName.length >= 2) beautyName else toTitleCase(trimmedName)
+                }
+            }
+
+            var guessedStorage = marketMatch?.default_storage
+            if (guessedStorage == null) {
+                val lowerName = finalName.lowercase()
+                if (lowerName.contains("wurst") || lowerName.contains("käse") || lowerName.contains("milch") || lowerName.contains("joghurt")) {
+                    guessedStorage = "Kühlschrank"
+                }
             }
 
             product.copy(
@@ -287,7 +366,7 @@ object ReceiptImportSanitizer {
                 quantity = safeQty,
                 purchaseDate = System.currentTimeMillis(),
                 category = marketMatch?.category ?: product.category,
-                defaultStorage = marketMatch?.default_storage,
+                defaultStorage = guessedStorage,
                 expiryDays = marketMatch?.default_shelf_life_days
             )
         }

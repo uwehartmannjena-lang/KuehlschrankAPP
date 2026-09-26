@@ -76,6 +76,7 @@ import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.ShoppingItem
 import com.example.myapplication.data.BudgetConfig
 import com.example.myapplication.data.CategoryDetector
+import com.example.myapplication.data.ChefkochHelper
 import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.Product
@@ -692,10 +693,16 @@ fun CorrectArticleDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onSave(imageUrlInput) },
-                enabled = imageUrlInput.isNotBlank()
+                onClick = {
+                    if (searchQuery.isNotBlank()) {
+                        viewModel.updateCandidateName(item.id, searchQuery)
+                        viewModel.teachItemCorrection(item, newName = searchQuery)
+                    }
+                    onSave(imageUrlInput)
+                },
+                enabled = searchQuery.isNotBlank()
             ) {
-                Text("Speichern")
+                Text("Speichern & Lernen 💾")
             }
         },
         dismissButton = {
@@ -843,6 +850,12 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
                                     if (candidate.isDuplicate) {
                                         Text("🔄 Bereits vorhanden (überschreibt)", color = Color(0xFFF57C00), style = MaterialTheme.typography.labelSmall)
                                     }
+                                }
+                                IconButton(
+                                    onClick = { selectedCandidateForCorrection = candidate },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, "Bearbeiten & Katalog-Suche", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                 }
                                 IconButton(
                                     onClick = { viewModel.discardImportCandidate(candidate) },
@@ -1616,6 +1629,18 @@ fun ItemModalBottomSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (item == null) "Neuer Artikel" else "Artikel bearbeiten", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                ProductThumbnail(
+                    imageUrl = item?.imageUrl,
+                    category = item?.category ?: "SONSTIGES",
+                    itemName = name.ifBlank { "Artikel" },
+                    storageLocation = location,
+                    modifier = Modifier.size(90.dp)
+                )
+            }
             OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 QuantityStepper(quantity) { quantity = it }
@@ -2716,8 +2741,7 @@ fun RecipeIdeasDialog(viewModel: FridgeViewModel, inventory: List<FridgeItem>, o
                 if (viewModel.isRecipeLoading.value) CircularProgressIndicator()
                 else viewModel.recipeSuggestions.forEach { Text("• $it", modifier = Modifier.clickable { onSelect(it) }) }
                 Button(onClick = { 
-                    val items = inventory.filter { it.expiryDate != null }.map { it.name }.take(3).joinToString("+")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.chefkoch.de/rs/s0/$items/Rezepte.html")))
+                    ChefkochHelper.openChefkoch(context, inventory.filter { it.expiryDate != null }.map { it.name })
                 }, modifier = Modifier.fillMaxWidth()) { Text("Auf Chefkoch suchen") }
             }
         },
@@ -2825,6 +2849,22 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
 
                 Text("Lagerort: ${item.storageLocation}")
                 Text("Menge & Einheit: ${item.quantity} ${item.unit}")
+                val formattedPurchaseDate = remember(item.purchaseDate) {
+                    SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(item.purchaseDate))
+                }
+                Text("Gekauft am: $formattedPurchaseDate")
+                if (!item.receiptId.isNullOrBlank()) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.showImportPreview.value = true
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Receipt, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Zugehörigen Kassenbon ansehen 🧾")
+                    }
+                }
                 if (!item.brand.isNullOrBlank()) Text("Marke: ${item.brand}")
                 if (item.kcal > 0) Text("Kalorien: ${item.kcal} kcal/100g")
                 if (item.nutriScore.isNotBlank()) {
