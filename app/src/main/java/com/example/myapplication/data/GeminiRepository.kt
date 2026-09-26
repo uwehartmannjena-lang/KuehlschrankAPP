@@ -15,7 +15,7 @@ class GeminiRepository {
 
     private val apiKey = "AQ.Ab8RN6ICQy_IBpdBMBjk9GJJHi5_ydt3R9pMK_qbxR91R5Unqw"
     private val generativeModel = GenerativeModel(
-        modelName = "gemini-2.5-flash", 
+        modelName = "gemini-1.5-flash", 
         apiKey = apiKey,
         generationConfig = generationConfig {
             responseMimeType = "application/json"
@@ -126,12 +126,12 @@ class GeminiRepository {
             }
 
             val response = try {
-                Log.d("GeminiRepository", "Sending request to Gemini 2.5 flash...")
+                Log.d("GeminiRepository", "Sending request to Gemini 1.5 flash...")
                 generativeModel.generateContent(inputContent)
             } catch (e: Exception) {
                 Log.e("GeminiRepository", "Primary model failed, trying fallback", e)
                 val fallbackModel = GenerativeModel(
-                    modelName = "gemini-2.5-flash", // Fallback auf das selbe (wir haben keine pro-credits)
+                    modelName = "gemini-1.5-flash", // Fallback auf das selbe (wir haben keine pro-credits)
                     apiKey = apiKey,
                     generationConfig = generationConfig {
                         responseMimeType = "application/json"

@@ -1,7 +1,6 @@
 import sqlite3
 import uuid
 import os
-import random
 
 def generate_database():
     assets_dir = os.path.join("app", "src", "main", "assets")
@@ -17,7 +16,7 @@ def generate_database():
     # Room table structure for MarketProductEntry
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS market_dictionary (
-        id TEXT PRIMARY KEY NOT NULL,
+        id TEXT NOT NULL PRIMARY KEY,
         market TEXT NOT NULL,
         receiptPattern TEXT NOT NULL,
         cleanName TEXT NOT NULL,
@@ -32,15 +31,29 @@ def generate_database():
 
     # Room FTS table
     cursor.execute("""
-    CREATE VIRTUAL TABLE IF NOT EXISTS market_dictionary_fts USING fts4(
-        receiptPattern,
-        cleanName,
-        category,
-        content='market_dictionary'
+    CREATE VIRTUAL TABLE IF NOT EXISTS market_dictionary_fts USING FTS4(
+        receiptPattern TEXT NOT NULL,
+        cleanName TEXT NOT NULL,
+        category TEXT NOT NULL,
+        content=market_dictionary
     );
     """)
 
-    # Definition of Market Chains and Brands
+    # Room FTS triggers
+    cursor.execute("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_market_dictionary_fts_BEFORE_UPDATE BEFORE UPDATE ON market_dictionary BEGIN DELETE FROM market_dictionary_fts WHERE docid=OLD.rowid; END;")
+    cursor.execute("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_market_dictionary_fts_BEFORE_DELETE BEFORE DELETE ON market_dictionary BEGIN DELETE FROM market_dictionary_fts WHERE docid=OLD.rowid; END;")
+    cursor.execute("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_market_dictionary_fts_AFTER_UPDATE AFTER UPDATE ON market_dictionary BEGIN INSERT INTO market_dictionary_fts(docid, receiptPattern, cleanName, category) VALUES (NEW.rowid, NEW.receiptPattern, NEW.cleanName, NEW.category); END;")
+    cursor.execute("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_market_dictionary_fts_AFTER_INSERT AFTER INSERT ON market_dictionary BEGIN INSERT INTO market_dictionary_fts(docid, receiptPattern, cleanName, category) VALUES (NEW.rowid, NEW.receiptPattern, NEW.cleanName, NEW.category); END;")
+
+    # Room master table with identity hash to prevent Room schema mismatch crash
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS room_master_table (
+        id INTEGER PRIMARY KEY,
+        identity_hash TEXT
+    );
+    """)
+    cursor.execute("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES(42, 'aa5247d472fabb9ffef51233392f274c');")
+
     markets = {
         "kaufland": ["K-Classic", "Purland", "K-Bio", "K-Take it veggie", "K-Favorites"],
         "lidl": ["Milbona", "Dulano", "Cien", "Vemondo", "Crownfield", "Freeway", "Sonnemund"],
@@ -57,7 +70,6 @@ def generate_database():
         "general": ["Bauer", "Dr. Oetker", "Müllermilch", "Coca-Cola", "Knorr", "Barilla", "Nestlé", "Ferrero"]
     }
 
-    # Categories definition with base items, storage, and default shelf life
     categories = {
         "Obst & Gemüse": {
             "storage": "Kühlschrank",
@@ -104,7 +116,8 @@ def generate_database():
                 ("Frischkäse Natur 200g", "FRISCHKAESE NATUR 200G"), ("Mozzarella 125g", "MOZZARELLA 125G"),
                 ("Emmentaler Gerieben 200g", "EMMENTALER GERIEBEN"), ("Feta Original 200g", "FETA ORIGINAL 200G"),
                 ("Schafskäse 200g", "SCHAFSKAESE 200G"), ("Milchreis Zimt 200g", "MILCHREIS ZIMT"),
-                ("Protein Pudding Schoko", "PROTEIN PUDDING SCHOKO"), ("Creme Fraiche 150g", "CREME FRAICHE 150G")
+                ("Protein Pudding Schoko", "PROTEIN PUDDING SCHOKO"), ("Creme Fraiche 150g", "CREME FRAICHE 150G"),
+                ("Meggler Feine Süßrahmbutter", "MEG.FEINESÜSSRAHM")
             ]
         },
         "Vorratskammer": {
@@ -144,7 +157,8 @@ def generate_database():
                 ("Buttertoast 500g", "BUTTERTOAST 500G"), ("Steinofenbaguette 250g", "STEINOFENBAGUETTE"),
                 ("Kaiserbrötchen", "KAISERBROETCHEN 1STK"), ("Laugenstange", "LAUGENSTANGE 1STK"),
                 ("Buttercroissant", "BUTTERCROISSANT 1STK"), ("Franzbrötchen", "FRANZBROETCHEN 1STK"),
-                ("Sonnenblumenbrot 500g", "SONNENBLUMENBROT"), ("Pumpernickel 250g", "PUMPERNICKEL 250G")
+                ("Sonnenblumenbrot 500g", "SONNENBLUMENBROT"), ("Pumpernickel 250g", "PUMPERNICKEL 250G"),
+                ("Weltmeister Chia Krüstchen", "WM-CHIA-KRÜSTCHEN")
             ]
         },
         "Getränke": {
@@ -192,7 +206,6 @@ def generate_database():
         }
     }
 
-    # Descriptors to scale the database to 20,000 distinct items
     variations = [
         (" Standard", ""), (" Bio", " BIO"), (" Premium", " PREM"), (" XXL", " XXL"),
         (" Light", " LIGHT"), (" Zero", " ZERO"), (" Mager", " MAGER"), (" Delikatess", " DELIKATESS"),
@@ -205,7 +218,6 @@ def generate_database():
     total_count = 0
     records = []
 
-    # Iterate through markets and categories to build 20,000 items
     for market_key, brands in markets.items():
         for cat_name, cat_data in categories.items():
             storage = cat_data["storage"]
@@ -221,7 +233,6 @@ def generate_database():
                             pattern_prefix = f"{brand.upper()} "
                         else:
                             brand_prefix = f"{brand} "
-                            # Abbreviate brand for receipt pattern
                             brand_code = brand.split()[0].upper()
                             if len(brand_code) > 4 and not brand_code.startswith("BIO"):
                                 brand_code = brand_code[:3]
@@ -252,13 +263,11 @@ def generate_database():
         if total_count >= 20000:
             break
 
-    # Bulk insert into market_dictionary table
     cursor.executemany("""
     INSERT INTO market_dictionary (id, market, receiptPattern, cleanName, category, defaultStorage, defaultShelfLifeDays)
     VALUES (?, ?, ?, ?, ?, ?, ?);
     """, records)
 
-    # Populate FTS virtual table
     cursor.execute("""
     INSERT INTO market_dictionary_fts (rowid, receiptPattern, cleanName, category)
     SELECT rowid, receiptPattern, cleanName, category FROM market_dictionary;
@@ -266,8 +275,6 @@ def generate_database():
 
     conn.commit()
     conn.close()
-
-    print(f"Erfolgreich SQLite Asset-Datenbank mit {total_count} Artikeln erstellt unter: {db_path}")
 
 if __name__ == "__main__":
     generate_database()

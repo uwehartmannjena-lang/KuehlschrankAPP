@@ -1,12 +1,20 @@
 package com.example.myapplication
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import android.util.Log
 import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.Product
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.text.Text
+import java.io.File
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognizer
 import java.util.*
 import kotlin.math.round
 
@@ -20,48 +28,67 @@ object KassenzettelParser {
     private val MULTIPLIER_REGEX = Regex("""^(\d+(?:[,.]\d+)?)\s*(?:kg|g|l|ml|stk|stück)?\s*[*xX]\s*(\d+[,.]\d{2})""", RegexOption.IGNORE_CASE)
     private val WEIGHING_REGEX = Regex("""^(\d+[,.]\d+)\s*(kg|g)\s*[*xX]\s*(\d+[,.]\d{2})\s*(?:€/kg|EUR/kg|€|EUR)?(?:\s+(-?\d+[,.]\d{2}))?""", RegexOption.IGNORE_CASE)
 
-    // Aldi: "8 x 0,89 € ASTRA URTYP DOSE 7,12 € 2"
     private val ALDI_MULT_REGEX = Regex(
         """^(\d+)\s*(?:[xX*]|Stk\.?\s*[aáà])\s*(\d+[,.]\d{2})\s*€?\s+(.*?)\s+(-?\d+[,.]\d{2})\s*(?:€\s*)?[AB12]?$""",
         RegexOption.IGNORE_CASE
     )
 
-    // Lidl: "Catsan Katzenstreu 8,99 X 2 17,98 B"
     private val LIDL_MULT_REGEX = Regex(
         """^(.*?)\s+(\d+[,.]\d{2})\s*(?:[xX*]|Stk\.?\s*[aáà])\s*(\d+)\s+(-?\d+[,.]\d{2})\s*[AB12]?$""",
         RegexOption.IGNORE_CASE
     )
 
-    // Standard: "Name 1,29 B" oder "Name 0,85 2" oder "Kart.vfk 2,5kg 1,39 2"
     private val STANDARD_LINE_REGEX = Regex(
         """^(.*?)\s+(-?\d+[,.]\d{2})\s*(?:€\s*)?(?:[AB12*#€]\s*|\d\s*)*$"""
+    )
+
+    private val GLOBUS_LINE_REGEX = Regex(
+        """^(.*?)\s+(-?\d+[,.]\d{2})\s+(?:\d\s*|A|B)$"""
     )
 
     private val FOOTER_STOP_WORDS = setOf(
         "SUMME", "GESAMT", "ZU ZAHLEN", "TOTAL", "KARTENZAHLUNG",
         "BARGELD", "GEG. BAR", "RÜCKGELD", "ZAHLBETRAG", "GUTHABEN",
         "STEUER %", "KUNDENBELEG", "TERMINAL", "VISA", "GIROCARD",
-        "MASTERCARD", "TSE-SIGNATUR", "PAYBACK", "LIDL PAY", "EC-CASH",
-        "EMV-AID", "TERMINAL-ID", "TRACE", "BELEG-NR", "KARTEN-NR",
-        "BAR", "KREDITKARTE", "EC-KARTE"
+        "MASTERCARD", "TSE-SIGNATUR", "LIDL PAY", "EC-CASH",
+        "EMV-AID", "TERMINAL-ID", "TRACE", "BELEG-NR",
+        "KREDITKARTE", "EC-KARTE", "ANZ. ARTIKEL", "ANZAHL ARTIKEL"
     )
 
-    // KOPF- UND WÄHRUNGSMÜLL FILTERN (inklusive "EUR", "PREIS", "DE12345...")
     private val IGNORE_KEYWORDS = setOf(
         "PFANDWERT", "PFAND", "LEERGUT", "PAPIERTRAGETASCHE", "KNOTENBEUTEL",
         "BELEGKOPIE", "BONKOPIE", "HERZLICH WILLKOMMEN", "VIELEN DANK",
         "KAUFLAND", "LIDL", "REWE", "NAHKAUF", "ALDI", "DM-DROGERIE", "GLOBUS",
         "STRASSE", "STR.", "WEIMAR", "JENA", "ERFURT", "ISSERSTEDT", "GMBH", "UST-ID", "DE1", "DE2",
-        "EUR", "PREIS EUR", "PREIS", "SUMME", "RABATT", "SOFORT-RABATT", "AKTION", "PFANDRÜCKGABE"
+        "EUR", "PREIS EUR", "PREIS", "RABATT", "SOFORT-RABATT", "AKTION", "PFANDRÜCKGABE",
+        "PAYBACK", "KARTENNR", "KARTEN-NR"
     )
 
-    // Erweitertes Marken- & Artikel-Lexikon für Thüringen
     private val BRAND_DATABASE = mapOf(
+        "EXSREIS" to "Expressreis",
+        "AROTTENKRÜSTCHEN" to "Karottenkrüstchen",
+        "AROTTENKRUESTCHEN" to "Karottenkrüstchen",
+        "GEWÜRZS" to "Gewürzgurken",
+        "ERDN GERÖS GES" to "Erdnüsse geröstet",
+        "SCHWW SCHINKEN" to "Schinken",
+        "H BRUSTFILET" to "Hähnchen-Brustfilet",
+        "HERZHAF" to "Herzhaft",
+        "PUTEN-LACHSSCHINKE N" to "Puten-Lachsschinken",
         "KART.VFK 2,5KG" to "Kartoffeln",
         "KART.VFK" to "Kartoffeln",
-        "FIN. HÄHNCHENBRUST C" to "Hähnchenbrust",
-        "FIN. HÄHNCHENBRUST" to "Hähnchenbrust",
-        "FIN. HÄHNCHENBR" to "Hähnchenbrust",
+        "HAUS HANDKÄSE" to "Hausmacher Handkäse",
+        "HAUS HANDKAESE" to "Hausmacher Handkäse",
+        "FINESSE PFEFFER" to "Herta Finesse Pfeffer",
+        "FIN. PFEFFER" to "Herta Finesse Pfeffer",
+        "FIN. HÄHNCHENBRUST C" to "Herta Finesse Hähnchenbrust",
+        "FIN. HÄHNCHENBRUST M" to "Herta Finesse Hähnchenbrust",
+        "FIN. HÄHNCHENBRUST" to "Herta Finesse Hähnchenbrust",
+        "FIN. HÄHNCHENBR" to "Herta Finesse Hähnchenbrust",
+        "FINESSE HÄHNCHENBRUST" to "Herta Finesse Hähnchenbrust",
+        "FINESSE HÄHNCHENBR" to "Herta Finesse Hähnchenbrust",
+        "FINESSS HÄHNCHENBRUST" to "Herta Finesse Hähnchenbrust",
+        "GUTFRIED HÄHNCHENBRUST M" to "Gutfried Hähnchenbrust",
+        "GUTFRIED HÄHNCHENBRUST" to "Gutfried Hähnchenbrust",
         "KLOSSTEIG 750 G" to "Kloßteig",
         "KLOSSTEIG" to "Kloßteig",
         "KLOßTEIG" to "Kloßteig",
@@ -74,7 +101,6 @@ object KassenzettelParser {
         "ES. BLUSE" to "Esmara Bluse",
         "SÖHNLEIN WHITE ICE" to "Söhnlein White Ice",
         "APEROL APERITIVO" to "Aperol Aperitivo",
-        "K.BLATTSPINAT" to "K-Classic Blattspinat",
         "KUSCHELWEICH" to "Kuschelweich Weichspüler",
         "PROTEIN KÄSE MILD" to "Protein Käse mild",
         "BAUTZ.SENF MS" to "Bautz'ner Senf mittelscharf",
@@ -116,6 +142,9 @@ object KassenzettelParser {
         "LIGHT ROHSCHINKEN" to "Rohschinken Light",
         "CLC" to "K-Classic",
         "MEG. FEINESÜSSRAHM" to "Meggler Feine Süßrahmbutter",
+        "MEG.FEINESÜSSRAHM" to "Meggler Feine Süßrahmbutter",
+        "WM-CHIA-KRÜSTCHEN" to "Weltmeister Chia Krüstchen",
+        "WM CHIA KRÜSTCHEN" to "Weltmeister Chia Krüstchen",
         "SENS EXPRESSREIS" to "Ben's Original Expressreis",
         "CAROTTENKRÜSTCHEN" to "Karottenkrüstchen",
         "CATSAN" to "Catsan Katzenstreu",
@@ -154,13 +183,17 @@ object KassenzettelParser {
         val sortedLines = allLines.sortedBy { it.boundingBox?.top ?: 0 }
         val rows = mutableListOf<MutableList<Text.Line>>()
 
-        val avgHeight = allLines.map { it.boundingBox?.height() ?: 0 }.filter { it > 0 }.average().takeIf { !it.isNaN() } ?: 20.0
-        val threshold = (avgHeight * 0.6).toInt().coerceIn(10, 15) // Hochpräzise 10-15 Pixel Toleranz für Y-Bündelung
+        val avgHeight = allLines.mapNotNull { it.boundingBox?.height() }.filter { it > 0 }.average().takeIf { !it.isNaN() } ?: 20.0
+        val threshold = (avgHeight * 0.6).toInt().coerceIn(10, 20)
 
         for (line in sortedLines) {
             val top = line.boundingBox?.top ?: 0
             val existingRow = rows.find { Math.abs((it.first().boundingBox?.top ?: 0) - top) < threshold }
-            if (existingRow != null) existingRow.add(line) else rows.add(mutableListOf(line))
+            if (existingRow != null) {
+                existingRow.add(line)
+            } else {
+                rows.add(mutableListOf(line))
+            }
         }
 
         val reconstructedText = rows.joinToString("\n") { row ->
@@ -174,22 +207,22 @@ object KassenzettelParser {
         val rawLines = text.lines()
         val upperText = text.uppercase()
 
-        // 1. Kopfzeilen-Extraktion (Händler & Datum)
         val supermarket = detectSupermarket(upperText)
         val purchaseDate = extractDate(text)
 
-        // 2. Zuverlässige Kaufland-Erkennung
         val isKaufland = supermarket == "Kaufland" || upperText.contains("K CARD") || upperText.contains("PREIS EUR")
+        val isGlobus = supermarket == "Globus"
 
         val products = if (isKaufland) {
             parseKauflandInterleaved(rawLines, corrections)
+        } else if (isGlobus) {
+            parseGlobusReceipt(rawLines, corrections)
         } else {
             parseStandardReceipt(rawLines, corrections)
         }
 
-        // Metadaten an Produkte hängen
         val result = products.map { it.copy(supermarket = supermarket, purchaseDate = purchaseDate) }
-        println("DEBUG PARSE_RECEIPT_TEXT RESULT: $result")
+        try { Log.i("KassenzettelParser", "DEBUG PARSE_RECEIPT_TEXT RESULT: ${result.size} Artikel gefunden.") } catch (t: Throwable) {}
         return result
     }
 
@@ -208,19 +241,132 @@ object KassenzettelParser {
     }
 
     private fun extractDate(text: String): Long {
-        val dateRegex = Regex("""(\d{2})[./](\d{2})[./](\d{2,4})""")
-        val match = dateRegex.find(text)
+        val headerText = text.lines().take(25).joinToString("\n")
+        val dateRegex = Regex("""(\d{2})[./-](\d{2})[./-](\d{2,4})""")
+        val match = dateRegex.find(headerText) ?: dateRegex.find(text)
+
         return if (match != null) {
             try {
                 val day = match.groupValues[1].toInt()
                 val month = match.groupValues[2].toInt() - 1
                 var year = match.groupValues[3].toInt()
                 if (year < 100) year += 2000
+
+                val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+                if (year > currentYear + 2 || year < 2020) year = currentYear
+
                 val cal = Calendar.getInstance()
                 cal.set(year, month, day, 12, 0)
                 cal.timeInMillis
             } catch (e: Exception) { System.currentTimeMillis() }
-        } else System.currentTimeMillis()
+        } else {
+            System.currentTimeMillis()
+        }
+    }
+
+    private fun parseGlobusReceipt(rawLines: List<String>, corrections: Map<String, String>): List<Product> {
+        val items = mutableListOf<Product>()
+        var pendingName: String? = null
+        val supermarket = "Globus"
+
+        for (rawLine in rawLines) {
+            val line = rawLine.trim()
+            if (line.isBlank()) continue
+            val upper = line.uppercase()
+
+            if (isStopLine(upper)) {
+                pendingName = null
+                break
+            }
+
+            val hasPrice = PRICE_REGEX.containsMatchIn(line)
+            if (isHeaderOrNoiseLine(line, upper)) {
+                if (!hasPrice) {
+                    pendingName = null
+                    continue
+                }
+            }
+
+            val globusMatch = GLOBUS_LINE_REGEX.matchEntire(line)
+            if (globusMatch != null) {
+                val rawName = globusMatch.groupValues[1].trim()
+                val priceStr = globusMatch.groupValues[2].replace(',', '.')
+                val price = priceStr.toDoubleOrNull() ?: 0.0
+
+                if (rawName.count { it.isLetter() } >= 2 && !rawName.startsWith("#")) {
+                    addProductSafely(rawName, price, 1, items, corrections, supermarket)
+                    pendingName = null
+                    continue
+                }
+            }
+
+            val weighMatch = WEIGHING_REGEX.find(line)
+            if (weighMatch != null) {
+                val weightVal = weighMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 1.0
+                val unitPrice = weighMatch.groupValues[3].replace(',', '.').toDoubleOrNull() ?: 0.0
+                val g4 = weighMatch.groupValues.getOrNull(4) ?: ""
+                val lineTotal = if (g4.isNotBlank()) {
+                    Math.abs(g4.replace(',', '.').toDoubleOrNull() ?: (weightVal * unitPrice))
+                } else {
+                    Math.round(weightVal * unitPrice * 100.0) / 100.0
+                }
+
+                if (pendingName != null) {
+                    addProductSafely(pendingName, lineTotal, 1, items, corrections, supermarket)
+                    pendingName = null
+                }
+                continue
+            }
+
+            val multMatch = MULTIPLIER_REGEX.find(line)
+            if (multMatch != null) {
+                val qtyStr = multMatch.groupValues[1].replace(',', '.')
+                val parsedQty = if (qtyStr.contains('.')) 1 else qtyStr.toIntOrNull() ?: 1
+                val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
+
+                val lineNoMult = line.substring(multMatch.range.last + 1).trim()
+                val priceMatchOnLine = PRICE_REGEX.find(lineNoMult)
+                val linePrice = if (priceMatchOnLine != null) {
+                    Math.abs(priceMatchOnLine.groupValues[1].replace(',', '.').toDoubleOrNull() ?: (parsedQty * unitPrice))
+                } else {
+                    unitPrice
+                }
+
+                if (pendingName != null) {
+                    addProductSafely(pendingName, linePrice, parsedQty, items, corrections, supermarket)
+                    pendingName = null
+                }
+                continue
+            }
+
+            val priceMatch = PRICE_REGEX.find(line)
+            if (priceMatch != null) {
+                val priceVal = Math.abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0)
+                val lineWithoutPrice = line.replace(PRICE_REGEX, "")
+                    .replace(Regex("""^[#\s.-]+"""), "")
+                    .replace(Regex("""[AB12*#€0-9\s]+$"""), "")
+                    .replace(Regex("""^\d{10,}$"""), "")
+                    .trim()
+
+                if (pendingName != null && lineWithoutPrice.isEmpty() && priceVal > 0.05) {
+                    addProductSafely(pendingName, priceVal, 1, items, corrections, supermarket)
+                    pendingName = null
+                } else if (lineWithoutPrice.length >= 3 && !isHeaderOrNoiseLine(lineWithoutPrice, lineWithoutPrice.uppercase())) {
+                    addProductSafely(lineWithoutPrice, priceVal, 1, items, corrections, supermarket)
+                    pendingName = null
+                }
+                continue
+            }
+
+            if (line.startsWith("#") || Regex("""^\d{10,}$""").matches(line)) {
+                continue
+            }
+
+            if (line.length >= 3 && !isHeaderOrNoiseLine(line, upper)) {
+                pendingName = line
+            }
+        }
+        return bundleIdenticalProducts(items)
     }
 
     private fun parseKauflandInterleaved(rawLines: List<String>, corrections: Map<String, String>): List<Product> {
@@ -236,18 +382,19 @@ object KassenzettelParser {
             if (line.isBlank()) continue
             val upper = line.uppercase()
 
-            // 1. Abbruch bei Kassenbereich / Summenzeile (erst wenn bereits Artikel vorhanden sind)
-            if (items.isNotEmpty() && isStopLine(upper)) {
+            if (isStopLine(upper)) {
+                pendingName = null
                 break
             }
 
-            // 2. Kopf- und Stördaten ignorieren
+            val hasPrice = PRICE_REGEX.containsMatchIn(line)
             if (isHeaderOrNoiseLine(line, upper) && !upper.contains("RABATT") && !line.startsWith("-")) {
-                if (!foundFirstItem) pendingName = null
-                continue
+                if (!hasPrice) {
+                    pendingName = null
+                    continue
+                }
             }
 
-            // 3. Rabatte
             if (upper.contains("RABATT") || upper.contains("SPAREN") || line.startsWith("-")) {
                 val discountMatch = PRICE_REGEX.find(line)
                 if (discountMatch != null && items.isNotEmpty()) {
@@ -261,13 +408,12 @@ object KassenzettelParser {
                 continue
             }
 
-            // 4. Multiplikator
             val multMatch = MULTIPLIER_REGEX.find(line)
             if (multMatch != null) {
                 val qtyStr = multMatch.groupValues[1].replace(',', '.')
                 val parsedQty = if (qtyStr.contains('.')) 1 else qtyStr.toIntOrNull() ?: 1
                 val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
-                
+
                 val lineNoMult = line.substring(multMatch.range.last + 1).trim()
                 val priceMatch = PRICE_REGEX.find(lineNoMult)
                 val lineTotal = if (priceMatch != null) {
@@ -289,7 +435,6 @@ object KassenzettelParser {
                 continue
             }
 
-            // 5. Preiszeile
             val priceMatch = PRICE_REGEX.find(line)
             if (priceMatch != null) {
                 val priceStr = priceMatch.groupValues[1].replace(',', '.')
@@ -297,7 +442,7 @@ object KassenzettelParser {
 
                 var inlineArticle = line.substring(0, priceMatch.range.first).trim()
                 inlineArticle = TAX_SUFFIX_REGEX.replace(inlineArticle, "").trim()
-                
+
                 val lineWithoutPrice = line.replace(PRICE_REGEX, "").replace(TAX_SUFFIX_REGEX, "").trim()
 
                 if (pendingName != null && lineWithoutPrice.isEmpty() && priceVal > 0.05) {
@@ -347,8 +492,8 @@ object KassenzettelParser {
         var pendingQty = 1
 
         val textSnippet = rawLines.take(5).joinToString(" ")
-        val supermarket = supermarketProfiles.find { p -> 
-            p.trigger.any { textSnippet.contains(it, ignoreCase = true) } 
+        val supermarket = supermarketProfiles.find { p ->
+            p.trigger.any { textSnippet.contains(it, ignoreCase = true) }
         }?.name
 
         for (rawLine in rawLines) {
@@ -356,20 +501,22 @@ object KassenzettelParser {
             if (line.isBlank()) continue
             val upper = line.uppercase()
 
-            // 1. Stopp-Bedingung absichern: Sobald Summen- oder Abschlusszeile nach Artikeln erkannt wird -> break
-            if (items.isNotEmpty() && isStopLine(upper)) {
+            if (isStopLine(upper)) {
+                pendingName = null
                 break
             }
 
-            // 2. Marktadresse / Kopfdaten zuverlässig ignorieren
+            val hasPrice = PRICE_REGEX.containsMatchIn(line)
             if (isHeaderOrNoiseLine(line, upper) && !ALDI_MULT_REGEX.matches(line) && !LIDL_MULT_REGEX.matches(line) && !MULTIPLIER_REGEX.containsMatchIn(line)) {
                 if (upper.contains("RABATT") || upper.contains("PREISVORTEIL")) {
                     applyDiscountToLastItem(line, items)
                 }
-                continue
+                if (!hasPrice) {
+                    pendingName = null
+                    continue
+                }
             }
 
-            // 0. EAN-Zeilen (#4000582188093)
             val eanMatch = Regex("""^#\s*(\d{8,14})""").find(line)
             if (eanMatch != null) {
                 val eanCode = eanMatch.groupValues[1]
@@ -379,7 +526,6 @@ object KassenzettelParser {
                 continue
             }
 
-            // 1. Wiegeartikel (z. B. "0,224 kg x 4,99 €/kg" oder "1.234 kg x 0,80")
             val weighMatch = WEIGHING_REGEX.find(line)
             if (weighMatch != null) {
                 val weightVal = weighMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 1.0
@@ -404,7 +550,6 @@ object KassenzettelParser {
                 continue
             }
 
-            // Aldi
             val aldiMatch = ALDI_MULT_REGEX.matchEntire(line)
             if (aldiMatch != null) {
                 val qty = aldiMatch.groupValues[1].toIntOrNull() ?: 1
@@ -417,7 +562,6 @@ object KassenzettelParser {
                 continue
             }
 
-            // Lidl
             val lidlMatch = LIDL_MULT_REGEX.matchEntire(line)
             if (lidlMatch != null) {
                 val rawName = lidlMatch.groupValues[1].trim()
@@ -430,13 +574,12 @@ object KassenzettelParser {
                 continue
             }
 
-            // Standalone Multiplikator Line (e.g. "2 x 0,79 A" oder "1 x 0.99")
             val multMatch = MULTIPLIER_REGEX.find(line)
             if (multMatch != null) {
                 val qtyStr = multMatch.groupValues[1].replace(',', '.')
                 val parsedQty = if (qtyStr.contains('.')) 1 else qtyStr.toIntOrNull() ?: 1
                 val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
-                
+
                 val lineNoMult = line.substring(multMatch.range.last + 1).trim()
                 val priceMatchOnLine = PRICE_REGEX.find(lineNoMult)
                 val linePrice = if (priceMatchOnLine != null) {
@@ -455,7 +598,6 @@ object KassenzettelParser {
                 continue
             }
 
-            // Standard line on same line (e.g. "Name 1,29 B")
             val stdMatch = STANDARD_LINE_REGEX.matchEntire(line)
             if (stdMatch != null && !MULTIPLIER_REGEX.containsMatchIn(line)) {
                 val rawName = stdMatch.groupValues[1].trim()
@@ -470,7 +612,6 @@ object KassenzettelParser {
                 }
             }
 
-            // Separate line price (e.g. line 1: "FRISCHMILCH", line 2: "1,09 A" or "* 0,88 A")
             val priceMatch = PRICE_REGEX.find(line)
             if (priceMatch != null) {
                 val priceVal = Math.abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0)
@@ -500,7 +641,6 @@ object KassenzettelParser {
                 continue
             }
 
-            // Must be product name on its own line
             if (line.length >= 3 && !isHeaderOrNoiseLine(line, upper)) {
                 pendingName = line
             }
@@ -511,35 +651,33 @@ object KassenzettelParser {
 
     private fun isStopLine(upper: String): Boolean {
         if (FOOTER_STOP_WORDS.any { upper.contains(it) }) return true
-        if (Regex("""\bBAR\b""").containsMatchIn(upper)) return true
+        if (upper.matches(Regex("""^BAR\s*\d+.*"""))) return true
         return false
     }
 
     private fun isHeaderOrNoiseLine(line: String, upper: String): Boolean {
-        // PLZ (5 Ziffern)
-        if (Regex("""\b\d{5}\b""").containsMatchIn(line)) return true
-        // Straßen & Orte (wie Jena-Isserstedt)
+        if (upper.contains("PLZ") || upper.contains("STRASSE") || upper.contains("STRAßE") || upper.contains("STR.") ||
+            upper.contains("JENA") || upper.contains("WEIMAR") || upper.contains("ERFURT") || upper.contains("FILIALE")) {
+            if (Regex("""\b\d{5}\b""").containsMatchIn(line)) return true
+        }
         if (upper.contains("STRASSE") || upper.contains("STRAßE") || upper.contains("STR.") ||
             Regex("""\bSTR\b""").containsMatchIn(upper) || upper.contains("WEG") || upper.contains("GASSE") ||
             upper.contains("ALLEE") || upper.contains("PLATZ") || upper.contains("HAUSNR") || upper.contains("PLZ") ||
             upper.contains("ISSERSTEDT") || upper.contains("JENA")) return true
-        // Rechtsformen
         if (upper.contains("GMBH") || upper.contains("CO. KG") || upper.contains("CO.KG") ||
             upper.contains(" CO KG") || Regex("""\bKG\b""").containsMatchIn(upper) ||
             Regex("""\bAG\b""").containsMatchIn(upper) || upper.contains("E.K.") || upper.contains("E.V.")) return true
-        // Telefon / Steuernummern
         if (upper.contains("TEL") || upper.contains("TELEFON") || upper.contains("FON") || upper.contains("FAX") ||
             upper.contains("UST-ID") || upper.contains("ST-NR") || upper.contains("STNR") || upper.contains("ST.-NR") ||
             upper.contains("STEUER") || Regex("""\bDE\d+""").containsMatchIn(upper) ||
             Regex("""(?:\+49|0\d{2,4})[\s/-]?\d{5,}""").containsMatchIn(line) ||
             Regex("""\b\d{3,5}[/-]\d{3,8}\b""").containsMatchIn(line)) return true
-
         return isNoise(upper)
     }
 
     private fun isNoise(upper: String): Boolean {
         if (upper.isBlank()) return true
-        if (upper.startsWith("#") || upper.matches(Regex("""^#\d+.*"""))) return true
+        if (upper.matches(Regex("""^#\d+.*"""))) return true
         if (upper == "EUR" || upper == "PREIS EUR" || upper == "PREIS" || upper == "LEERGUT" || upper.startsWith("PFAND")) return true
         if (upper.contains("STRASSE") || upper.contains("STRAßE") || upper.contains("STR.") || upper.contains("HAUSNR") || upper.contains("PLZ")) return true
         if (upper.matches(Regex("""^DE\d+.*""", RegexOption.IGNORE_CASE)) ||
@@ -576,12 +714,13 @@ object KassenzettelParser {
         var clean = cleanName
             .replace(Regex("""^\d+\s*(?:5tk|stk|st|x)\s*""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\b\d+([.,]\d+)?%"""), "")
-            .replace(Regex("""\s+\d+[,.]\d{2}\s*€?$"""), "") // Trailing prices like " 1.99" or " 1,99 €"
-            .replace(Regex("""\s+\d{1,2}\s*$"""), "") // Trailing digits (e.g. OCR errors for cents like " 99")
-            .replace(Regex("""[,.]\d{2}\s*$"""), "") // Trailing .99 or ,99 directly attached
+            .replace(Regex("""\s+\d+[,.]\d{2}\s*€?$"""), "")
+            .replace(Regex("""\s+\d{1,2}\s*$"""), "")
+            .replace(Regex("""[,.]\d{2}\s*$"""), "")
             .replace(Regex("""\s+-QS\b""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""^[-*#\s.+]+"""), "")
             .replace(Regex("""[-*#\s.+]+$"""), "")
+            .replace(Regex("""\s+EUR$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+"""), " ")
             .trim()
 
@@ -589,7 +728,6 @@ object KassenzettelParser {
         if (cleanUpper == "EUR" || cleanUpper == "PREIS EUR" || cleanUpper == "PREIS" || cleanUpper.length < 3) return
         if (clean.count { it.isLetter() } < 2) return
 
-        // Absicherung gegen Steuer-IDs (z.B. DE145804122), Bon-Nummern und Müll
         if (cleanUpper.matches(Regex("""^DE\d+.*""", RegexOption.IGNORE_CASE)) ||
             cleanUpper.matches(Regex("""^UST[-.\s]*ID.*""", RegexOption.IGNORE_CASE)) ||
             cleanUpper.matches(Regex("""^ST[-.\s]*NR.*""", RegexOption.IGNORE_CASE)) ||
@@ -603,6 +741,11 @@ object KassenzettelParser {
 
         for ((shortBrand, fullBrand) in BRAND_DATABASE) {
             clean = clean.replace(Regex("""\b${Regex.escape(shortBrand)}""", RegexOption.IGNORE_CASE), fullBrand)
+        }
+
+        val sanitizedBySanitizer = ReceiptImportSanitizer.cleanReceiptText(clean)
+        if (sanitizedBySanitizer.isNotBlank()) {
+            clean = sanitizedBySanitizer
         }
 
         var finalName = applyFuzzyCorrections(clean, corrections)
@@ -623,7 +766,6 @@ object KassenzettelParser {
         var finalPrice = price
         val finalUnit = determineSmartUnit(finalName, finalPrice, finalQty, rawName)
 
-        // TWQ / Kisten Logik: Wenn Gesamtpreis z.B. 9.98 € ist und 1 Kiste ca. 4.99 € kostet -> 2 Kisten à 4,99 €!
         if (finalUnit == "Kiste" || finalName.lowercase().contains("wasser") || finalName.lowercase().contains("waldquell")) {
             if (finalPrice >= 7.00 && finalQty == 1) {
                 finalQty = round(finalPrice / 4.99).toInt().coerceAtLeast(2)
@@ -660,11 +802,11 @@ object KassenzettelParser {
         val bundled = mutableListOf<Product>()
         for (item in items) {
             val itemUnitPrice = if (item.quantity > 0) item.price / item.quantity else item.price
-            
+
             val idx = bundled.indexOfFirst {
                 val existingUnitPrice = if (it.quantity > 0) it.price / it.quantity else it.price
                 it.name.equals(item.name, ignoreCase = true) &&
-                Math.abs(existingUnitPrice - itemUnitPrice) < 0.05
+                        Math.abs(existingUnitPrice - itemUnitPrice) < 0.05
             }
             if (idx != -1) {
                 val existing = bundled[idx]
@@ -696,104 +838,158 @@ object KassenzettelParser {
         val detectedCat = CategoryDetector.detectCategory(name)
 
         return when {
-            // 1. Kiste / Kasten (Getränkekiste - Wasser, Bier, Cola Kästen)
             combined.contains("kiste") || combined.contains("kasten") || combined.contains("20x") || combined.contains("24x") || combined.contains("12x") || combined.contains("träger") ||
-            ((combined.contains("wasser") || combined.contains("bier") || combined.contains("cola") || combined.contains("limo") || combined.contains("waldquell")) && price >= 3.50) -> "Kiste"
-
-            // 2. Becher (Sahne, Schmand, Joghurt, Quark, Pudding, Margarine, Feinkost, Eis, Miree, Frischkäse)
-            combined.contains("becher") || combined.contains("sahnebecher") ||
-            combined.contains("sahne") || combined.contains("schlagsahne") || combined.contains("saure sahne") ||
-            combined.contains("sauerrahm") || combined.contains("schmand") || combined.contains("creme fraiche") ||
-            combined.contains("crème fraîche") || combined.contains("joghurt") || combined.contains("quark") ||
-            combined.contains("pudding") || combined.contains("milchreis") || combined.contains("margarine") ||
-            combined.contains("rama") || combined.contains("lätta") || combined.contains("tzatziki") ||
-            combined.contains("aioli") || combined.contains("fleischsalat") || combined.contains("krautsalat") ||
-            combined.contains("feinkostsalat") || combined.contains("mascarpone") || combined.contains("ricotta") ||
-            combined.contains("hüttenkäse") || combined.contains("miree") || combined.contains("frischkäse") ||
-            combined.contains("aufstrich") || combined.contains("dip") || combined.contains("eiscreme") || combined.contains("ben & jerry") -> "Becher"
-
-            // 3. Dose (Konserven, Energy Drinks, Dosengetränke)
-            combined.contains("dose") || combined.contains("red bull") || combined.contains("monster energy") ||
-            combined.contains("energy") || combined.contains("thunfisch") || combined.contains("tuna") ||
-            combined.contains("konserve") || combined.contains("eintopf") || combined.contains("gestückelte tomaten") ||
-            combined.contains("schältomaten") || combined.contains("mais") || combined.contains("sardinen") -> "Dose"
-
-            // 4. Glas (Marmelade, Honig, Senf, Gurken, Kirschen, Pesto, Nutella)
-            combined.contains("glas") || combined.contains("marmelade") || combined.contains("konfitüre") ||
-            combined.contains("honig") || combined.contains("senf") || combined.contains("nutella") ||
-            combined.contains("apfelmus") || combined.contains("gewürzgurten") || combined.contains("gurken") ||
-            combined.contains("rotkohl") || combined.contains("sauerkraut") || combined.contains("sauerkirschen") ||
-            combined.contains("pesto") || combined.contains("oliven") || combined.contains("kapern") ||
-            combined.contains("babybrei") -> "Glas"
-
-            // 5. Flasche (Getränke, Bier, Wein, Sekt, Weichspüler, Kuschelweich, Spülmittel, Reiniger, Öle, Essig, Ketchup, Dressing, Saft, Wasser)
-            combined.contains("flasche") || combined.contains("fl.") || combined.contains("wein") ||
-            combined.contains("sekt") || combined.contains("prosecco") || combined.contains("champagner") ||
-            combined.contains("spirituose") || combined.contains("rum") || combined.contains("vodka") ||
-            combined.contains("gin") || combined.contains("whisky") || combined.contains("likör") ||
-            combined.contains("sirup") || combined.contains("essig") || combined.contains("olivenöl") ||
-            combined.contains("rapsöl") || combined.contains("sonnenblumenöl") || combined.contains("ketchup") ||
-            combined.contains("dressing") || combined.contains("smoothie") || combined.contains("mönchshof") ||
-            combined.contains("mönchof") || combined.contains("mönch") || combined.contains("zwickel") ||
-            combined.contains("pils") || combined.contains("radler") || combined.contains("export") ||
-            combined.contains("weizen") || combined.contains("helles") || combined.contains("köstritzer") ||
-            combined.contains("radeberger") || combined.contains("paulaner") || combined.contains("augustiner") ||
-            combined.contains("erdinger") || combined.contains("franziskaner") || combined.contains("krombacher") ||
-            combined.contains("oettinger") || combined.contains("bitburger") || combined.contains("jever") ||
-            combined.contains("becks") || combined.contains("astra") || combined.contains("urtyp") ||
-            combined.contains("bier") || combined.contains("spezi") || combined.contains("limonade") ||
-            combined.contains("eistee") || combined.contains("weichspüler") || combined.contains("kuschelweich") ||
-            combined.contains("lenor") || combined.contains("softlan") || combined.contains("vernel") ||
-            combined.contains("spülmittel") || combined.contains("pril") || combined.contains("palmolive") ||
-            combined.contains("fairy") || combined.contains("reiniger") || combined.contains("glasreiniger") ||
-            combined.contains("scheibenklar") || combined.contains("shampoo") || combined.contains("duschgel") ||
-            combined.contains("flüssigseife") ||
-            (detectedCat == FoodCategory.GETRAENKE && !combined.contains("tetrapak") && !combined.contains("pack") && !combined.contains("dose")) ||
-            (combined.contains("saft") && !combined.contains("tetrapak") && !combined.contains("pack")) ||
-            (combined.contains("wasser") && price < 3.50) -> "Flasche"
-
-            // 6. Tüte / Beutel (Chips, Gummibärchen, TK-Gemüse, Pommes, Nüsse)
-            combined.contains("tüte") || combined.contains("beutel") || combined.contains("chips") ||
-            combined.contains("flips") || combined.contains("popcorn") || combined.contains("gummibärchen") ||
-            combined.contains("haribo") || combined.contains("bonbons") || combined.contains("pommes") ||
-            combined.contains("gefriergemüse") || combined.contains("reibekäse") || combined.contains("streukäse") ||
-            combined.contains("salatbeutel") || combined.contains("nüsse") || combined.contains("studentenfutter") -> "Tüte"
-
-            // 7. Schale (Erdbeeren, Beeren, Pilze, Hackfleisch)
-            combined.contains("schale") || combined.contains("erdbeeren") || combined.contains("himbeeren") ||
-            combined.contains("heidelbeeren") || combined.contains("weintrauben") || combined.contains("champignons") ||
-            combined.contains("pilze") || combined.contains("cherrytomaten") || combined.contains("hackfleisch") -> "Schale"
-
-            // 8. Netz (Kartoffeln, Zwiebeln, Orangen, Zitronen)
-            combined.contains("netz") || combined.contains("kartoffeln") || combined.contains("zwiebeln") ||
-            combined.contains("orangen") || combined.contains("mandarinen") || combined.contains("clementinen") ||
-            combined.contains("zitronen") || combined.contains("knoblauch") -> "Netz"
-
-            // 9. Bund (Radieschen, Kräuter, Lauchzwiebeln)
-            combined.contains("bund") || combined.contains("radieschen") || combined.contains("lauchzwiebeln") ||
-            combined.contains("frühlingszwiebeln") || combined.contains("petersilie") || combined.contains("dill") ||
-            combined.contains("schnittlauch") -> "Bund"
-
-            // 10. Tafel (Schokolade)
-            combined.contains("tafel") || combined.contains("schokolade") || combined.contains("ritter sport") ||
-            combined.contains("milka") || combined.contains("lindt") -> "Tafel"
-
-            // 11. Rolle (Küchenrolle, Toilettenpapier, Alufolie, Prinzenrolle)
-            combined.contains("rolle") || combined.contains("küchenrolle") || combined.contains("toilettenpapier") ||
-            combined.contains("klopapier") || combined.contains("müllbeutel") || combined.contains("alufolie") ||
-            combined.contains("backpapier") || combined.contains("prinzenrolle") -> "Rolle"
-
-            // 12. Packung (Aufschnitt, Käse, Butter, Milch TetraPak, Toast, Nudeln, Müsli, Eier, Pizza, Tee, Kaffee, Wurst)
-            combined.contains("packung") || combined.contains("pack.") || combined.contains("pack") ||
-            combined.contains("käse") || combined.contains("aufschnitt") || combined.contains("schinken") ||
-            combined.contains("salami") || combined.contains("wurst") || combined.contains("butter") ||
-            combined.contains("toast") || combined.contains("brot") || combined.contains("nudeln") ||
-            combined.contains("spaghetti") || combined.contains("müsli") || combined.contains("cornflakes") ||
-            combined.contains("eier") || combined.contains("pizza") || combined.contains("tee") ||
-            combined.contains("kaffee") || combined.contains("milch") || combined.contains("h-milch") ||
-            combined.contains("frischmilch") || combined.contains("waschmittel") -> "Packung"
-
+                    ((combined.contains("wasser") || combined.contains("bier") || combined.contains("cola") || combined.contains("limo") || combined.contains("waldquell")) && price >= 3.50) -> "Kiste"
+            combined.contains("becher") || combined.contains("sahnebecher") || combined.contains("sahne") || combined.contains("schlagsahne") || combined.contains("saure sahne") ||
+                    combined.contains("sauerrahm") || combined.contains("schmand") || combined.contains("creme fraiche") || combined.contains("crème fraîche") || combined.contains("joghurt") || combined.contains("quark") ||
+                    combined.contains("pudding") || combined.contains("milchreis") || combined.contains("margarine") || combined.contains("rama") || combined.contains("lätta") || combined.contains("tzatziki") ||
+                    combined.contains("aioli") || combined.contains("fleischsalat") || combined.contains("krautsalat") || combined.contains("feinkostsalat") || combined.contains("mascarpone") || combined.contains("ricotta") ||
+                    combined.contains("hüttenkäse") || combined.contains("miree") || combined.contains("frischkäse") || combined.contains("aufstrich") || combined.contains("dip") || combined.contains("eiscreme") || combined.contains("ben & jerry") -> "Becher"
+            combined.contains("dose") || combined.contains("red bull") || combined.contains("monster energy") || combined.contains("energy") || combined.contains("thunfisch") || combined.contains("tuna") ||
+                    combined.contains("konserve") || combined.contains("eintopf") || combined.contains("gestückelte tomaten") || combined.contains("schältomaten") || combined.contains("mais") || combined.contains("sardinen") -> "Dose"
+            combined.contains("glas") || combined.contains("marmelade") || combined.contains("konfitüre") || combined.contains("honig") || combined.contains("senf") || combined.contains("nutella") ||
+                    combined.contains("apfelmus") || combined.contains("gewürzgurten") || combined.contains("gurken") || combined.contains("rotkohl") || combined.contains("sauerkraut") || combined.contains("sauerkirschen") ||
+                    combined.contains("pesto") || combined.contains("oliven") || combined.contains("kapern") || combined.contains("babybrei") -> "Glas"
+            combined.contains("flasche") || combined.contains("fl.") || combined.contains("wein") || combined.contains("sekt") || combined.contains("prosecco") || combined.contains("champagner") ||
+                    combined.contains("spirituose") || combined.contains("rum") || combined.contains("vodka") || combined.contains("gin") || combined.contains("whisky") || combined.contains("likör") ||
+                    combined.contains("sirup") || combined.contains("essig") || combined.contains("olivenöl") || combined.contains("rapsöl") || combined.contains("sonnenblumenöl") || combined.contains("ketchup") ||
+                    combined.contains("dressing") || combined.contains("smoothie") || combined.contains("mönchshof") || combined.contains("mönchof") || combined.contains("mönch") || combined.contains("zwickel") ||
+                    combined.contains("pils") || combined.contains("radler") || combined.contains("export") || combined.contains("weizen") || combined.contains("helles") || combined.contains("köstritzer") ||
+                    combined.contains("radeberger") || combined.contains("paulaner") || combined.contains("augustiner") || combined.contains("erdinger") || combined.contains("franziskaner") || combined.contains("krombacher") ||
+                    combined.contains("oettinger") || combined.contains("bitburger") || combined.contains("jever") || combined.contains("becks") || combined.contains("astra") || combined.contains("urtyp") ||
+                    combined.contains("bier") || combined.contains("spezi") || combined.contains("limonade") || combined.contains("eistee") || combined.contains("weichspüler") || combined.contains("kuschelweich") ||
+                    combined.contains("lenor") || combined.contains("softlan") || combined.contains("vernel") || combined.contains("spülmittel") || combined.contains("pril") || combined.contains("palmolive") ||
+                    combined.contains("fairy") || combined.contains("reiniger") || combined.contains("glasreiniger") || combined.contains("scheibenklar") || combined.contains("shampoo") || combined.contains("duschgel") ||
+                    combined.contains("flüssigseife") || (detectedCat == FoodCategory.GETRAENKE && !combined.contains("tetrapak") && !combined.contains("pack") && !combined.contains("dose")) ||
+                    (combined.contains("saft") && !combined.contains("tetrapak") && !combined.contains("pack")) || (combined.contains("wasser") && price < 3.50) -> "Flasche"
+            combined.contains("tüte") || combined.contains("beutel") || combined.contains("chips") || combined.contains("flips") || combined.contains("popcorn") || combined.contains("gummibärchen") ||
+                    combined.contains("haribo") || combined.contains("bonbons") || combined.contains("pommes") || combined.contains("gefriergemüse") || combined.contains("reibekäse") || combined.contains("streukäse") ||
+                    combined.contains("salatbeutel") || combined.contains("nüsse") || combined.contains("studentenfutter") -> "Tüte"
+            combined.contains("schale") || combined.contains("erdbeeren") || combined.contains("himbeeren") || combined.contains("heidelbeeren") || combined.contains("weintrauben") || combined.contains("champignons") ||
+                    combined.contains("pilze") || combined.contains("cherrytomaten") || combined.contains("hackfleisch") -> "Schale"
+            combined.contains("netz") || combined.contains("kartoffeln") || combined.contains("zwiebeln") || combined.contains("orangen") || combined.contains("mandarinen") || combined.contains("clementinen") ||
+                    combined.contains("zitronen") || combined.contains("knoblauch") -> "Netz"
+            combined.contains("bund") || combined.contains("radieschen") || combined.contains("lauchzwiebeln") || combined.contains("frühlingszwiebeln") || combined.contains("petersilie") || combined.contains("dill") ||
+                    combined.contains("schnittlauch") -> "Bund"
+            combined.contains("tafel") || combined.contains("schokolade") || combined.contains("ritter sport") || combined.contains("milka") || combined.contains("lindt") -> "Tafel"
+            combined.contains("rolle") || combined.contains("küchenrolle") || combined.contains("toilettenpapier") || combined.contains("klopapier") || combined.contains("müllbeutel") || combined.contains("alufolie") ||
+                    combined.contains("backpapier") || combined.contains("prinzenrolle") -> "Rolle"
+            combined.contains("packung") || combined.contains("pack.") || combined.contains("pack") || combined.contains("käse") || combined.contains("aufschnitt") || combined.contains("schinken") ||
+                    combined.contains("salami") || combined.contains("wurst") || combined.contains("butter") || combined.contains("toast") || combined.contains("brot") || combined.contains("nudeln") ||
+                    combined.contains("spaghetti") || combined.contains("müsli") || combined.contains("cornflakes") || combined.contains("eier") || combined.contains("pizza") || combined.contains("tee") ||
+                    combined.contains("kaffee") || combined.contains("milch") || combined.contains("h-milch") || combined.contains("frischmilch") || combined.contains("waschmittel") -> "Packung"
             else -> "Stk."
+        }
+    }
+
+    fun processPdf(
+        context: Context,
+        pdfFile: File,
+        recognizer: TextRecognizer,
+        corrections: Map<String, String> = emptyMap()
+    ): Pair<List<Product>, Bitmap?> {
+        return try {
+            if (!pdfFile.exists() || pdfFile.length() == 0L) {
+                return Pair(emptyList(), null)
+            }
+
+            var uiPreviewBitmap: Bitmap? = null
+            val ocrTextChunks = mutableListOf<String>()
+            var pfd: ParcelFileDescriptor? = null
+            var renderer: PdfRenderer? = null
+
+            try {
+                pfd = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                if (pfd != null) {
+                    renderer = PdfRenderer(pfd)
+
+                    for (i in 0 until renderer.pageCount) {
+                        var page: PdfRenderer.Page? = null
+                        var fullPageBitmap: Bitmap? = null
+                        try {
+                            page = renderer.openPage(i)
+                            val scale = 1200f / page.width.toFloat()
+                            val targetWidth = 1200
+                            val targetHeight = (page.height * scale).toInt().coerceAtLeast(1)
+
+                            fullPageBitmap = try {
+                                Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                            } catch (oom: OutOfMemoryError) {
+                                System.gc()
+                                continue
+                            }
+
+                            // 🔥 DER ENTSCHEIDENDE FIX: Das PDF zwingend auf weißen Hintergrund zeichnen! 🔥
+                            fullPageBitmap.eraseColor(android.graphics.Color.WHITE)
+
+                            page.render(fullPageBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+
+                            if (i == 0) {
+                                uiPreviewBitmap = Bitmap.createScaledBitmap(fullPageBitmap, targetWidth / 2, targetHeight / 2, true)
+                            }
+
+                            var y = 0
+                            val CHUNK_MAX_HEIGHT = 2000
+                            while (y < targetHeight) {
+                                val currentChunkHeight = minOf(CHUNK_MAX_HEIGHT, targetHeight - y)
+                                val chunkBitmap = Bitmap.createBitmap(fullPageBitmap, 0, y, targetWidth, currentChunkHeight)
+                                try {
+                                    val image = InputImage.fromBitmap(chunkBitmap, 0)
+                                    val visionText = Tasks.await(recognizer.process(image))
+                                    if (visionText != null) {
+                                        val allLines = visionText.textBlocks.flatMap { it.lines }
+                                        if (allLines.isNotEmpty()) {
+                                            val sortedLines = allLines.sortedBy { it.boundingBox?.top ?: 0 }
+                                            val rows = mutableListOf<MutableList<Text.Line>>()
+                                            val avgHeight = allLines.mapNotNull { it.boundingBox?.height() }.filter { it > 0 }.average().takeIf { !it.isNaN() } ?: 20.0
+                                            val threshold = (avgHeight * 0.6).toInt().coerceIn(10, 20)
+
+                                            for (line in sortedLines) {
+                                                val top = line.boundingBox?.top ?: 0
+                                                val existingRow = rows.find { Math.abs((it.first().boundingBox?.top ?: 0) - top) < threshold }
+                                                if (existingRow != null) {
+                                                    existingRow.add(line)
+                                                } else {
+                                                    rows.add(mutableListOf(line))
+                                                }
+                                            }
+                                            val reconstructedText = rows.joinToString("\n") { row ->
+                                                row.sortedBy { it.boundingBox?.left ?: 0 }.joinToString(" ") { it.text }
+                                            }
+                                            ocrTextChunks.add(reconstructedText)
+                                        }
+                                    }
+                                } finally {
+                                    chunkBitmap.recycle()
+                                }
+                                y += currentChunkHeight
+                            }
+                        } finally {
+                            fullPageBitmap?.recycle()
+                            page?.close()
+                        }
+                    }
+                }
+            } finally {
+                try { renderer?.close() } catch (e: Exception) {}
+                try { pfd?.close() } catch (e: Exception) {}
+            }
+
+            val fullText = ocrTextChunks.joinToString("\n")
+
+            // 🔥 SPIONAGE-LOG: Druckt den erkannten Text ins rote Logcat, falls mal wieder was hakt!
+            try { Log.i("KassenzettelParser", "=== RAW OCR TEXT START ===\n$fullText\n=== RAW OCR TEXT END ===") } catch (_: Throwable) {}
+
+            val ocrProducts = if (fullText.isNotBlank()) {
+                parseReceiptText(fullText, corrections)
+            } else {
+                emptyList()
+            }
+
+            Pair(ocrProducts, uiPreviewBitmap)
+        } catch (e: Throwable) {
+            try { Log.e("KassenzettelParser", "Unerwarteter Fehler bei processPdf", e) } catch (_: Throwable) {}
+            Pair(emptyList(), null)
         }
     }
 }

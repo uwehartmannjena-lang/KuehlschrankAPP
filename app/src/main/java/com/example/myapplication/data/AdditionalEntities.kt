@@ -1,7 +1,9 @@
 package com.example.myapplication.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Fts4
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
@@ -66,6 +68,14 @@ data class UserCorrection(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "UserLearnedCorrections")
+data class UserLearnedCorrection(
+    @PrimaryKey
+    @ColumnInfo(name = "receipt_raw_text") val receiptRawText: String,
+    @ColumnInfo(name = "corrected_name") val correctedName: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "shopping_list")
 data class ShoppingItem(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -76,25 +86,35 @@ data class ShoppingItem(
     val priceEstimate: Double = 0.0,
     val store: String? = null,
     val note: String? = null,
-    val urgency: String = "NORMAL", // "URGENT", "NORMAL", "STOCK"
+    val urgency: String = "NORMAL",
     val category: String? = null
 )
 
 @Entity(tableName = "budget_config")
 data class BudgetConfig(
-    @PrimaryKey val monthYear: String, // z.B. "2023-10"
+    @PrimaryKey val monthYear: String,
     val limit: Double
 )
 
-@Entity(tableName = "market_dictionary")
+@Entity(
+    tableName = "market_dictionary",
+    indices = [
+        Index(value = ["market"], name = "idx_market"),
+        Index(value = ["market_id"], name = "idx_market_id"),
+        Index(value = ["receiptPattern"], name = "idx_receipt_pattern")
+    ]
+)
 data class MarketProductEntry(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val market: String = "general",
+    @ColumnInfo(name = "market_id") val marketId: String? = null,
     val receiptPattern: String,
     val cleanName: String,
     val category: String = "SONSTIGES",
     val defaultStorage: String = "Kühlschrank",
-    val defaultShelfLifeDays: Int = 7
+    val defaultShelfLifeDays: Int = 7,
+    @ColumnInfo(name = "purchase_count") val purchaseCount: Int = 0,
+    val synonyms: String? = null
 )
 
 @Fts4(contentEntity = MarketProductEntry::class)
@@ -102,5 +122,6 @@ data class MarketProductEntry(
 data class MarketProductFts(
     val receiptPattern: String,
     val cleanName: String,
-    val category: String
+    val category: String,
+    val synonyms: String?
 )

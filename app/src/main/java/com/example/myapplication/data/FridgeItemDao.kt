@@ -5,24 +5,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FridgeItemDao {
-    // Haushalte
-    @Query("SELECT * FROM households")
-    fun getAllHouseholds(): Flow<List<Household>>
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertHousehold(household: Household)
-    @Query("SELECT * FROM household_logs WHERE householdId = :householdId ORDER BY timestamp DESC LIMIT 50")
-    fun getLogsForHousehold(householdId: String): Flow<List<HouseholdLog>>
-    @Insert
-    suspend fun insertLog(log: HouseholdLog)
 
-    // Artikel (gefiltert nach Haushalt)
-    @Query("SELECT * FROM fridge_items WHERE householdId = :householdId ORDER BY item_name ASC")
-    fun getFridgeItemsByHousehold(householdId: String): Flow<List<FridgeItem>>
-
-    @Query("SELECT * FROM fridge_items ORDER BY item_name ASC")
+    @Query("SELECT * FROM fridge_items ORDER BY expiry_date ASC")
     fun getAllFridgeItems(): Flow<List<FridgeItem>>
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    @Query("SELECT * FROM fridge_items ORDER BY expiry_date ASC")
+    fun getAllItems(): Flow<List<FridgeItem>>
+
+    @Query("SELECT * FROM fridge_items WHERE importHash = :hash")
+    suspend fun getItemsByImportHash(hash: String): List<FridgeItem>
+
+    @Query("SELECT importHash FROM fridge_items WHERE importHash IS NOT NULL")
+    suspend fun getImportHashes(): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: FridgeItem)
 
     @Update
@@ -30,6 +26,12 @@ interface FridgeItemDao {
 
     @Delete
     suspend fun deleteItem(item: FridgeItem)
+
+    @Query("DELETE FROM fridge_items")
+    suspend fun deleteAll()
+
+    @Query("SELECT * FROM fridge_items WHERE id = :id")
+    suspend fun getItemById(id: String): FridgeItem?
 
     @Query("SELECT * FROM wasted_items ORDER BY wasteDate DESC")
     fun getAllWastedItems(): Flow<List<WastedItem>>
@@ -42,40 +44,46 @@ interface FridgeItemDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConsumedItem(item: ConsumedItem)
-    
-    @Query("DELETE FROM fridge_items")
-    suspend fun deleteAll()
 
     @Query("SELECT * FROM custom_units")
     fun getAllCustomUnits(): Flow<List<CustomUnit>>
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertUnit(unit: CustomUnit)
-    @Delete
-    suspend fun deleteUnit(unit: CustomUnit)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCustomUnit(unit: CustomUnit)
 
     @Query("SELECT * FROM favorite_recipes")
-    fun getAllRecipes(): Flow<List<FavoriteRecipe>>
+    fun getAllFavoriteRecipes(): Flow<List<FavoriteRecipe>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRecipe(recipe: FavoriteRecipe)
+    suspend fun insertFavoriteRecipe(recipe: FavoriteRecipe)
 
-    @Query("SELECT * FROM price_history WHERE itemId = :itemId ORDER BY date DESC")
-    fun getPriceHistory(itemId: String): Flow<List<PriceRecord>>
+    @Delete
+    suspend fun deleteFavoriteRecipe(recipe: FavoriteRecipe)
 
-    @Query("SELECT * FROM price_history WHERE itemName = :name ORDER BY date DESC")
+    @Query("SELECT * FROM price_history ORDER BY date DESC")
+    fun getAllPriceHistory(): Flow<List<PriceRecord>>
+
+    @Query("SELECT * FROM price_history WHERE LOWER(itemName) LIKE '%' || LOWER(:name) || '%' ORDER BY date DESC")
     suspend fun getHistoryByName(name: String): List<PriceRecord>
 
-    @Insert
+    @Query("SELECT * FROM price_history WHERE LOWER(itemName) LIKE '%' || LOWER(:name) || '%' ORDER BY date DESC")
+    fun getPriceHistory(name: String): Flow<List<PriceRecord>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPriceRecord(record: PriceRecord)
 
-    @Query("SELECT * FROM recent_barcodes ORDER BY timestamp DESC LIMIT 10")
+    @Query("SELECT * FROM recent_barcodes ORDER BY timestamp DESC LIMIT 20")
     fun getRecentBarcodes(): Flow<List<RecentBarcode>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecentBarcode(barcode: RecentBarcode)
 
     @Query("SELECT * FROM loyalty_cards")
     fun getAllLoyaltyCards(): Flow<List<LoyaltyCard>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLoyaltyCard(card: LoyaltyCard)
+
     @Delete
     suspend fun deleteLoyaltyCard(card: LoyaltyCard)
 
@@ -97,6 +105,12 @@ interface FridgeItemDao {
     @Query("SELECT * FROM UserCorrections")
     suspend fun getAllUserCorrectionsSync(): List<UserCorrection>
 
+    @Query("SELECT * FROM UserLearnedCorrections")
+    suspend fun getAllUserLearnedCorrectionsSync(): List<UserLearnedCorrection>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUserLearnedCorrection(correction: UserLearnedCorrection)
+
     @Query("SELECT * FROM learning_data")
     fun getAllLearningData(): Flow<List<LearningEntry>>
 
@@ -108,86 +122,76 @@ interface FridgeItemDao {
 
     @Query("SELECT * FROM shopping_list ORDER BY name ASC")
     fun getAllShoppingItems(): Flow<List<ShoppingItem>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertShoppingItem(item: ShoppingItem)
+
+    @Update
+    suspend fun updateShoppingItem(item: ShoppingItem)
+
     @Delete
     suspend fun deleteShoppingItem(item: ShoppingItem)
-    @Query("DELETE FROM shopping_list")
-    suspend fun clearShoppingList()
 
-    @Query("SELECT * FROM meal_plans ORDER BY date ASC")
-    fun getAllMealPlans(): Flow<List<MealPlan>>
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMealPlan(plan: MealPlan)
-    @Query("DELETE FROM meal_plans WHERE id = :id")
-    suspend fun deleteMealPlan(id: String)
+    @Query("DELETE FROM shopping_list WHERE isChecked = 1")
+    suspend fun deleteCheckedShoppingItems()
 
-    @Query("SELECT * FROM consumption_patterns")
-    fun getAllConsumptionPatterns(): Flow<List<ConsumptionPattern>>
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertConsumptionPattern(pattern: ConsumptionPattern)
-    @Query("SELECT * FROM consumption_patterns WHERE itemName = :name")
-    suspend fun getConsumptionPattern(name: String): ConsumptionPattern?
+    @Query("SELECT * FROM budget_config WHERE monthYear = :monthYear")
+    suspend fun getBudgetConfig(monthYear: String): BudgetConfig?
 
     @Query("SELECT * FROM budget_config WHERE monthYear = :monthYear")
     fun getBudget(monthYear: String): Flow<BudgetConfig?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertBudget(budget: BudgetConfig)
+    suspend fun setBudgetConfig(config: BudgetConfig)
 
-    @Query("SELECT importHash FROM fridge_items WHERE importHash IS NOT NULL")
-    fun getImportHashes(): Flow<List<String>>
-
-    // Market Dictionary FTS & Fast SQLite Index
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMarketProducts(entries: List<MarketProductEntry>)
+    suspend fun insertBudget(config: BudgetConfig)
 
-    @Query("SELECT COUNT(*) FROM market_dictionary")
-    suspend fun getMarketProductCount(): Int
-
-    @Query("""
-        SELECT m.* FROM market_dictionary m
-        JOIN market_dictionary_fts fts ON m.rowid = fts.docid
-        WHERE market_dictionary_fts MATCH :query
-        LIMIT 50
-    """)
-    suspend fun searchMarketProductsFts(query: String): List<MarketProductEntry>
-
-    @Query("SELECT * FROM market_dictionary WHERE receiptPattern LIKE '%' || :query || '%' OR cleanName LIKE '%' || :query || '%' LIMIT 100")
-    suspend fun searchMarketProductsLike(query: String): List<MarketProductEntry>
-
-    @Query("SELECT * FROM market_dictionary WHERE market = :market OR market = 'general' LIMIT 20000")
-    suspend fun getAllMarketProductsForMarket(market: String): List<MarketProductEntry>
-
-    @Query("SELECT * FROM market_dictionary LIMIT 20000")
-    suspend fun getAllMarketProducts(): List<MarketProductEntry>
-
-    @Query("SELECT * FROM fridge_items WHERE importHash = :hash")
-    suspend fun getItemsByImportHash(hash: String): List<FridgeItem>
-
-    @Query("SELECT imageUrl FROM fridge_items WHERE item_name = :name AND imageUrl IS NOT NULL LIMIT 1")
-    suspend fun findImageUrlByName(name: String): String?
-
-    // Beleg-Archiv
     @Query("SELECT * FROM receipts ORDER BY date DESC")
     fun getAllReceipts(): Flow<List<Receipt>>
-
-    @Query("SELECT * FROM receipts WHERE id = :id")
-    suspend fun getReceiptById(id: String): Receipt?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReceipt(receipt: Receipt)
 
-    @Query("SELECT * FROM fridge_items WHERE receiptId = :receiptId")
-    suspend fun getItemsForReceipt(receiptId: String): List<FridgeItem>
+    @Delete
+    suspend fun deleteReceipt(receipt: Receipt)
 
-    @Query("SELECT * FROM receipts WHERE supermarket LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%'")
-    fun searchReceipts(query: String): Flow<List<Receipt>>
-
-    // Caching für Open Food Facts
     @Query("SELECT * FROM cached_products WHERE barcode = :barcode")
     suspend fun getCachedProduct(barcode: String): CachedProduct?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCachedProduct(product: CachedProduct)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMarketProducts(entries: List<MarketProductEntry>)
+
+    @Query("SELECT * FROM market_dictionary WHERE market = :market OR market = 'general'")
+    suspend fun getAllMarketProductsForMarket(market: String): List<MarketProductEntry>
+
+    @Query("SELECT COUNT(*) FROM market_dictionary")
+    suspend fun getMarketProductCount(): Int
+
+    @Query("SELECT * FROM meal_plans ORDER BY date ASC")
+    fun getAllMealPlans(): Flow<List<MealPlan>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMealPlan(plan: MealPlan)
+
+    @Query("DELETE FROM meal_plans WHERE id = :id")
+    suspend fun deleteMealPlan(id: String)
+
+    @Query("SELECT * FROM consumption_patterns")
+    fun getAllConsumptionPatterns(): Flow<List<ConsumptionPattern>>
+
+    @Query("SELECT * FROM consumption_patterns WHERE itemName = :itemName")
+    suspend fun getConsumptionPattern(itemName: String): ConsumptionPattern?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertConsumptionPattern(pattern: ConsumptionPattern)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHousehold(household: Household)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLog(log: HouseholdLog)
 }

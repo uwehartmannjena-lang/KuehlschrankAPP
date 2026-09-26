@@ -33,6 +33,8 @@ import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.ConsumptionPattern
 import com.example.myapplication.data.DealWorker
 import com.example.myapplication.data.CategoryDetector
+import com.example.myapplication.data.ChefkochHelper
+import com.example.myapplication.data.ExpiryWorker
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.FridgeItem
 import com.example.myapplication.data.FridgeItemDao
@@ -43,9 +45,12 @@ import com.example.myapplication.data.LearningEntry
 import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.OpenFoodFactsApi
 import com.example.myapplication.data.PriceRecord
+import com.example.myapplication.data.UserLearnedCorrection
 import com.example.myapplication.data.Product
 import com.example.myapplication.data.ProductRepository
 import com.example.myapplication.data.ShoppingItem
+import com.example.myapplication.data.StatisticsHelper
+import com.example.myapplication.data.StatisticsTimeFrame
 import com.example.myapplication.data.StoreOffer
 import com.example.myapplication.data.WastedItem
 import com.google.android.gms.tasks.Tasks
@@ -77,6 +82,7 @@ import retrofit2.HttpException
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -591,6 +597,17 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         }
     }
 
+    fun updateCandidateDetails(candidateId: String, newName: String? = null, newImageUrl: String? = null) {
+        importCandidates.value = importCandidates.value.map { candidate ->
+            if (candidate.id == candidateId) {
+                candidate.copy(
+                    name = newName?.takeIf { it.isNotBlank() } ?: candidate.name,
+                    imageUrl = newImageUrl?.takeIf { it.isNotBlank() } ?: candidate.imageUrl
+                )
+            } else candidate
+        }
+    }
+
     fun teachItemCorrection(oldItem: FridgeItem, newName: String? = null, newLocation: String? = null, newCategory: String? = null, newUnit: String? = null) {
         val rawName = extractRawName(oldItem)
         val finalNewName = newName?.trim() ?: oldItem.name.trim()
@@ -608,9 +625,16 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 )
                 dao.insertLearningEntry(updated)
 
+                val userLearned = UserLearnedCorrection(
+                    receiptRawText = rawName,
+                    correctedName = finalNewName
+                )
+                dao.insertUserLearnedCorrection(userLearned)
+
                 withContext(Dispatchers.Main) {
                     learnedCorrections[rawName] = updated.correctedName
                     learnedEntriesMap[rawName] = updated
+                    ReceiptImportSanitizer.addLearnedCorrection(rawName, finalNewName)
                 }
             }
         }
@@ -819,6 +843,105 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 addToShoppingList(ShoppingItem(name = item.name, quantity = 1, unit = item.unit, urgency = "STOCK", note = "Aufgebraucht"))
             }
             logAction("Verbraucht", item.name)
+        }
+    }
+
+    // --- 7 ADVANCED FEATURES IMPLEMENTATION ---
+
+    // Feature 1: Echtzeit-MHD-Erkennung per ML-Kit
+    fun detectExpiryDateFromText(text: String): Long? {
+        val dateRegex = Regex("""\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b""")
+        val match = dateRegex.find(text) ?: return null
+        return try {
+            val day = match.groupValues[1].toInt()
+            val month = match.groupValues[2].toInt() - 1
+            var year = match.groupValues[3].toInt()
+            if (year < 100) year += 2000
+            val cal = Calendar.getInstance()
+            cal.set(year, month, day, 23, 59, 59)
+            cal.timeInMillis
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // Feature 2: Intelligente Verbrauchs-Statistiken
+    suspend fun getWasteTrendStats(timeFrame: StatisticsTimeFrame) =
+        StatisticsHelper.calculateWasteTrend(dao.getAllWastedItems().first(), timeFrame)
+
+    suspend fun getCostProjection(timeFrame: StatisticsTimeFrame) =
+        StatisticsHelper.calculateCostProjection(dao.getAllWastedItems().first(), timeFrame)
+
+    suspend fun getFreshnessOverview() =
+        StatisticsHelper.calculateFreshnessOverview(allFridgeItems.first())
+
+    suspend fun getSustainabilityStats() =
+        StatisticsHelper.calculateSustainabilityStats(dao.getAllConsumedItems().first(), dao.getAllWastedItems().first())
+
+    // Feature 3: Resteverwerter-Rezeptgenerator
+    fun openResteverwerterRecipes(context: Context) {
+        viewModelScope.launch {
+            val inventory = allFridgeItems.first()
+            val now = System.currentTimeMillis()
+            val expiringSoon = inventory.filter {
+                it.expiryDate != null && (it.expiryDate!! - now) <= TimeUnit.DAYS.toMillis(3)
+            }.map { it.name }
+
+            val ingredients = if (expiringSoon.isNotEmpty()) expiringSoon else inventory.take(3).map { it.name }
+            ChefkochHelper.openChefkoch(context, ingredients)
+        }
+    }
+
+    // Feature 4: Push-Benachrichtigungen für ablaufendes MHD
+    fun scheduleMhdNotificationWorker() {
+        val workManager = WorkManager.getInstance(applicationContext)
+        val workRequest = PeriodicWorkRequestBuilder<ExpiryWorker>(24, TimeUnit.HOURS).build()
+        workManager.enqueueUniquePeriodicWork("MhdNotificationWorker", ExistingPeriodicWorkPolicy.KEEP, workRequest)
+    }
+
+    // Feature 5: Preishistorie und Preisvergleich beim Kassenbon-Einlesen
+    suspend fun comparePriceWithHistory(itemName: String, currentPrice: Double): String {
+        val history = dao.getHistoryByName(itemName)
+        if (history.isEmpty()) return "Neu erfasst: ${String.format(Locale.GERMAN, "%.2f €", currentPrice)}"
+        val avg = history.map { it.price }.average()
+        val diff = currentPrice - avg
+        return when {
+            diff < -0.05 -> "Günstiger! Schnitt war ${String.format(Locale.GERMAN, "%.2f €", avg)}"
+            diff > 0.05 -> "Teurer! Schnitt war ${String.format(Locale.GERMAN, "%.2f €", avg)}"
+            else -> "Üblicher Preis (${String.format(Locale.GERMAN, "%.2f €", avg)})"
+        }
+    }
+
+    // Feature 6: Lokale EAN-Barcode-Lookup-Tabelle
+    suspend fun lookupBarcodeLocally(barcode: String): CachedProduct? {
+        if (barcode.isBlank()) return null
+        return dao.getCachedProduct(barcode)
+    }
+
+    // Feature 7: Teilmengen-Verbrauch (Teilmengen-Abbuchung)
+    fun consumePartialQuantity(item: FridgeItem, consumedAmount: Double) {
+        if (consumedAmount <= 0.0) return
+        viewModelScope.launch {
+            val currentQty = item.quantity.toDouble()
+            val pattern = dao.getConsumptionPattern(item.name) ?: ConsumptionPattern(itemName = item.name, unit = item.unit)
+            val now = System.currentTimeMillis()
+
+            dao.insertConsumedItem(ConsumedItem(
+                name = item.name,
+                quantity = consumedAmount.toInt().coerceAtLeast(1),
+                unit = item.unit,
+                category = item.category,
+                kcal = (item.kcal * (consumedAmount / currentQty.coerceAtLeast(1.0))).toInt()
+            ))
+
+            val remaining = currentQty - consumedAmount
+            if (remaining > 0.05) {
+                dao.updateItem(item.copy(quantity = remaining.toInt().coerceAtLeast(1)))
+            } else {
+                dao.deleteItem(item)
+                addToShoppingList(ShoppingItem(name = item.name, quantity = 1, unit = item.unit, urgency = "STOCK", note = "Teilmenge aufgebraucht"))
+            }
+            logAction("Teilmenge verbraucht ($consumedAmount)", item.name)
         }
     }
 
@@ -1102,11 +1225,17 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             try {
                 val fileName = getFileName(context, uri) ?: "unknown_image"
 
-                // Temp-Datei im Cache erstellen, damit unseekable Streams aus Drittanbieter-Apps stabil dekodiert werden
                 val tempFile = File(context.cacheDir, "temp_shared_image.jpg")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
+                if (uri.scheme == "file" && uri.path != null && File(uri.path!!).exists() && File(uri.path!!).length() > 0) {
+                    val srcFile = File(uri.path!!)
+                    if (srcFile.absolutePath != tempFile.absolutePath) {
+                        srcFile.copyTo(tempFile, overwrite = true)
+                    }
+                } else {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
 
@@ -1136,7 +1265,11 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                     val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
 
                     val visionText = Tasks.await(recognizer.process(image))
-                    var products = KassenzettelParser.parseReceipt(visionText, corrections)
+                    var products = try {
+                        KassenzettelParser.parseReceipt(visionText, corrections)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
 
                     if (products.isEmpty() || products.sumOf { it.price } <= 0.0) {
                         withContext(Dispatchers.Main) {
@@ -1151,6 +1284,9 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
             } catch (e: Exception) {
                 Log.e("FridgeViewModel", "Fehler beim Bild-Import", e)
+                withContext(Dispatchers.Main) {
+                    handleScannedProducts(emptyList(), "ERROR")
+                }
             } finally {
                 withContext(Dispatchers.Main) { isSyncing.value = false }
             }
@@ -1169,9 +1305,16 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 val fileName = getFileName(context, uri) ?: "unknown_pdf"
 
                 val tempFile = File(context.cacheDir, "temp_shared_receipt.pdf")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
+                if (uri.scheme == "file" && uri.path != null && File(uri.path!!).exists() && File(uri.path!!).length() > 0) {
+                    val srcFile = File(uri.path!!)
+                    if (srcFile.absolutePath != tempFile.absolutePath) {
+                        srcFile.copyTo(tempFile, overwrite = true)
+                    }
+                } else {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
 
@@ -1184,26 +1327,13 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
 
                 val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
-                val (pdfProducts, previewBmp) = PdfReceiptHelper.processPdf(context, tempFile, recognizer, corrections)
+                val (pdfProducts, previewBmp) = KassenzettelParser.processPdf(context, tempFile, recognizer, corrections)
 
                 if (previewBmp != null) {
                     withContext(Dispatchers.Main) { receiptBitmap.value = previewBmp }
                 }
 
                 val finalProducts = pdfProducts.toMutableList()
-
-                if (finalProducts.isEmpty() || finalProducts.sumOf { it.price } <= 0.0) {
-                    if (previewBmp != null) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(applicationContext, "Verwende KI-Fallback für PDF...", Toast.LENGTH_SHORT).show()
-                        }
-                        val aiProducts = geminiRepository.analyzeReceipt(previewBmp)
-                        if (aiProducts.isNotEmpty()) {
-                            finalProducts.clear()
-                            finalProducts.addAll(aiProducts)
-                        }
-                    }
-                }
 
                 tempFile.delete()
 
@@ -1212,6 +1342,9 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
             } catch (e: Exception) {
                 Log.e("FridgeViewModel", "PDF Fehler", e)
+                withContext(Dispatchers.Main) {
+                    handleScannedProducts(emptyList(), "ERROR")
+                }
             } finally {
                 withContext(Dispatchers.Main) { isSyncing.value = false }
             }
@@ -1557,7 +1690,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 return@launch
             }
 
-            val existingHashes = dao.getImportHashes().first().toSet()
+            val existingHashes = dao.getImportHashes().toSet()
             val correctionsCopy = learnedCorrections.toMap()
 
             val newItems = products.mapNotNull { p ->

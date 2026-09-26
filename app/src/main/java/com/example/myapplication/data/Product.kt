@@ -17,5 +17,6 @@ data class Product(
     val supermarket: String? = null,
     val purchaseDate: Long? = null,
     val defaultStorage: String? = null,
-    val expiryDays: Int? = null
+    val expiryDays: Int? = null,
+    val receiptUri: String? = null
 ) : Serializable

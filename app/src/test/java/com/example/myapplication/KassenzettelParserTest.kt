@@ -1,6 +1,7 @@
 package com.example.myapplication
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KassenzettelParserTest {
@@ -180,5 +181,54 @@ class KassenzettelParserTest {
         assertEquals("Bananen", products[1].name)
         assertEquals(2, products[1].quantity)
         assertEquals(0.79, products[1].price, 0.001)
+    }
+
+    @Test
+    fun `test corrupted or empty input does not crash`() {
+        val emptyResult = KassenzettelParser.parseReceiptText("")
+        assertTrue(emptyResult.isEmpty())
+
+        val whitespaceResult = KassenzettelParser.parseReceiptText("   \n\n\t  ")
+        assertTrue(whitespaceResult.isEmpty())
+
+        val garbageResult = KassenzettelParser.parseReceiptText("!!! $$$ %%% @@@ +++ --- ***")
+        assertTrue(garbageResult.isEmpty())
+
+        val extremeLongResult = KassenzettelParser.parseReceiptText("A".repeat(10000))
+        assertTrue(extremeLongResult.isEmpty())
+
+        val overflowPriceResult = KassenzettelParser.parseReceiptText("RINDERFILET 9999999,99 €")
+        assertTrue(overflowPriceResult.isEmpty())
+    }
+
+    @Test
+    fun `test receipt parser chunks merge cleanly for long receipts`() {
+        val chunk1 = """
+            GLOBUS Markthalle
+            01.03.2025
+            Bananen lose 0.99
+        """.trimIndent()
+        val chunk2 = """
+            H-Milch 1,5% 0,88
+            SUMME 1.87
+        """.trimIndent()
+
+        val products = ReceiptParser.parseReceiptChunks(listOf(chunk1, chunk2))
+
+        assertEquals(2, products.size)
+        assertEquals("Bananen Lose", products[0].name)
+        assertEquals("Globus", products[0].supermarket)
+        assertTrue(products[0].purchaseDate != null)
+        assertEquals("H-Milch", products[1].name)
+        assertEquals("Globus", products[1].supermarket)
+    }
+
+    @Test
+    fun `test import flow handles empty and invalid inputs gracefully`() {
+        val prepared = ReceiptImportSanitizer.prepareForImport(emptyList())
+        assertTrue(prepared.isEmpty())
+
+        val cleanedEmpty = ReceiptImportSanitizer.cleanReceiptText("")
+        assertEquals("", cleanedEmpty)
     }
 }

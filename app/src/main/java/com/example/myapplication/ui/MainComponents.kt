@@ -1,5 +1,7 @@
 package com.example.myapplication.ui
 
+import com.example.myapplication.MarketDictionaryHelper
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -76,6 +78,7 @@ import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.ShoppingItem
 import com.example.myapplication.data.BudgetConfig
 import com.example.myapplication.data.CategoryDetector
+import com.example.myapplication.data.ChefkochHelper
 import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.Product
@@ -616,6 +619,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CorrectArticleDialog(
     item: FridgeItem,
@@ -623,12 +627,18 @@ fun CorrectArticleDialog(
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val ocrText = remember(item) {
         item.notes.lineSequence().firstOrNull { it.startsWith("RAW:") }?.substringAfter("RAW:")?.substringBefore("@")?.trim() ?: item.name
     }
     var searchQuery by remember { mutableStateOf(ocrText) }
     var imageUrlInput by remember { mutableStateOf(item.imageUrl ?: "") }
     var isSearching by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
+
+    val suggestions: List<String> = remember(searchQuery) {
+        MarketDictionaryHelper.getSuggestions(searchQuery, context, limit = 5)
+    }
     val scope = rememberCoroutineScope()
 
     AlertDialog(
@@ -637,13 +647,47 @@ fun CorrectArticleDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Original OCR-Text: \"$ocrText\"", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    label = { Text("Produkt-Suchbegriff / EAN") },
-                    singleLine = true,
+
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = it },
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { 
+                            searchQuery = it
+                            expanded = true
+                        },
+                        label = { Text("Produkt-Suchbegriff / EAN") },
+                        singleLine = true,
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                        },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+
+                    if (suggestions.isNotEmpty()) {
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            suggestions.forEach { suggestion ->
+                                DropdownMenuItem(
+                                    text = { Text(suggestion, fontWeight = FontWeight.Medium) },
+                                    onClick = {
+                                        searchQuery = suggestion
+                                        expanded = false
+                                    },
+                                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Button(
                     onClick = {
                         isSearching = true
@@ -692,10 +736,16 @@ fun CorrectArticleDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onSave(imageUrlInput) },
-                enabled = imageUrlInput.isNotBlank()
+                onClick = {
+                    if (searchQuery.isNotBlank()) {
+                        viewModel.updateCandidateName(item.id, searchQuery)
+                        viewModel.teachItemCorrection(item, newName = searchQuery)
+                    }
+                    onSave(imageUrlInput)
+                },
+                enabled = searchQuery.isNotBlank()
             ) {
-                Text("Speichern")
+                Text("Speichern & Lernen 💾")
             }
         },
         dismissButton = {
@@ -839,10 +889,37 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
                                         }
                                     }
                                     Text("${candidate.quantity}x • ${String.format(Locale.GERMANY, "%.2f €", candidate.price)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    val pDateStr = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(candidate.purchaseDate ?: System.currentTimeMillis()))
+                                    Text("Kaufdatum: $pDateStr", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                     
                                     if (candidate.isDuplicate) {
                                         Text("🔄 Bereits vorhanden (überschreibt)", color = Color(0xFFF57C00), style = MaterialTheme.typography.labelSmall)
                                     }
+                                }
+                                val receiptUri = candidate.notes.lineSequence().firstOrNull { it.startsWith("URI:") }?.substringAfter("URI:")?.trim()
+                                if (!receiptUri.isNullOrBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            try {
+                                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                    data = Uri.parse(receiptUri)
+                                                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.List, "Beleg anzeigen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { selectedCandidateForCorrection = candidate },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, "Bearbeiten & Katalog-Suche", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                 }
                                 IconButton(
                                     onClick = { viewModel.discardImportCandidate(candidate) },
@@ -1616,6 +1693,18 @@ fun ItemModalBottomSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (item == null) "Neuer Artikel" else "Artikel bearbeiten", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                ProductThumbnail(
+                    imageUrl = item?.imageUrl,
+                    category = item?.category ?: "SONSTIGES",
+                    itemName = name.ifBlank { "Artikel" },
+                    storageLocation = location,
+                    modifier = Modifier.size(90.dp)
+                )
+            }
             OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 QuantityStepper(quantity) { quantity = it }
@@ -2716,8 +2805,7 @@ fun RecipeIdeasDialog(viewModel: FridgeViewModel, inventory: List<FridgeItem>, o
                 if (viewModel.isRecipeLoading.value) CircularProgressIndicator()
                 else viewModel.recipeSuggestions.forEach { Text("• $it", modifier = Modifier.clickable { onSelect(it) }) }
                 Button(onClick = { 
-                    val items = inventory.filter { it.expiryDate != null }.map { it.name }.take(3).joinToString("+")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.chefkoch.de/rs/s0/$items/Rezepte.html")))
+                    ChefkochHelper.openChefkoch(context, inventory.filter { it.expiryDate != null }.map { it.name })
                 }, modifier = Modifier.fillMaxWidth()) { Text("Auf Chefkoch suchen") }
             }
         },
@@ -2825,6 +2913,22 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
 
                 Text("Lagerort: ${item.storageLocation}")
                 Text("Menge & Einheit: ${item.quantity} ${item.unit}")
+                val formattedPurchaseDate = remember(item.purchaseDate) {
+                    SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(item.purchaseDate))
+                }
+                Text("Gekauft am: $formattedPurchaseDate")
+                if (!item.receiptId.isNullOrBlank()) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.showImportPreview.value = true
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Receipt, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Zugehörigen Kassenbon ansehen 🧾")
+                    }
+                }
                 if (!item.brand.isNullOrBlank()) Text("Marke: ${item.brand}")
                 if (item.kcal > 0) Text("Kalorien: ${item.kcal} kcal/100g")
                 if (item.nutriScore.isNotBlank()) {

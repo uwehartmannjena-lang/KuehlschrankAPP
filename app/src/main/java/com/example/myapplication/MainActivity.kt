@@ -119,7 +119,9 @@ class MainActivity : ComponentActivity() {
 
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager: NotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager: NotificationManager = context.getSystemService(
+                NOTIFICATION_SERVICE
+            ) as NotificationManager
             
             val channel = NotificationChannel("DEAL_ALERTS", "Angebots Alarm", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Benachrichtigungen für reduzierte Lieblingsartikel"
@@ -142,7 +144,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun scheduleEnrichmentWorker(context: Context) {
-        // Läuft alle 12 Stunden im Hintergrund, wenn das Gerät Netzwerk hat
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -192,50 +193,60 @@ class MainActivity : ComponentActivity() {
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
                 } ?: intent.clipData?.getItemAt(0)?.uri
-                
+
                 if (uri != null) {
                     intent.putExtra("INTENT_PROCESSED", true)
-                    
+
                     try {
                         context.grantUriPermission(context.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     } catch (_: Exception) {}
 
-                    val mimeType = context.contentResolver.getType(uri) ?: type ?: ""
-                    val isPdf = mimeType == "application/pdf" || 
-                                uri.toString().lowercase().endsWith(".pdf") || 
+                    val mimeType = try { context.contentResolver.getType(uri) ?: type ?: "" } catch (_: Exception) { type ?: "" }
+                    val isPdf = mimeType == "application/pdf" ||
+                                uri.toString().lowercase().endsWith(".pdf") ||
                                 isPdfStream(context, uri)
 
-                    val cachedFile = copyUriToCache(context, uri, if (isPdf) "shared_receipt.pdf" else "shared_receipt.jpg")
-                    val cachedUri = if (cachedFile != null && cachedFile.length() > 0) Uri.fromFile(cachedFile) else uri
+                    val fileName = if (isPdf) "shared_receipt.pdf" else "shared_receipt.jpg"
+                    val cachedFile = copyUriToCacheSync(context, uri, fileName)
 
-                    when {
-                        isPdf -> viewModel.importFromPdf(context, cachedUri)
-                        else -> viewModel.importFromImage(context, cachedUri)
+                    if (cachedFile != null && cachedFile.exists() && cachedFile.length() > 0) {
+                        Log.d("ReceiptDebug", "Kassenbon erfolgreich gecacht: ${cachedFile.absolutePath} (${cachedFile.length()} Bytes)")
+                        val cachedUri = Uri.fromFile(cachedFile)
+                        when {
+                            isPdf -> viewModel.importFromPdf(context, cachedUri)
+                            else -> viewModel.importFromImage(context, cachedUri)
+                        }
+                    } else {
+                        Log.e("ReceiptDebug", "Datei konnte nicht synchron in den Cache kopiert werden: $uri")
+                        Toast.makeText(context, "Kassenbon konnte nicht gelesen werden.", Toast.LENGTH_LONG).show()
                     }
                 } else if (Intent.ACTION_SEND == action && type?.startsWith("text/") == true) {
-                    intent.getStringExtra(Intent.EXTRA_TEXT)?.let { 
+                    intent.getStringExtra(Intent.EXTRA_TEXT)?.let {
                         intent.putExtra("INTENT_PROCESSED", true)
-                        viewModel.searchAndAddItems(it) 
+                        viewModel.searchAndAddItems(it)
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Fehler beim Verarbeiten", e)
-            Toast.makeText(context, "Inhalt konnte nicht verarbeitet werden", Toast.LENGTH_SHORT).show()
+        } catch (e: Throwable) {
+            Log.e("ReceiptDebug", "Fehler beim Verarbeiten des Intents", e)
+            Toast.makeText(context, "Fehler beim Empfangen des Kassenbons.", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun copyUriToCache(context: Context, uri: Uri, fileName: String): File? {
+    private fun copyUriToCacheSync(context: Context, uri: Uri, fileName: String): File? {
         return try {
             val cacheFile = File(context.cacheDir, fileName)
+            if (cacheFile.exists()) {
+                cacheFile.delete()
+            }
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(cacheFile).use { output ->
                     input.copyTo(output)
                 }
             }
             if (cacheFile.exists() && cacheFile.length() > 0) cacheFile else null
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Fehler beim Kopieren der URI in den Cache: $uri", e)
+        } catch (e: Throwable) {
+            Log.e("ReceiptDebug", "Fehler beim synchronen Kopieren der URI in den Cache: $uri", e)
             null
         }
     }
