@@ -230,9 +230,8 @@ object MarketDictionaryHelper {
                             val likeResults = dao.searchMarketProductsLike(longestWord)
                             entry = likeResults.find { it.market == currentMarket } ?: likeResults.firstOrNull()
                         }
-                        val ftsQuery = cleaned.replace(Regex("""[^\p{L}\d\s]"""), " ").trim()
-                        if (entry == null && ftsQuery.isNotBlank()) {
-                            val ftsResults = dao.searchMarketProductsFts(ftsQuery)
+                        if (entry == null && cleaned.isNotBlank()) {
+                            val ftsResults = dao.searchMarketProductsFts(cleaned)
                             entry = ftsResults.find { it.market == currentMarket } ?: ftsResults.firstOrNull()
                         }
                     } catch (e: Exception) {

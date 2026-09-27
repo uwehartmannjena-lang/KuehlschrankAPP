@@ -922,6 +922,12 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
                                     Icon(Icons.Default.Edit, "Bearbeiten & Katalog-Suche", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                 }
                                 IconButton(
+                                    onClick = { selectedCandidateForCorrection = candidate },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, "Bearbeiten & Katalog-Suche", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(
                                     onClick = { viewModel.discardImportCandidate(candidate) },
                                     modifier = Modifier.size(28.dp)
                                 ) {

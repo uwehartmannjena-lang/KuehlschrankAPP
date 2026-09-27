@@ -143,15 +143,9 @@ object ReceiptImportSanitizer {
         return input.trim()
             .lowercase(Locale.GERMAN)
             .split(Regex("""\s+"""))
-            .filter { it.isNotBlank() && (it.length > 1 || it.matches(Regex("""[a-zäöüß0-9]"""))) }
+            .filter { it.isNotBlank() }
             .joinToString(" ") { word ->
-                if (word.contains("-")) {
-                    word.split("-").joinToString("-") { part ->
-                        part.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
-                    }
-                } else {
-                    word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
-                }
+                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
             }
     }
 
@@ -212,54 +206,17 @@ object ReceiptImportSanitizer {
     }
 
     private val HARD_TRANSLATIONS = mapOf(
-        "exsreis" to "Expressreis",
-        "arottenkrüstchen" to "Karottenkrüstchen",
-        "arottenkruestchen" to "Karottenkrüstchen",
-        "gewürzs" to "Gewürzgurken",
-        "gewuerzs" to "Gewürzgurken",
-        "erdn gerös ges" to "Erdnüsse geröstet",
-        "erdn geros ges" to "Erdnüsse geröstet",
-        "schww schinken" to "Schinken",
-        "h brustfilet" to "Hähnchen-Brustfilet",
-        "herzhaf" to "Herzhaft",
-        "puten-lachsschinke n" to "Puten-Lachsschinken",
-        "puten lachsschinke n" to "Puten-Lachsschinken",
-        "tom pass" to "Passierte Tomaten",
-        "tom. pass." to "Passierte Tomaten",
-        "tom.pass." to "Passierte Tomaten",
-        "schw.tonicw" to "Schweppes Tonic Water",
-        "schw. tonicw" to "Schweppes Tonic Water",
-        "sw wild berry" to "Schweppes Wild Berry",
-        "hxm weissherbst" to "Hex vom Dasenstein Weissherbst",
-        "dinkel joh beerrührk" to "Dinkel Johannisbeer Rührkuchen",
-        "haus handkäse" to "Hausmacher Handkäse",
-        "haus handkaese" to "Hausmacher Handkäse",
-        "finesse pfeffer" to "Herta Finesse Pfeffer",
-        "fin. pfeffer" to "Herta Finesse Pfeffer",
-        "Finesse Hähnchenbr.K" to "Herta Finesse Hähnchenbrust",
-        "Finesse Hähnchenbr. K" to "Herta Finesse Hähnchenbrust",
-        "Finesse Hähnchenbr." to "Herta Finesse Hähnchenbrust",
-        "Finesss Hähnchenbrust" to "Herta Finesse Hähnchenbrust",
-        "Finesss Hähnchenbr" to "Herta Finesse Hähnchenbrust",
-        "Fin. Hähnchenbrust M" to "Herta Finesse Hähnchenbrust",
-        "Fin. Hähnchenbrust C" to "Herta Finesse Hähnchenbrust",
-        "Finesse Hähnchenbrust" to "Herta Finesse Hähnchenbrust",
-        "Fin. Hähnchenbrust" to "Herta Finesse Hähnchenbrust",
-        "Fin. Hähnchenbr" to "Herta Finesse Hähnchenbrust",
-        "Fin.hähnchenbr" to "Herta Finesse Hähnchenbrust",
-        "Gutfried Hähnchenbrust M" to "Gutfried Hähnchenbrust",
-        "Gutfried Hähnchenbrust K" to "Gutfried Hähnchenbrust",
-        "Gutfried Hähnchenbrust" to "Gutfried Hähnchenbrust",
-        "ja!" to "",
-        "ja !" to "",
-        "KLC" to "",
         "BAUTZ." to "",
         "BAUTZ" to "",
         "PRES." to "",
-        "PRES " to "",
+        "PRES" to "",
         "ES." to "",
         "Kbb Lachsfil." to "Lachsfilet",
         "Kbb Lachsfil" to "Lachsfilet",
+        "Fin. Hähnchenbrust C" to "Hähnchenbrust",
+        "Fin. Hähnchenbrust" to "Hähnchenbrust",
+        "Fin. Hähnchenbr" to "Hähnchenbrust",
+        "Fin.hähnchenbr" to "Hähnchenbrust",
         "KLOSSTEIG 750 G" to "Kloßteig",
         "KLOSSTEIG" to "Kloßteig",
         "KLOßTEIG" to "Kloßteig",
@@ -269,6 +226,7 @@ object ReceiptImportSanitizer {
         "Hä-Geschnetzeltes" to "Hähnchen-Geschnetzeltes",
         "Harzbube Edelschi." to "Harzer Käse",
         "Gefl." to "Geflügel",
+        "KLC" to "K-Classic",
         "Edelschi." to "Edelschimmel",
         "Kn. Fixe" to "Knorr Fix",
         "TH.WQ." to "Thüringer Waldquell",
@@ -288,30 +246,16 @@ object ReceiptImportSanitizer {
         val learned = getLearnedCorrection(text)
         if (learned != null) return learned
 
-        // Mappe Frischetheken- und Waagen-Codes (PLU) auf lesbare Kategorien
-        if (text.contains(Regex("""(?i)Metzgerei.*PLU.*"""))) return "Fleisch-/Wurstwaren (Theke)"
-        if (text.contains(Regex("""(?i)Käse.*PLU.*"""))) return "Käse (Frischetheke)"
-        if (text.contains(Regex("""(?i)Backwaren.*PLU.*"""))) return "Backwaren (Frischetheke)"
-
         // 1. Zuerst gezielte Übersetzungen für bekannte Kürzel anwenden (z.B. "TH.WQ." -> "Thüringer Waldquell")
         for ((key, value) in HARD_TRANSLATIONS) {
-            if (value.isNotBlank() && text.trim().equals(value.trim(), ignoreCase = true)) continue
             text = text.replace(key, value, ignoreCase = true)
         }
 
-        // Müll und typische OCR-Lese-Fehler wie "0UZ" gezielt entfernen sowie Marken-Tippfehler korrigieren
-        text = text.replace(Regex("""(?i)\b(0uz|0uz\.|[09][A-Z]{2,})\b"""), " ")
-                   .replace(Regex("""(?i)\bfin?ess[es]*\b"""), "Finesse")
-                   .replace(Regex("""(?i)\b(?<!Herta\s)Finesse\b"""), "Herta Finesse")
-                   .replace(Regex("""(?i)\bHerta\s+Finesse\s+Gutfried\b"""), "Herta Finesse")
-                   .replace(Regex("""(?i)\bGutfried\s+Finesse\b"""), "Herta Finesse")
+        // Quantitäten & Einheiten VOR dem Ersetzen von Kommas/Punkten entfernen ("1,5l" -> "")
+        text = text.replace(Regex("""\b\d+([.,]\d+)?\s*(kg|g|ml|l|stück|stk|st)\b""", RegexOption.IGNORE_CASE), " ")
 
-        // Quantitäten & Einheiten VOR dem Ersetzen von Kommas/Punkten entfernen ("1,5l", "1 Mg", "Nat6x" -> "")
-        // Inkl. Zahlenfolgen direkt an Wörtern ("Zero1,25" -> "Zero")
-        text = text.replace(Regex("""(?i)(\b\d+([.,]\d+)?\s*(kg|g|mg|ml|l|stück|stk|st|x)\b|(?<=[a-zäöüß])\d+([.,]\d+)?\s*(kg|g|mg|ml|l|stück|stk|st|x|€)?\b)"""), " ")
-
-        // 1. Zwingend ALLE Punkte (.), Kommas (,), Bindestriche (-) und Sternchen (*) durch Leerzeichen ersetzen
-        text = text.replace(Regex("""[.,\-*]"""), " ")
+        // 1. Zwingend ALLE Punkte (.), Kommas (,) und Unterstriche (_) durch Leerzeichen ersetzen
+        text = text.replace('.', ' ').replace(',', ' ').replace('_', ' ')
 
         text = text.replace(Regex("""^#\d+.*""", RegexOption.IGNORE_CASE), "")
                    .replace(Regex("""#\d+"""), "")
@@ -324,26 +268,16 @@ object ReceiptImportSanitizer {
                    .replace(Regex("""^\s*\d+\s*[*xX]\s*""", RegexOption.IGNORE_CASE), "")
                    .replace(Regex("""\b\d+\s*[*xX]\b""", RegexOption.IGNORE_CASE), "")
 
-        // 2 & 3. Marken-Präfixe, Kaufland/Globus-Kürzel & Füllwörter/Gewichtsanhängsel aggressiv entfernen
-        text = text.replace(Regex("""(?i)\b(ja!|klc|rewe\s*beste\s*wahl|k[- ]?classic|kpur|kfav|\bk\s+|allg\s*büble|allg|büble|purland|spreewh|meg|bautz|dit|fin|pres|möv)\b"""), " ")
+        // 2 & 3. Kaufland/Globus-Kürzel & Füllwörter/Gewichtsanhängsel aggressiv entfernen
+        text = text.replace(Regex("""(?i)\b(k[- ]?classic|kpur|kfav|k|allg\s*büble|allg|büble|purland|spreewh|meg|bautz|dit|fin|pres|möv)\b"""), " ")
                    .replace(Regex("""(?i)\b(xxl|disc|gem|ms\s+l|ger\d+g|\d+g|\d+kg|\d+ml|\d+l)\b"""), " ")
 
-        // Blacklist-Regex: Störende Einzelwörter am Ende ohne sinnvollen Kontext entfernen (Zero, Light, Classic, Premium)
-        text = text.replace(Regex("""(?i)\s+\b(zero|light|classic|premium)\b\s*$"""), " ")
-
-        // Verwaiste Einzelbuchstaben am Zeilenende nach einem Wort entfernen (z.B. "schinke n" -> "schinke")
-        text = text.replace(Regex("""(?i)(?<=\b[a-zäöüß]{3,})\s+[a-z]\s*$"""), "")
-
-        var cleaned = text.replace(Regex("""[-*+_/\\():;!?#,="'<>]"""), " ")
+        val cleaned = text.replace(Regex("""[-*+_/\\():;!?#,="'<>]"""), " ")
                           .replace(Regex("""\s+"""), " ")
                           .trim()
 
-        cleaned = cleaned.replace(Regex("""(?i)\bh\s+milch\b"""), "H-Milch")
-                         .replace(Regex("""(?i)\bhähnchen\s+brustfilet\b"""), "Hähnchen-Brustfilet")
-                         .replace(Regex("""(?i)\bputen\s+lachsschinken\b"""), "Puten-Lachsschinken")
-
-        // 13. Leere Zeilen (< 2 Zeichen) abfangen
-        if (cleaned.length < 2) return ""
+        // 13. Leere Zeilen (< 3 Zeichen) abfangen
+        if (cleaned.length < 3) return ""
 
         return cleaned
     }

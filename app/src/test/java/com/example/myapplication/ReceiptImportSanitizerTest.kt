@@ -68,27 +68,4 @@ class ReceiptImportSanitizerTest {
         val cleaned = ChefkochHelper.cleanIngredientForChefkoch("Fenchel 1 Kg, K-classic Naturjoghurt")
         assertEquals("Fenchel Naturjoghurt", cleaned)
     }
-
-    @Test
-    fun `test smart sanitization enhancements`() {
-        assertEquals("Schweppes Tonic Water", ReceiptImportSanitizer.cleanReceiptText("Schw.TonicW Zero1,25"))
-        assertEquals("Schweppes Tonic Water", ReceiptImportSanitizer.cleanReceiptText("schw.tonicw"))
-        assertEquals("Schweppes Wild Berry", ReceiptImportSanitizer.cleanReceiptText("sw wild berry"))
-        assertEquals("Hex vom Dasenstein Weissherbst", ReceiptImportSanitizer.cleanReceiptText("hxm weissherbst"))
-        assertEquals("Dinkel Johannisbeer Rührkuchen", ReceiptImportSanitizer.cleanReceiptText("dinkel joh beerrührk"))
-        assertEquals("Cola", ReceiptImportSanitizer.cleanReceiptText("Cola Light 0,5l"))
-        assertEquals("Fleisch-/Wurstwaren (Theke)", ReceiptImportSanitizer.cleanReceiptText("Metzgerei PLU 1234"))
-        assertEquals("Käse (Frischetheke)", ReceiptImportSanitizer.cleanReceiptText("Käse PLU 5678"))
-        assertEquals("Herta Finesse Hähnchenbrust", ReceiptImportSanitizer.cleanReceiptText("Fin. Hähnchenbrust M"))
-        assertEquals("Hausmacher Handkäse", ReceiptImportSanitizer.cleanReceiptText("Haus Handkäse"))
-        assertEquals("Herta Finesse Pfeffer", ReceiptImportSanitizer.cleanReceiptText("Finesse Pfeffer"))
-        assertEquals("Expressreis", ReceiptImportSanitizer.cleanReceiptText("Exsreis"))
-        assertEquals("Karottenkrüstchen", ReceiptImportSanitizer.cleanReceiptText("Arottenkrüstchen"))
-        assertEquals("Gewürzgurken", ReceiptImportSanitizer.cleanReceiptText("Gewürzs"))
-        assertEquals("Erdnüsse Geröstet", ReceiptImportSanitizer.correctNameWithFuzzyMatching("Erdn Gerös Ges"))
-        assertEquals("Schinken", ReceiptImportSanitizer.cleanReceiptText("Schww Schinken"))
-        assertEquals("Hähnchen-Brustfilet", ReceiptImportSanitizer.cleanReceiptText("H Brustfilet"))
-        assertEquals("Herzhaft", ReceiptImportSanitizer.cleanReceiptText("Herzhaf"))
-        assertEquals("Puten-Lachsschinken", ReceiptImportSanitizer.cleanReceiptText("Puten-lachsschinke n"))
-    }
 }

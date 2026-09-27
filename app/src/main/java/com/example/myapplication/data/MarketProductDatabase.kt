@@ -39,7 +39,6 @@ abstract class MarketProductDatabase : RoomDatabase() {
                     MarketProductDatabase::class.java,
                     "market_dict.db"
                 )
-                .createFromAsset("database/market_products.db")
                 .addMigrations(MIGRATION_1_2)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
