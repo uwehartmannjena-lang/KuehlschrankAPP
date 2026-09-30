@@ -1,11 +1,6 @@
 package com.example.myapplication.data
 
-import androidx.room.Dao
-import androidx.room.Delete
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import androidx.room.Update
+import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -76,12 +71,6 @@ interface FridgeItemDao {
 
     @Query("SELECT * FROM purchase_history WHERE LOWER(productName) = LOWER(:productName) ORDER BY timestamp DESC")
     suspend fun getPurchaseHistoryForProductSync(productName: String): List<PurchaseHistoryEntry>
-
-    @Query("SELECT * FROM fridge_items WHERE householdId = :householdId")
-    fun getItemsByHousehold(householdId: String): Flow<List<FridgeItem>>
-
-    @Query("SELECT * FROM fridge_items WHERE householdId = :householdId")
-    suspend fun getItemsByHouseholdSync(householdId: String): List<FridgeItem>
 
     @Query("SELECT * FROM price_history WHERE LOWER(itemName) LIKE '%' || LOWER(:name) || '%' ORDER BY date DESC")
     suspend fun getHistoryByName(name: String): List<PriceRecord>

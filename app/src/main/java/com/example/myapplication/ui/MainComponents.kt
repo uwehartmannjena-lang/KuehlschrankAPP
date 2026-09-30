@@ -1,5 +1,7 @@
 package com.example.myapplication.ui
 
+import com.example.myapplication.MarketDictionaryHelper
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -10,30 +12,11 @@ import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -45,134 +28,40 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.AccountTree
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AddShoppingCart
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Celebration
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Diamond
-import androidx.compose.material.icons.filled.Eco
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Fastfood
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Gavel
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.GroupAdd
-import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.Kitchen
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.LocalMall
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Loyalty
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.filled.ViewCarousel
-import androidx.compose.material.icons.filled.ViewColumn
-import androidx.compose.material.icons.filled.WorkspacePremium
-import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import kotlinx.coroutines.launch
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -181,31 +70,30 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import coil.compose.SubcomposeAsyncImage
 import com.example.myapplication.FridgeViewModel
+import com.example.myapplication.ui.help.AppHelpManager
+import com.example.myapplication.ui.help.HelpDialog
+import com.example.myapplication.ui.help.OnboardingOverlay
 import com.example.myapplication.KassenzettelScannerActivity
-import com.example.myapplication.MarketDictionaryHelper
-import com.example.myapplication.R
+import com.example.myapplication.KassenzettelParser
 import com.example.myapplication.ScannerActivity
+import com.example.myapplication.data.FridgeItem
+import com.example.myapplication.data.MealPlan
+import com.example.myapplication.data.ShoppingItem
+import com.example.myapplication.data.BudgetConfig
+import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.ChefkochHelper
 import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.FoodCategory
-import com.example.myapplication.data.FridgeItem
-import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.Product
 import com.example.myapplication.data.SeasonHelper
-import com.example.myapplication.data.ShoppingItem
+import com.example.myapplication.data.WastedItem
 import com.example.myapplication.data.StatisticsHelper
 import com.example.myapplication.data.StatisticsTimeFrame
-import com.example.myapplication.data.SyncManager
-import com.example.myapplication.data.WastedItem
-import com.example.myapplication.ui.help.HelpDialog
-import com.example.myapplication.ui.help.OnboardingOverlay
 import com.example.myapplication.web.WebCompanionServer
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -422,30 +310,26 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                     NavigationBarItem(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        icon = { Premium3DIcon(R.drawable.ic_nav_vorrat, selectedTab == 0) },
-                        label = { Text("Vorrat") },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant)
+                        icon = { Icon(Icons.AutoMirrored.Default.List, null) },
+                        label = { Text("Vorrat") }
                     )
                     NavigationBarItem(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        icon = { Premium3DIcon(R.drawable.ic_nav_einkauf, selectedTab == 1) },
-                        label = { Text("Einkauf") },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant)
+                        icon = { Icon(Icons.Default.ShoppingCart, null) },
+                        label = { Text("Einkauf") }
                     )
                     NavigationBarItem(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
-                        icon = { Premium3DIcon(R.drawable.ic_nav_plan, selectedTab == 2) },
-                        label = { Text("Plan") },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant)
+                        icon = { Icon(Icons.Default.Restaurant, null) },
+                        label = { Text("Plan") }
                     )
                     NavigationBarItem(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
-                        icon = { Premium3DIcon(R.drawable.ic_nav_statistik, selectedTab == 3) },
-                        label = { Text("Statistik") },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant)
+                        icon = { Icon(Icons.Default.BarChart, null) },
+                        label = { Text("Statistik") }
                     )
                 }
             },
@@ -480,7 +364,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                             onLongClick = { itemForInfoDialog = item }
                                         )
                                     }
-                                    item(span = { GridItemSpan(2) }) { Spacer(Modifier.height(80.dp)) }
+                                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { Spacer(Modifier.height(80.dp)) }
                                 }
                             }
                             "gallery" -> {
@@ -1785,14 +1669,10 @@ fun FabActionBottomSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Option wählen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            ListItem(headlineContent = { Text("Kassenbon scannen", fontWeight = FontWeight.Bold) }, supportingContent = { Text("Mit KI & Foto-Erkennung") }, leadingContent = { Premium3DIcon(
-                R.drawable.ic_3d_receipt, true) }, modifier = Modifier.clickable { onScanReceipt() })
-            ListItem(headlineContent = { Text("Barcode scannen") }, supportingContent = { Text("Einzelartikel per EAN Barcode") }, leadingContent = { Premium3DIcon(
-                R.drawable.ic_3d_barcode, true) }, modifier = Modifier.clickable { onScanBarcode() })
-            ListItem(headlineContent = { Text("Multi-Scan (Barcodes)") }, supportingContent = { Text("Mehrere Artikel hintereinander") }, leadingContent = { Premium3DIcon(
-                R.drawable.ic_3d_barcode, true) }, modifier = Modifier.clickable { onMultiScanBarcode() })
-            ListItem(headlineContent = { Text("Vorrats-Scanner (KI Foto)") }, supportingContent = { Text("Mehrere Artikel auf einem Foto") }, leadingContent = { Premium3DIcon(
-                R.drawable.ic_nav_vorrat, true) }, modifier = Modifier.clickable { onPhotoScan() })
+            ListItem(headlineContent = { Text("Kassenbon scannen", fontWeight = FontWeight.Bold) }, supportingContent = { Text("Mit KI & Foto-Erkennung") }, leadingContent = { Icon(Icons.Default.ReceiptLong, null, tint = MaterialTheme.colorScheme.primary) }, modifier = Modifier.clickable { onScanReceipt() })
+            ListItem(headlineContent = { Text("Barcode scannen") }, supportingContent = { Text("Einzelartikel per EAN Barcode") }, leadingContent = { Icon(Icons.Default.QrCodeScanner, null) }, modifier = Modifier.clickable { onScanBarcode() })
+            ListItem(headlineContent = { Text("Multi-Scan (Barcodes)") }, supportingContent = { Text("Mehrere Artikel hintereinander") }, leadingContent = { Icon(Icons.Default.CenterFocusWeak, null) }, modifier = Modifier.clickable { onMultiScanBarcode() })
+            ListItem(headlineContent = { Text("Vorrats-Scanner (KI Foto)") }, supportingContent = { Text("Mehrere Artikel auf einem Foto") }, leadingContent = { Icon(Icons.Default.CameraAlt, null) }, modifier = Modifier.clickable { onPhotoScan() })
             ListItem(headlineContent = { Text("Manuelle Eingabe") }, supportingContent = { Text("Artikel händisch anlegen") }, leadingContent = { Icon(Icons.Default.Edit, null) }, modifier = Modifier.clickable { onManualInput() })
             ListItem(headlineContent = { Text("Spracheingabe") }, leadingContent = { Icon(Icons.Default.Mic, null) }, modifier = Modifier.clickable { onVoiceInput() })
             ListItem(headlineContent = { Text("Datei / PDF hochladen") }, leadingContent = { Icon(Icons.Default.UploadFile, null) }, modifier = Modifier.clickable { onUpload() })
@@ -1919,20 +1799,14 @@ fun UnitSelector(selected: String, onSelect: (String) -> Unit) {
 @Composable
 fun LocationTileSelector(selected: String, onSelect: (String) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        LocationTile("Kühlschrank", selected == "Kühlschrank", Modifier.weight(1f), onClick = { onSelect("Kühlschrank") }) {
-            Premium3DIcon(R.drawable.ic_nav_vorrat, selected == "Kühlschrank")
-        }
-        LocationTile("Gefrierfach", selected == "Gefrierfach", Modifier.weight(1f), onClick = { onSelect("Gefrierfach") }) {
-            Premium3DIcon(R.drawable.ic_3d_freezer, selected == "Gefrierfach")
-        }
-        LocationTile("Vorratskammer", selected == "Vorratskammer", Modifier.weight(1f), onClick = { onSelect("Vorratskammer") }) {
-            Premium3DIcon(R.drawable.ic_nav_vorrat, selected == "Vorratskammer")
-        }
+        LocationTile("Kühlschrank", Icons.Default.Kitchen, selected == "Kühlschrank", Modifier.weight(1f)) { onSelect("Kühlschrank") }
+        LocationTile("Gefrierfach", Icons.Default.AcUnit, selected == "Gefrierfach", Modifier.weight(1f)) { onSelect("Gefrierfach") }
+        LocationTile("Vorratskammer", Icons.Default.Inventory, selected == "Vorratskammer", Modifier.weight(1f)) { onSelect("Vorratskammer") }
     }
 }
 
 @Composable
-fun LocationTile(label: String, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit, icon: @Composable () -> Unit) {
+fun LocationTile(label: String, icon: ImageVector, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = modifier,
@@ -1940,7 +1814,7 @@ fun LocationTile(label: String, isSelected: Boolean, modifier: Modifier, onClick
         color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     ) {
         Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            icon()
+            Icon(icon, null, tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
         }
@@ -1957,7 +1831,7 @@ fun MealPlanView(viewModel: FridgeViewModel, plans: List<MealPlan>, inventory: L
     var showRecipeIdeas by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Button(onClick = { showRecipeIdeas = true }, modifier = Modifier.fillMaxWidth()) {
-            Premium3DIcon(R.drawable.ic_3d_recipe, true)
+            Icon(Icons.Default.Lightbulb, null)
             Spacer(Modifier.width(8.dp))
             Text("Rezept-Vorschläge aus Vorräten")
         }
@@ -2723,28 +2597,19 @@ fun SettingsDialog(
                                             .size(44.dp)
                                             .clip(CircleShape)
                                     ) {
-                                        if (resId != 0 && index <= 10) {
+                                        if (resId != 0) {
                                             Image(
                                                 painter = painterResource(id = resId),
                                                 contentDescription = iconName,
-                                                colorFilter = ColorFilter.tint(tintColor),
                                                 modifier = Modifier.size(36.dp)
                                             )
                                         } else {
-                                            val vectorResId = when (index) {
-                                                11 -> R.drawable.ic_3d_fridge_variant_11
-                                                12 -> R.drawable.ic_3d_fridge_variant_12
-                                                13 -> R.drawable.ic_3d_fridge_variant_13
-                                                14 -> R.drawable.ic_3d_fridge_variant_14
-                                                15 -> R.drawable.ic_3d_fridge_variant_15
-                                                16 -> R.drawable.ic_3d_fridge_variant_16
-                                                17 -> R.drawable.ic_3d_fridge_variant_17
-                                                18 -> R.drawable.ic_3d_fridge_variant_18
-                                                19 -> R.drawable.ic_3d_fridge_variant_19
-                                                20 -> R.drawable.ic_3d_fridge_variant_20
-                                                else -> R.drawable.ic_fridge
-                                            }
-                                            Premium3DIcon(vectorResId, isSelected, modifier = Modifier.size(36.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.Kitchen,
+                                                contentDescription = iconName,
+                                                tint = tintColor,
+                                                modifier = Modifier.size(28.dp)
+                                            )
                                         }
                                     }
                                     Spacer(Modifier.height(4.dp))
@@ -2834,12 +2699,7 @@ fun SettingsDialog(
                 item {
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Premium3DIcon(R.drawable.ic_3d_warning, true)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Warnungen & Haushalt", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    }
-                    Spacer(Modifier.height(8.dp))
+                    Text("Warnungen & Haushalt", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                     Text("MHD-Warnung ab $tempExpiryDays Tage vor Ablauf", style = MaterialTheme.typography.bodySmall)
                     Slider(
                         value = tempExpiryDays.toFloat(),
@@ -2874,23 +2734,6 @@ fun SettingsDialog(
                         Icon(Icons.Default.Computer, null)
                         Spacer(Modifier.width(8.dp))
                         Text("Mit PC verbinden (WLAN-Modus) 💻", fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    var showHouseholdSync by remember { mutableStateOf(false) }
-                    if (showHouseholdSync) {
-                        HouseholdSyncDialog(viewModel = viewModel, onDismiss = { showHouseholdSync = false })
-                    }
-
-                    Button(
-                        onClick = { showHouseholdSync = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Premium3DIcon(R.drawable.ic_3d_sync, true)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Familien-Haushalt Sync 👨‍👩‍👧‍👦", fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -3181,17 +3024,14 @@ fun WebCompanionDialog(
     val context = LocalContext.current
     var isServerRunning by remember { mutableStateOf(WebCompanionServer.isRunning) }
     var ipAddress by remember { mutableStateOf(WebCompanionServer.getLocalIpAddress(context)) }
+    var pin by remember { mutableStateOf(WebCompanionServer.currentPin) }
+    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
-    val displayUrl = "http://$ipAddress:8080"
+    val url = "http://$ipAddress:8080"
 
-    val scannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val barcode = result.data?.getStringExtra("SCANNED_BARCODE")
-            if (barcode != null) {
-                WebCompanionServer.approveSession(barcode)
-                Toast.makeText(context, "PC-Verbindung freigegeben!", Toast.LENGTH_SHORT).show()
-                onDismiss()
-            }
+    LaunchedEffect(isServerRunning, ipAddress) {
+        if (isServerRunning) {
+            qrBitmap = QrUtils.generateQrCode(url, 400)
         }
     }
 
@@ -3206,37 +3046,43 @@ fun WebCompanionDialog(
             ) {
                 if (isServerRunning) {
                     Text(
-                        text = "1. Öffne am PC folgenden Link:",
+                        text = "1. Öffne folgende Adresse im Browser auf deinem PC:",
                         style = MaterialTheme.typography.bodySmall
                     )
-
                     SelectionContainer {
                         Text(
-                            text = displayUrl,
+                            text = url,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-                    
-                    Text(
-                        text = "2. Scanne den QR-Code, der auf dem PC-Monitor erscheint:",
-                        style = MaterialTheme.typography.bodySmall
-                    )
 
-                    Button(
-                        onClick = {
-                            scannerLauncher.launch(Intent(context, ScannerActivity::class.java))
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.QrCodeScanner, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("QR-Code scannen")
+                    qrBitmap?.let { bitmap ->
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "QR Code",
+                            modifier = Modifier.size(180.dp)
+                        )
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Sicherheits-PIN für PC-Browser:", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                text = pin,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 4.sp
+                            )
+                        }
+                    }
 
                     Button(
                         onClick = {
@@ -3260,6 +3106,7 @@ fun WebCompanionDialog(
                             WebCompanionServer.startServer(context, viewModel)
                             isServerRunning = true
                             ipAddress = WebCompanionServer.getLocalIpAddress(context)
+                            pin = WebCompanionServer.currentPin
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
@@ -3267,87 +3114,6 @@ fun WebCompanionDialog(
                         Spacer(Modifier.width(6.dp))
                         Text("Webserver Starten (Port 8080)")
                     }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Schließen")
-            }
-        }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HouseholdSyncDialog(
-    viewModel: FridgeViewModel,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    val activeHouseholdId by SyncManager.activeHouseholdId.collectAsState()
-    var inputHouseholdId by remember { mutableStateOf("") }
-    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
-
-    LaunchedEffect(activeHouseholdId) {
-        qrBitmap = SyncManager.getHouseholdQrCode(activeHouseholdId, 400)
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Familien-Haushalt Sync 👨‍👩‍👧‍👦", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Dein Haushalts-Code:",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                SelectionContainer {
-                    Text(
-                        text = activeHouseholdId,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                qrBitmap?.let { bitmap ->
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Haushalt QR-Code",
-                        modifier = Modifier.size(180.dp)
-                    )
-                }
-
-                HorizontalDivider()
-
-                Text("Einem bestehenden Haushalt beitreten:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                OutlinedTextField(
-                    value = inputHouseholdId,
-                    onValueChange = { inputHouseholdId = it },
-                    label = { Text("Haushalts-ID (z.B. HAUS-82A1B)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Button(
-                    onClick = {
-                        if (inputHouseholdId.isNotBlank()) {
-                            SyncManager.joinHousehold(context, inputHouseholdId)
-                            viewModel.setHouseholdId(inputHouseholdId)
-                            onDismiss()
-                        }
-                    },
-                    enabled = inputHouseholdId.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.GroupAdd, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Haushalt beitreten")
                 }
             }
         },
@@ -3502,21 +3268,4 @@ fun TreeView(items: List<FridgeItem>, viewModel: FridgeViewModel, onEdit: (Fridg
             }
         }
     }
-}
-
-@Composable
-fun Premium3DIcon(resId: Int, selected: Boolean = true, modifier: Modifier = Modifier) {
-    val matrix = remember(selected) {
-        ColorMatrix().apply {
-            if (!selected) {
-                setToSaturation(0f)
-            }
-        }
-    }
-    Image(
-        painter = painterResource(resId),
-        contentDescription = null,
-        modifier = modifier.size(28.dp).graphicsLayer { alpha = if (selected) 1f else 0.5f },
-        colorFilter = if (selected) null else ColorFilter.colorMatrix(matrix)
-    )
 }
