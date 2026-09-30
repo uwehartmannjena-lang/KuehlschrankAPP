@@ -109,11 +109,11 @@ object PdfReceiptHelper {
                 return Pair(emptyList(), null)
             }
 
-            // 1. Vorrangige Textextraktion
+            // 1. Vorrangige Textextraktion aus eingebettetem PDF-Textstream
             val embeddedText = extractEmbeddedText(pdfFile)
             if (embeddedText.isNotBlank()) {
                 val parsedProducts = try {
-                    ReceiptParser.parseReceiptText(embeddedText, corrections)
+                    KassenzettelParser.parseReceiptText(embeddedText, corrections)
                 } catch (e: Throwable) {
                     emptyList()
                 }
@@ -185,8 +185,9 @@ object PdfReceiptHelper {
             }
 
             // 3. OCR-Ergebnisse der verschiedenen Chunks sauber zusammenführen, bevor der Parser startet
-            val ocrProducts = if (ocrTextChunks.isNotEmpty()) {
-                ReceiptParser.parseReceiptChunks(ocrTextChunks, corrections)
+            val fullOcrText = ocrTextChunks.joinToString("\n")
+            val ocrProducts = if (fullOcrText.isNotBlank()) {
+                KassenzettelParser.parseReceiptText(fullOcrText, corrections)
             } else {
                 emptyList()
             }

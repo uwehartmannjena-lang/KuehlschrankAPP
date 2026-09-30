@@ -75,6 +75,7 @@ data class FridgeItem(
 
     // Verknüpfung zum Beleg-Archiv
     var receiptId: String? = null,
+    var supermarket: String? = null,
     
     // NFC-Tag ID für Gefrierdosen
     var nfcTagId: String? = null,

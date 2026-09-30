@@ -125,3 +125,16 @@ data class MarketProductFts(
     val category: String,
     val synonyms: String?
 )
+
+@Entity(
+    tableName = "purchase_history",
+    indices = [Index(value = ["productName"], name = "idx_purchase_history_product_name")]
+)
+data class PurchaseHistoryEntry(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val productName: String,
+    val purchaseDate: String,
+    val storeName: String,
+    val price: Double,
+    val timestamp: Long = System.currentTimeMillis()
+)

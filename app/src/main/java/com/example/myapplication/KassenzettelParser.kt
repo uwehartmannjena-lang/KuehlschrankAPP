@@ -1,12 +1,15 @@
 package com.example.myapplication
 
 import android.content.Context
+import android.graphics.Bitmap
 import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.Product
 import com.google.mlkit.vision.text.Text
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.google.mlkit.vision.text.TextRecognizer
+import java.io.File
 import java.util.*
 import kotlin.math.round
 
@@ -57,6 +60,15 @@ object KassenzettelParser {
 
     // Erweitertes Marken- & Artikel-Lexikon für Thüringen
     private val BRAND_DATABASE = mapOf(
+        "SCHWW SCHINKEN" to "Schwarzwälder Schinken",
+        "KNORR FIX CHILI C CAR" to "Knorr Fix Chili con Carne",
+        "CASH CRANB MIX" to "Cashew-Cranberry-Mix",
+        "ERDN GERÖS GES" to "Erdnüsse geröstet gesalzen",
+        "H BRUSTFILET" to "Hähnchen-Brustfilet",
+        "WAGNER ST PIZZA" to "Wagner Steinofen Pizza",
+        "OUÄSE" to "Quäse",
+        "EXSREIS" to "Expressreis",
+        "AROTTENKRÜSTCHEN" to "Karottenkrüstchen",
         "KART.VFK 2,5KG" to "Kartoffeln",
         "KART.VFK" to "Kartoffeln",
         "FIN. HÄHNCHENBRUST C" to "Hähnchenbrust",
@@ -228,7 +240,6 @@ object KassenzettelParser {
         var pendingName: String? = null
         var pendingQty = 1
         var pendingUnitPrice: Double? = null
-        var foundFirstItem = false
         val supermarket = "Kaufland"
 
         for (rawLine in rawLines) {
@@ -243,11 +254,15 @@ object KassenzettelParser {
 
             // 2. Kopf- und Stördaten ignorieren
             if (isHeaderOrNoiseLine(line, upper) && !upper.contains("RABATT") && !line.startsWith("-")) {
-                if (!foundFirstItem) pendingName = null
                 continue
             }
 
-            // 3. Rabatte
+            // 3. Pfand-Zeilen & Leergut ignorieren
+            if (upper.contains("PFANDARTIKEL") || upper == "PFAND" || upper == "LEERGUT") {
+                continue
+            }
+
+            // 4. Rabatte
             if (upper.contains("RABATT") || upper.contains("SPAREN") || line.startsWith("-")) {
                 val discountMatch = PRICE_REGEX.find(line)
                 if (discountMatch != null && items.isNotEmpty()) {
@@ -261,13 +276,13 @@ object KassenzettelParser {
                 continue
             }
 
-            // 4. Multiplikator
+            // 5. Multiplikator zeile (z.B. "2 * 1,09" oder "2 x 1,09")
             val multMatch = MULTIPLIER_REGEX.find(line)
             if (multMatch != null) {
                 val qtyStr = multMatch.groupValues[1].replace(',', '.')
                 val parsedQty = if (qtyStr.contains('.')) 1 else qtyStr.toIntOrNull() ?: 1
                 val unitPrice = multMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0
-                
+
                 val lineNoMult = line.substring(multMatch.range.last + 1).trim()
                 val priceMatch = PRICE_REGEX.find(lineNoMult)
                 val lineTotal = if (priceMatch != null) {
@@ -278,7 +293,6 @@ object KassenzettelParser {
 
                 if (pendingName != null) {
                     addProductSafely(pendingName, lineTotal, parsedQty, items, corrections, supermarket)
-                    foundFirstItem = true
                     pendingName = null
                     pendingQty = 1
                     pendingUnitPrice = null
@@ -289,7 +303,7 @@ object KassenzettelParser {
                 continue
             }
 
-            // 5. Preiszeile
+            // 6. Preiszeile (z.B. "2,18 A" oder "K-CLASSIC H-MILCH 2,18 A")
             val priceMatch = PRICE_REGEX.find(line)
             if (priceMatch != null) {
                 val priceStr = priceMatch.groupValues[1].replace(',', '.')
@@ -297,43 +311,30 @@ object KassenzettelParser {
 
                 var inlineArticle = line.substring(0, priceMatch.range.first).trim()
                 inlineArticle = TAX_SUFFIX_REGEX.replace(inlineArticle, "").trim()
-                
-                val lineWithoutPrice = line.replace(PRICE_REGEX, "").replace(TAX_SUFFIX_REGEX, "").trim()
+                inlineArticle = inlineArticle.replace(Regex("""[*#xX\s]+$"""), "").trim()
 
-                if (pendingName != null && lineWithoutPrice.isEmpty() && priceVal > 0.05) {
+                if (inlineArticle.length >= 2 && !isHeaderOrNoiseLine(inlineArticle, inlineArticle.uppercase())) {
+                    val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && pendingUnitPrice > 0.0 && Math.abs(priceVal - pendingUnitPrice) < 0.05) {
+                        pendingQty * pendingUnitPrice
+                    } else priceVal
+                    addProductSafely(inlineArticle, totalToUse, pendingQty, items, corrections, supermarket)
+                    pendingName = null
+                    pendingQty = 1
+                    pendingUnitPrice = null
+                } else if (pendingName != null && priceVal > 0.05) {
                     val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && pendingUnitPrice > 0.0 && Math.abs(priceVal - pendingUnitPrice) < 0.05) {
                         pendingQty * pendingUnitPrice
                     } else priceVal
                     addProductSafely(pendingName, totalToUse, pendingQty, items, corrections, supermarket)
-                    foundFirstItem = true
                     pendingName = null
                     pendingQty = 1
                     pendingUnitPrice = null
-                } else {
-                    if (pendingName == null && inlineArticle.length >= 3 && !isHeaderOrNoiseLine(inlineArticle, inlineArticle.uppercase())) {
-                        pendingName = inlineArticle
-                    }
-
-                    if (pendingName != null && priceVal > 0.05) {
-                        val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && pendingUnitPrice > 0.0 && Math.abs(priceVal - pendingUnitPrice) < 0.05) {
-                            pendingQty * pendingUnitPrice
-                        } else priceVal
-                        addProductSafely(pendingName, totalToUse, pendingQty, items, corrections, supermarket)
-                        foundFirstItem = true
-                        pendingName = null
-                        pendingQty = 1
-                        pendingUnitPrice = null
-                    }
-
-                    var nextArticle = line.substring(priceMatch.range.last + 1)
-                    nextArticle = TAX_SUFFIX_REGEX.replace(nextArticle, "")
-                    nextArticle = nextArticle.replace(Regex("""^[-*#\s.+]+"""), "").trim()
-
-                    if (nextArticle.length >= 3 && !isHeaderOrNoiseLine(nextArticle, nextArticle.uppercase())) {
-                        pendingName = nextArticle
-                    }
                 }
-            } else if (line.length >= 3 && !isHeaderOrNoiseLine(line, upper)) {
+                continue
+            }
+
+            // 7. Artikelname auf eigenen Zeile (z.B. "K-CLASSIC H-MILCH")
+            if (line.length >= 2 && !isHeaderOrNoiseLine(line, upper)) {
                 pendingName = line
             }
         }
@@ -795,5 +796,14 @@ object KassenzettelParser {
 
             else -> "Stk."
         }
+    }
+
+    fun processPdf(
+        context: Context,
+        pdfFile: File,
+        recognizer: TextRecognizer,
+        corrections: Map<String, String> = emptyMap()
+    ): Pair<List<Product>, Bitmap?> {
+        return PdfReceiptHelper.processPdf(context, pdfFile, recognizer, corrections)
     }
 }

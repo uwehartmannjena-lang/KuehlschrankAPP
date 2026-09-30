@@ -48,6 +48,7 @@ import com.example.myapplication.data.PriceRecord
 import com.example.myapplication.data.UserLearnedCorrection
 import com.example.myapplication.data.Product
 import com.example.myapplication.data.ProductRepository
+import com.example.myapplication.data.PurchaseHistoryEntry
 import com.example.myapplication.data.ShoppingItem
 import com.example.myapplication.data.StatisticsHelper
 import com.example.myapplication.data.StatisticsTimeFrame
@@ -762,6 +763,17 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             if (item.price > 0) {
                 checkProductWarner(item.name, item.price, item.quantity)
                 dao.insertPriceRecord(PriceRecord(itemId = item.id, itemName = item.name, price = item.price, quantity = item.quantity, barcode = item.barcode))
+                val df = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY)
+                val dateStr = df.format(Date(item.purchaseDate))
+                val storeStr = item.supermarket?.ifBlank { "Supermarkt" } ?: "Supermarkt"
+                dao.insertPurchaseHistoryEntry(
+                    PurchaseHistoryEntry(
+                        productName = item.name,
+                        purchaseDate = dateStr,
+                        storeName = storeStr,
+                        price = item.price
+                    )
+                )
             }
 
             dao.insertItem(item.copy(
@@ -900,6 +912,8 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     }
 
     // Feature 5: Preishistorie und Preisvergleich beim Kassenbon-Einlesen
+    fun getPurchaseHistoryForProduct(productName: String) = dao.getPurchaseHistoryForProduct(productName)
+
     suspend fun comparePriceWithHistory(itemName: String, currentPrice: Double): String {
         val history = dao.getHistoryByName(itemName)
         if (history.isEmpty()) return "Neu erfasst: ${String.format(Locale.GERMAN, "%.2f €", currentPrice)}"
