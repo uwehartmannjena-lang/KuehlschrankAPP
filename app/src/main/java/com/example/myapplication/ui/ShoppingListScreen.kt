@@ -43,6 +43,7 @@ import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.myapplication.R
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -126,24 +127,22 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         // --- 1. TOP HEADER & MODE SWITCHER ---
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(bottom = 8.dp)
         ) {
             // Mode Switcher (Standard vs. Supermarkt-Modus)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.weight(1f)) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = !isSupermarketMode,
                     onClick = { isSupermarketMode = false },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                     icon = {}
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.List, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Liste", style = MaterialTheme.typography.labelMedium)
+                    Premium3DIcon(R.drawable.ic_nav_plan, !isSupermarketMode, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Einkaufsliste", style = MaterialTheme.typography.labelLarge)
                 }
                 SegmentedButton(
                     selected = isSupermarketMode,
@@ -158,16 +157,20 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                     ),
                     icon = {}
                 ) {
-                    Icon(Icons.Default.ShoppingCart, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Supermarkt 🛒", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Premium3DIcon(R.drawable.ic_nav_einkauf, isSupermarketMode, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Supermarkt-Tour", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 }
             }
 
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.height(12.dp))
 
             // Quick Action Buttons
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 // Mikrofon (Speech-to-Text)
                 IconButton(
                     onClick = {
@@ -265,6 +268,35 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
 
         Spacer(Modifier.height(8.dp))
 
+        // --- 2b. INTELLIGENTE NACHKAUF-VORSCHLÄGE (REFILL CAROUSEL) ---
+        if (!isSupermarketMode && refillSuggestions.isNotEmpty()) {
+            Text(
+                text = "💡 Intelligente Nachkauf-Vorschläge:",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = viewModel.themeColor.value
+            )
+            Spacer(Modifier.height(4.dp))
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(refillSuggestions) { (suggestName, suggestUnit) ->
+                    SuggestionChip(
+                        onClick = {
+                            viewModel.addToShoppingList(ShoppingItem(name = suggestName, quantity = 1, unit = suggestUnit))
+                        },
+                        label = { Text("+ $suggestName", fontSize = 12.sp) },
+                        icon = { Icon(Icons.Default.Add, null, modifier = Modifier.size(14.dp)) },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
         // --- 3. INPUT FIELD (If in standard mode) ---
         if (!isSupermarketMode) {
             Row(
@@ -359,11 +391,10 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Outlined.ShoppingCart,
-                        null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    Premium3DIcon(
+                        R.drawable.ic_nav_einkauf,
+                        selected = false,
+                        modifier = Modifier.size(64.dp)
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(

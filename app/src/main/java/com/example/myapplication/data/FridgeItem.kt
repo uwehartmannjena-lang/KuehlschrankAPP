@@ -45,6 +45,7 @@ data class FridgeItem(
     
     // Multi-Haushalt
     var householdId: String = "default",
+    var lastModified: Long = System.currentTimeMillis(),
     
     // Nährwerte pro 100g/ml
     var sugar: Double = 0.0,

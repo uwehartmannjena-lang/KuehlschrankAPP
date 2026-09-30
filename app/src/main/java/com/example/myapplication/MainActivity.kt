@@ -3,10 +3,13 @@ package com.example.myapplication
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.nfc.NfcAdapter
+import android.nfc.Tag
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -21,18 +24,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.work.*
-import com.example.myapplication.data.*
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.example.myapplication.data.AppDatabase
+import com.example.myapplication.data.EnrichmentWorker
+import com.example.myapplication.data.ExpiryWorker
+import com.example.myapplication.data.SyncManager
 import com.example.myapplication.ui.RefrigeratorApp
 import com.example.myapplication.ui.openRetailerWebsite
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import java.util.*
-import java.util.concurrent.TimeUnit
-import android.nfc.NfcAdapter
-import android.nfc.Tag
-import android.app.PendingIntent
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     private var nfcAdapter: NfcAdapter? = null
@@ -51,6 +58,7 @@ class MainActivity : ComponentActivity() {
         createNotificationChannel(this)
         scheduleExpiryCheck(this)
         scheduleEnrichmentWorker(this)
+        SyncManager.init(applicationContext)
         KassenzettelParser.loadProfiles(this)
         PDFBoxResourceLoader.init(applicationContext)
 

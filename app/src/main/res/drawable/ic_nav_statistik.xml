@@ -1,0 +1,58 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+  <!-- Bar 1 (Short) -->
+  <path
+      android:pathData="M4,18 h4 v10 h-4 z">
+    <aapt:attr name="android:fillColor">
+      <gradient android:type="linear" android:startX="4" android:startY="18" android:endX="8" android:endY="28">
+        <item android:color="#FF64B5F6" android:offset="0" />
+        <item android:color="#FF1976D2" android:offset="1" />
+      </gradient>
+    </aapt:attr>
+  </path>
+  <path android:pathData="M4,18 l2,-2 h4 l-2,2 h-4 z" android:fillColor="#FF90CAF9" />
+  <path android:pathData="M8,18 l2,-2 v10 l-2,2 v-10 z" android:fillColor="#FF1565C0" />
+
+  <!-- Bar 2 (Medium) -->
+  <path
+      android:pathData="M12,12 h4 v16 h-4 z">
+    <aapt:attr name="android:fillColor">
+      <gradient android:type="linear" android:startX="12" android:startY="12" android:endX="16" android:endY="28">
+        <item android:color="#FF81C784" android:offset="0" />
+        <item android:color="#FF388E3C" android:offset="1" />
+      </gradient>
+    </aapt:attr>
+  </path>
+  <path android:pathData="M12,12 l2,-2 h4 l-2,2 h-4 z" android:fillColor="#FFA5D6A7" />
+  <path android:pathData="M16,12 l2,-2 v16 l-2,2 v-16 z" android:fillColor="#FF2E7D32" />
+
+  <!-- Bar 3 (Tall) -->
+  <path
+      android:pathData="M20,6 h4 v22 h-4 z">
+    <aapt:attr name="android:fillColor">
+      <gradient android:type="linear" android:startX="20" android:startY="6" android:endX="24" android:endY="28">
+        <item android:color="#FFFFB74D" android:offset="0" />
+        <item android:color="#FFF57C00" android:offset="1" />
+      </gradient>
+    </aapt:attr>
+  </path>
+  <path android:pathData="M20,6 l2,-2 h4 l-2,2 h-4 z" android:fillColor="#FFFFCC80" />
+  <path android:pathData="M24,6 l2,-2 v22 l-2,2 v-22 z" android:fillColor="#FFE65100" />
+
+  <!-- Trend Line -->
+  <path
+      android:pathData="M6,17 l6,-6 l8,2 l6,-8"
+      android:strokeColor="#FFD32F2F"
+      android:strokeWidth="2"
+      android:strokeLineJoin="round"
+      android:strokeLineCap="round" />
+  <!-- Trend Dots -->
+  <path android:pathData="M6,17 m-1.5,0 a1.5,1.5 0 1,1 3,0 a1.5,1.5 0 1,1 -3,0" android:fillColor="#FFD32F2F" />
+  <path android:pathData="M12,11 m-1.5,0 a1.5,1.5 0 1,1 3,0 a1.5,1.5 0 1,1 -3,0" android:fillColor="#FFD32F2F" />
+  <path android:pathData="M20,13 m-1.5,0 a1.5,1.5 0 1,1 3,0 a1.5,1.5 0 1,1 -3,0" android:fillColor="#FFD32F2F" />
+  <path android:pathData="M26,5 m-1.5,0 a1.5,1.5 0 1,1 3,0 a1.5,1.5 0 1,1 -3,0" android:fillColor="#FFD32F2F" />
+</vector>

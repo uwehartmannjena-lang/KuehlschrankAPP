@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+  <!-- Shadow -->
+  <path android:pathData="M9,5 h14 v22 l-2,-2 l-2.5,2.5 l-2.5,-2.5 l-2.5,2.5 l-2.5,-2.5 l-2,2 z" android:fillColor="#22000000" />
+  <!-- Receipt Body -->
+  <path android:pathData="M8,4 h14 v22 l-2,-2 l-2.5,2.5 l-2.5,-2.5 l-2.5,2.5 l-2.5,-2.5 l-2,2 z">
+    <aapt:attr name="android:fillColor">
+      <gradient android:type="linear" android:startX="8" android:startY="4" android:endX="22" android:endY="26">
+        <item android:color="#FFFFFFFF" android:offset="0" />
+        <item android:color="#FFECEFF1" android:offset="0.8" />
+        <item android:color="#FFCFD8DC" android:offset="1" />
+      </gradient>
+    </aapt:attr>
+  </path>
+  <!-- Text lines -->
+  <path android:pathData="M11,8 h8 v1.5 h-8 z M11,12 h6 v1.5 h-6 z M11,16 h8 v1.5 h-8 z M11,20 h5 v1.5 h-5 z" android:fillColor="#FF90A4AE" />
+</vector>

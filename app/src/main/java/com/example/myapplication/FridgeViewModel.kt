@@ -8,9 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.mutableIntStateOf
@@ -29,11 +27,11 @@ import androidx.work.workDataOf
 import com.example.myapplication.billing.BillingManager
 import com.example.myapplication.data.BudgetConfig
 import com.example.myapplication.data.CachedProduct
+import com.example.myapplication.data.CategoryDetector
+import com.example.myapplication.data.ChefkochHelper
 import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.ConsumptionPattern
 import com.example.myapplication.data.DealWorker
-import com.example.myapplication.data.CategoryDetector
-import com.example.myapplication.data.ChefkochHelper
 import com.example.myapplication.data.ExpiryWorker
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.FridgeItem
@@ -45,7 +43,6 @@ import com.example.myapplication.data.LearningEntry
 import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.OpenFoodFactsApi
 import com.example.myapplication.data.PriceRecord
-import com.example.myapplication.data.UserLearnedCorrection
 import com.example.myapplication.data.Product
 import com.example.myapplication.data.ProductRepository
 import com.example.myapplication.data.PurchaseHistoryEntry
@@ -53,6 +50,7 @@ import com.example.myapplication.data.ShoppingItem
 import com.example.myapplication.data.StatisticsHelper
 import com.example.myapplication.data.StatisticsTimeFrame
 import com.example.myapplication.data.StoreOffer
+import com.example.myapplication.data.UserLearnedCorrection
 import com.example.myapplication.data.WastedItem
 import com.google.android.gms.tasks.Tasks
 import com.google.gson.Gson
@@ -60,7 +58,6 @@ import com.google.gson.reflect.TypeToken
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -73,7 +70,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -733,6 +729,15 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Fehler beim Laden des Backups", Toast.LENGTH_SHORT).show()
                 }
+            }
+        }
+    }
+
+    fun setHouseholdId(householdId: String) {
+        viewModelScope.launch {
+            val items = allFridgeItems.first()
+            items.forEach { item ->
+                dao.updateItem(item.copy(householdId = householdId, lastModified = System.currentTimeMillis()))
             }
         }
     }

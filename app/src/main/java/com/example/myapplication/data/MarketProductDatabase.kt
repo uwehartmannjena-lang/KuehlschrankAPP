@@ -37,9 +37,9 @@ abstract class MarketProductDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     MarketProductDatabase::class.java,
-                    "market_dict.db"
+                    "market_products.db"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .createFromAsset("market_products.db")
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
