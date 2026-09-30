@@ -68,4 +68,21 @@ class ReceiptImportSanitizerTest {
         val cleaned = ChefkochHelper.cleanIngredientForChefkoch("Fenchel 1 Kg, K-classic Naturjoghurt")
         assertEquals("Fenchel Naturjoghurt", cleaned)
     }
+
+    @Test
+    fun `test reassembly and abbreviation resolution`() {
+        assertEquals("Hähnchen-Salami", ReceiptImportSanitizer.cleanReceiptText("Hähnchen-sala mi"))
+        assertEquals("Puten-Lachsschinken", ReceiptImportSanitizer.cleanReceiptText("Puten-lachssc hinken"))
+        assertEquals("Geflügel-Fleischwurst", ReceiptImportSanitizer.cleanReceiptText("Geflügel-fleisc hwurst"))
+        assertEquals("Karottenkrüstchen", ReceiptImportSanitizer.cleanReceiptText("Karottenkrüstc hen"))
+        assertEquals("Chia-Skyr-Brötchen", ReceiptImportSanitizer.cleanReceiptText("Chia-skyr-bröt chen"))
+        assertEquals("Hähnchenbrust", ReceiptImportSanitizer.cleanReceiptText("Hähnchenbrus t"))
+        assertEquals("Schwarzwälder Schinken", ReceiptImportSanitizer.cleanReceiptText("Schww Schinken"))
+        assertEquals("Knorr Fix Chili con Carne", ReceiptImportSanitizer.cleanReceiptText("Knorr Fix Chili C Car"))
+        assertEquals("Cashew-Cranberry-Mix", ReceiptImportSanitizer.cleanReceiptText("Cash Cranb Mix"))
+        assertEquals("Erdnüsse geröstet gesalzen", ReceiptImportSanitizer.cleanReceiptText("Erdn Gerös Ges"))
+        assertEquals("Hähnchen-Brustfilet", ReceiptImportSanitizer.cleanReceiptText("H Brustfilet"))
+        assertEquals("Wagner Steinofen Pizza", ReceiptImportSanitizer.cleanReceiptText("Wagner St Pizza"))
+        assertEquals("Quäse", ReceiptImportSanitizer.cleanReceiptText("Ouäse"))
+    }
 }

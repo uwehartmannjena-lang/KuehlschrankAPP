@@ -63,6 +63,15 @@ interface FridgeItemDao {
     @Query("SELECT * FROM price_history ORDER BY date DESC")
     fun getAllPriceHistory(): Flow<List<PriceRecord>>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPurchaseHistoryEntry(entry: PurchaseHistoryEntry)
+
+    @Query("SELECT * FROM purchase_history WHERE LOWER(productName) = LOWER(:productName) ORDER BY timestamp DESC")
+    fun getPurchaseHistoryForProduct(productName: String): Flow<List<PurchaseHistoryEntry>>
+
+    @Query("SELECT * FROM purchase_history WHERE LOWER(productName) = LOWER(:productName) ORDER BY timestamp DESC")
+    suspend fun getPurchaseHistoryForProductSync(productName: String): List<PurchaseHistoryEntry>
+
     @Query("SELECT * FROM price_history WHERE LOWER(itemName) LIKE '%' || LOWER(:name) || '%' ORDER BY date DESC")
     suspend fun getHistoryByName(name: String): List<PriceRecord>
 

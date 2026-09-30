@@ -206,6 +206,23 @@ object ReceiptImportSanitizer {
     }
 
     private val HARD_TRANSLATIONS = mapOf(
+        "schww schinken" to "Schwarzwälder Schinken",
+        "knorr fix chili c car" to "Knorr Fix Chili con Carne",
+        "cash cranb mix" to "Cashew-Cranberry-Mix",
+        "erdn gerös ges" to "Erdnüsse geröstet gesalzen",
+        "erdn geros ges" to "Erdnüsse geröstet gesalzen",
+        "h brustfilet" to "Hähnchen-Brustfilet",
+        "wagner st pizza" to "Wagner Steinofen Pizza",
+        "ouäse" to "Quäse",
+        "gourmet perle lac" to "Gourmet Perle Lachs",
+        "hähnchen-sala mi" to "Hähnchen-Salami",
+        "puten-lachssc hinken" to "Puten-Lachsschinken",
+        "geflügel-fleisc hwurst" to "Geflügel-Fleischwurst",
+        "karottenkrüstc hen" to "Karottenkrüstchen",
+        "chia-skyr-bröt chen" to "Chia-Skyr-Brötchen",
+        "hähnchenbrus t" to "Hähnchenbrust",
+        "exsreis" to "Expressreis",
+        "gewürzs" to "Gewürzgurken",
         "BAUTZ." to "",
         "BAUTZ" to "",
         "PRES." to "",
@@ -251,6 +268,11 @@ object ReceiptImportSanitizer {
             text = text.replace(key, value, ignoreCase = true)
         }
 
+        // Müll und OCR-Fehler wie "Ouäse" oder zerschnittene Endungen automatisch flicken
+        text = text.replace(Regex("""(?i)\bouäse\b"""), "Quäse")
+                   .replace(Regex("""(?i)\ba?rottenkrüstc?hen\b"""), "Karottenkrüstchen")
+                   .replace(Regex("""(?i)\b([a-zäöüß-]{3,})[ -](mi|hinken|hwurst|hen|chen|t)\b""")) { "${it.groupValues[1]}${it.groupValues[2]}" }
+
         // Quantitäten & Einheiten VOR dem Ersetzen von Kommas/Punkten entfernen ("1,5l" -> "")
         text = text.replace(Regex("""\b\d+([.,]\d+)?\s*(kg|g|ml|l|stück|stk|st)\b""", RegexOption.IGNORE_CASE), " ")
 
@@ -272,9 +294,17 @@ object ReceiptImportSanitizer {
         text = text.replace(Regex("""(?i)\b(k[- ]?classic|kpur|kfav|k|allg\s*büble|allg|büble|purland|spreewh|meg|bautz|dit|fin|pres|möv)\b"""), " ")
                    .replace(Regex("""(?i)\b(xxl|disc|gem|ms\s+l|ger\d+g|\d+g|\d+kg|\d+ml|\d+l)\b"""), " ")
 
-        val cleaned = text.replace(Regex("""[-*+_/\\():;!?#,="'<>]"""), " ")
+        var cleaned = text.replace(Regex("""[-*+_/\\():;!?#,="'<>]"""), " ")
                           .replace(Regex("""\s+"""), " ")
                           .trim()
+
+        cleaned = cleaned.replace(Regex("""(?i)h\s+milch"""), "H-Milch")
+                         .replace(Regex("""(?i)hähnchen\s+brustfilet"""), "Hähnchen-Brustfilet")
+                         .replace(Regex("""(?i)puten\s+lachsschinken"""), "Puten-Lachsschinken")
+                         .replace(Regex("""(?i)hähnchen\s+salami"""), "Hähnchen-Salami")
+                         .replace(Regex("""(?i)geflügel\s+fleischwurst"""), "Geflügel-Fleischwurst")
+                         .replace(Regex("""(?i)chia\s+skyr\s+brötchen"""), "Chia-Skyr-Brötchen")
+                         .replace(Regex("""(?i)cashew\s+cranberry\s+mix"""), "Cashew-Cranberry-Mix")
 
         // 13. Leere Zeilen (< 3 Zeichen) abfangen
         if (cleaned.length < 3) return ""

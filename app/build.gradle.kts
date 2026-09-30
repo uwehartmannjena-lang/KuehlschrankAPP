@@ -75,7 +75,7 @@ dependencies {
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // Ktor for kaufDA/Apify & Gemini SDK requirements
+    // Ktor for kaufDA/Apify & Gemini SDK requirements & Local Server
     val ktor_version = "2.3.12"
     implementation("io.ktor:ktor-client-core:$ktor_version")
     implementation("io.ktor:ktor-client-okhttp:$ktor_version")
@@ -85,6 +85,9 @@ dependencies {
     implementation("io.ktor:ktor-client-logging:$ktor_version")
     implementation("io.ktor:ktor-client-auth:$ktor_version")
     implementation("io.ktor:ktor-client-encoding:$ktor_version")
+    implementation("io.ktor:ktor-server-core:$ktor_version")
+    implementation("io.ktor:ktor-server-cio:$ktor_version")
+    implementation("io.ktor:ktor-server-content-negotiation:$ktor_version")
 
     // Networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

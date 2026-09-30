@@ -5,6 +5,7 @@ import com.example.myapplication.MarketDictionaryHelper
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.speech.RecognizerIntent
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +55,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +89,7 @@ import com.example.myapplication.data.SeasonHelper
 import com.example.myapplication.data.WastedItem
 import com.example.myapplication.data.StatisticsHelper
 import com.example.myapplication.data.StatisticsTimeFrame
+import com.example.myapplication.web.WebCompanionServer
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.text.SimpleDateFormat
@@ -914,12 +918,6 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
                                     ) {
                                         Icon(Icons.AutoMirrored.Filled.List, "Beleg anzeigen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                     }
-                                }
-                                IconButton(
-                                    onClick = { selectedCandidateForCorrection = candidate },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.Edit, "Bearbeiten & Katalog-Suche", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                 }
                                 IconButton(
                                     onClick = { selectedCandidateForCorrection = candidate },
@@ -2716,11 +2714,28 @@ fun SettingsDialog(
                     )
                 }
 
-                // Section 5: Daten-Backup & Verwaltung
+                    // Section 5: Daten-Backup & Verwaltung
                 item {
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Text("Daten-Backup & Verwaltung", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                    Text("Daten-Backup & PC-Modus", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    
+                    var showWebCompanion by remember { mutableStateOf(false) }
+                    if (showWebCompanion) {
+                        WebCompanionDialog(viewModel = viewModel, onDismiss = { showWebCompanion = false })
+                    }
+
+                    Button(
+                        onClick = { showWebCompanion = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Computer, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Mit PC verbinden (WLAN-Modus) 💻", fontWeight = FontWeight.Bold)
+                    }
+
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.exportBackup(context) }, modifier = Modifier.weight(1f)) { Text("Backup erstellen") }
@@ -2923,6 +2938,23 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
                     SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(item.purchaseDate))
                 }
                 Text("Gekauft am: $formattedPurchaseDate")
+
+                val purchaseHistory by viewModel.getPurchaseHistoryForProduct(item.name).collectAsState(initial = emptyList())
+                if (purchaseHistory.isNotEmpty()) {
+                    Text("🛒 Kaufhistorie:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
+                    ) {
+                        purchaseHistory.take(5).forEach { entry ->
+                            Text(
+                                text = "• ${entry.purchaseDate} – ${entry.storeName} – ${String.format(Locale.GERMANY, "%.2f €", entry.price)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
                 if (!item.receiptId.isNullOrBlank()) {
                     OutlinedButton(
                         onClick = {
@@ -2981,6 +3013,116 @@ fun openRetailerWebsite(context: Context, retailer: String, productName: String?
     } catch (e: Exception) {
         Toast.makeText(context, "Browser konnte nicht geöffnet werden.", Toast.LENGTH_SHORT).show()
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WebCompanionDialog(
+    viewModel: FridgeViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var isServerRunning by remember { mutableStateOf(WebCompanionServer.isRunning) }
+    var ipAddress by remember { mutableStateOf(WebCompanionServer.getLocalIpAddress(context)) }
+    var pin by remember { mutableStateOf(WebCompanionServer.currentPin) }
+    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    val url = "http://$ipAddress:8080"
+
+    LaunchedEffect(isServerRunning, ipAddress) {
+        if (isServerRunning) {
+            qrBitmap = QrUtils.generateQrCode(url, 400)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mit PC verbinden (WLAN-Modus) 💻", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (isServerRunning) {
+                    Text(
+                        text = "1. Öffne folgende Adresse im Browser auf deinem PC:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    SelectionContainer {
+                        Text(
+                            text = url,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    qrBitmap?.let { bitmap ->
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "QR Code",
+                            modifier = Modifier.size(180.dp)
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Sicherheits-PIN für PC-Browser:", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                text = pin,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 4.sp
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            WebCompanionServer.stopServer()
+                            isServerRunning = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Icon(Icons.Default.Stop, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Server Stoppen")
+                    }
+                } else {
+                    Text(
+                        text = "Starte den lokalen Webserver, um deinen Kühlschrank bequem vom PC aus zu verwalten.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    Button(
+                        onClick = {
+                            WebCompanionServer.startServer(context, viewModel)
+                            isServerRunning = true
+                            ipAddress = WebCompanionServer.getLocalIpAddress(context)
+                            pin = WebCompanionServer.currentPin
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Webserver Starten (Port 8080)")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Schließen")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
