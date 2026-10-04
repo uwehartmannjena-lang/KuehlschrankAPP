@@ -15,11 +15,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.PrintWriter
+import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.InetAddress
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Random
@@ -47,6 +48,7 @@ object WebCompanionServer {
     }
 
     fun getLocalIpAddress(context: Context): String {
+        var fallbackIp = ""
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
@@ -56,26 +58,54 @@ object WebCompanionServer {
                     val addr = addrs.nextElement()
                     if (!addr.isLoopbackAddress && addr is Inet4Address) {
                         val ip = addr.hostAddress ?: ""
-                        if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) {
-                            return ip
+                        val name = intf.name.lowercase()
+                        if (name.startsWith("wlan") || name.startsWith("wifi") || name.startsWith("swlan") || name.startsWith("ap")) {
+                            return ip // Bevorzuge WLAN
+                        }
+                        if (ip.startsWith("192.168.")) {
+                            fallbackIp = ip
+                        } else if (fallbackIp.isEmpty() && (ip.startsWith("10.") || ip.startsWith("172."))) {
+                            fallbackIp = ip
                         }
                     }
                 }
             }
         } catch (_: Exception) {}
+        
+        if (fallbackIp.isNotEmpty()) return fallbackIp
         return "127.0.0.1"
     }
 
-    fun startServer(context: Context, viewModel: FridgeViewModel, port: Int = 8080) {
+    var currentPort = 8080
+        private set
+
+    fun startServer(context: Context, viewModel: FridgeViewModel, startPort: Int = 8080) {
         if (isRunning) return
         generatePin()
-        registerNsdService(context, port)
 
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                serverSocket = ServerSocket(port)
-                isRunning = true
+            var portToTry = startPort
+            var bound = false
+            while (!bound && portToTry < startPort + 10) {
+                try {
+                    // Explizit an 0.0.0.0 binden, damit der Server von allen Geräten im WLAN erreichbar ist
+                    serverSocket = ServerSocket(portToTry, 50, InetAddress.getByName("0.0.0.0"))
+                    bound = true
+                    currentPort = portToTry
+                } catch (_: Exception) {
+                    portToTry++
+                }
+            }
+            
+            if (!bound) {
+                isRunning = false
+                return@launch
+            }
+            
+            isRunning = true
+            registerNsdService(context, currentPort)
 
+            try {
                 while (isRunning) {
                     val socket = try { serverSocket?.accept() } catch (_: Exception) { null } ?: break
                     launch(Dispatchers.IO) {
@@ -123,43 +153,89 @@ object WebCompanionServer {
         override fun onServiceUnregistered(serviceInfo: NsdServiceInfo?) {}
     }
 
-    private fun handleConnection(socket: Socket, viewModel: FridgeViewModel) {
+    private suspend fun handleConnection(socket: Socket, viewModel: FridgeViewModel) {
         try {
             socket.soTimeout = 8000
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-            val writer = PrintWriter(socket.getOutputStream(), true)
+            val rawInput = socket.getInputStream()
+            val out = socket.getOutputStream()
 
-            val requestLine = reader.readLine() ?: return
+            // Header zeilenweise bis zur Leerzeile (\r\n\r\n oder \n\n) byte-sicher einlesen
+            val headerBytes = java.io.ByteArrayOutputStream()
+            var prev1 = -1
+            var prev2 = -1
+            var prev3 = -1
+            var b = rawInput.read()
+            while (b != -1) {
+                headerBytes.write(b)
+                if (prev3 == '\r'.code && prev2 == '\n'.code && prev1 == '\r'.code && b == '\n'.code) {
+                    break
+                }
+                if (prev1 == '\n'.code && b == '\n'.code) {
+                    break
+                }
+                prev3 = prev2
+                prev2 = prev1
+                prev1 = b
+                b = rawInput.read()
+            }
+            if (headerBytes.size() == 0) return
+
+            val headerStr = headerBytes.toString(Charsets.UTF_8.name())
+            val headerLines = headerStr.lines()
+            val requestLine = headerLines.firstOrNull()?.trim() ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
             val method = parts[0]
-            val path = parts[1]
+            val rawPath = parts[1]
+            val path = rawPath.substringBefore('?')
+            val queryString = if (rawPath.contains('?')) rawPath.substringAfter('?') else ""
 
+            var authHeader = ""
             var contentLength = 0
-            var line: String? = reader.readLine()
-            while (!line.isNullOrBlank()) {
-                if (line.lowercase().startsWith("content-length:")) {
-                    contentLength = line.substringAfter(":").trim().toIntOrNull() ?: 0
+            for (line in headerLines) {
+                val lowerLine = line.lowercase()
+                if (lowerLine.startsWith("content-length:")) {
+                    contentLength = lowerLine.substringAfter(":").trim().toIntOrNull() ?: 0
                 }
-                line = reader.readLine()
+                if (lowerLine.startsWith("authorization:")) {
+                    authHeader = line.substringAfter(":").trim()
+                }
             }
 
             var body = ""
             if (contentLength > 0) {
-                val buf = CharArray(contentLength)
-                var read = 0
-                while (read < contentLength) {
-                    val r = reader.read(buf, read, contentLength - read)
-                    if (r == -1) break
-                    read += r
+                val bodyBytes = ByteArray(contentLength)
+                var totalRead = 0
+                while (totalRead < contentLength) {
+                    val count = rawInput.read(bodyBytes, totalRead, contentLength - totalRead)
+                    if (count == -1) break
+                    totalRead += count
                 }
-                body = String(buf, 0, read)
+                body = String(bodyBytes, 0, totalRead, Charsets.UTF_8)
+            }
+
+            val isProtectedApi = path.startsWith("/api/") && path != "/api/ping" && path != "/api/auth" && path != "/api/verify-session"
+            if (method != "OPTIONS" && isProtectedApi) {
+                val tokenFromQuery = queryString.split("&").mapNotNull {
+                    val kv = it.split("=")
+                    if (kv.size == 2 && kv[0] == "token") kv[1] else null
+                }.firstOrNull()
+                val token = authHeader.removePrefix("Bearer ").trim().ifEmpty { tokenFromQuery ?: "" }
+                if (token != persistentToken) {
+                    sendResponse(out, 401, "application/json", """{"status":"unauthorized"}""")
+                    socket.close()
+                    return
+                }
             }
 
             when {
-                method == "GET" && path == "/" -> {
+                method == "OPTIONS" -> {
+                    sendResponse(out, 204, "text/plain", "")
+                }
+
+                method == "GET" && (path == "/" || path == "/index.html") -> {
                     val html = getWebUiHtml()
-                    sendResponse(writer, 200, "text/html; charset=utf-8", html)
+                    sendResponse(out, 200, "text/html; charset=UTF-8", html)
                 }
 
                 method == "GET" && path == "/manifest.json" -> {
@@ -180,7 +256,7 @@ object WebCompanionServer {
                           ]
                         }
                     """.trimIndent()
-                    sendResponse(writer, 200, "application/json", manifest)
+                    sendResponse(out, 200, "application/json", manifest)
                 }
 
                 method == "GET" && path == "/sw.js" -> {
@@ -189,37 +265,46 @@ object WebCompanionServer {
                         self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });
                         self.addEventListener('fetch', (e) => { e.respondWith(fetch(e.request)); });
                     """.trimIndent()
-                    sendResponse(writer, 200, "application/javascript", sw)
+                    sendResponse(out, 200, "application/javascript", sw)
                 }
 
                 method == "GET" && path == "/api/ping" -> {
-                    sendResponse(writer, 200, "application/json", """{"status":"ok","token":"$persistentToken"}""")
+                    sendResponse(out, 200, "application/json", """{"status":"ok"}""")
                 }
 
                 method == "POST" && path == "/api/auth" -> {
                     val params = try { gson.fromJson(body, Map::class.java) } catch (_: Exception) { null }
                     val pin = params?.get("pin")?.toString() ?: ""
-                    val token = params?.get("token")?.toString() ?: ""
-                    if (pin == currentPin || (token.isNotBlank() && token == persistentToken)) {
-                        sendResponse(writer, 200, "application/json", """{"status":"ok","token":"$persistentToken"}""")
+                    if (pin == currentPin) {
+                        sendResponse(out, 200, "application/json", """{"status":"ok","token":"$persistentToken"}""")
                     } else {
-                        sendResponse(writer, 401, "application/json", """{"status":"error","message":"Falsche PIN"}""")
+                        sendResponse(out, 401, "application/json", """{"status":"error","message":"Falsche PIN"}""")
+                    }
+                }
+
+                method == "POST" && path == "/api/verify-session" -> {
+                    val params = try { gson.fromJson(body, Map::class.java) } catch (_: Exception) { null }
+                    val token = params?.get("token")?.toString() ?: ""
+                    if (token.isNotBlank() && token == persistentToken) {
+                        sendResponse(out, 200, "application/json", """{"status":"ok","token":"$persistentToken"}""")
+                    } else {
+                        sendResponse(out, 401, "application/json", """{"status":"unauthorized"}""")
                     }
                 }
 
                 method == "GET" && path == "/api/inventory" -> {
-                    val items = runBlocking(Dispatchers.IO) { viewModel.allFridgeItems.first() }
+                    val items = viewModel.allFridgeItems.first()
                     val json = gson.toJson(items)
-                    sendResponse(writer, 200, "application/json", json)
+                    sendResponse(out, 200, "application/json", json)
                 }
 
                 method == "POST" && path == "/api/inventory/add" -> {
                     val item = try { gson.fromJson(body, FridgeItem::class.java) } catch (_: Exception) { null }
                     if (item != null && item.name.isNotBlank()) {
                         viewModel.addItem(item)
-                        sendResponse(writer, 200, "application/json", """{"status":"ok"}""")
+                        sendResponse(out, 200, "application/json", """{"status":"ok"}""")
                     } else {
-                        sendResponse(writer, 400, "application/json", """{"status":"error"}""")
+                        sendResponse(out, 400, "application/json", """{"status":"error"}""")
                     }
                 }
 
@@ -227,77 +312,77 @@ object WebCompanionServer {
                     val params = try { gson.fromJson(body, Map::class.java) } catch (_: Exception) { null }
                     val id = params?.get("id")?.toString() ?: ""
                     val mhdStr = params?.get("expiryDate")?.toString() ?: ""
-                    val items = runBlocking(Dispatchers.IO) { viewModel.allFridgeItems.first() }
+                    val items = viewModel.allFridgeItems.first()
                     val target = items.find { it.id == id }
                     if (target != null) {
                         val parsedTime = try {
                             if (mhdStr.isNotBlank()) SimpleDateFormat("yyyy-MM-dd", Locale.GERMANY).parse(mhdStr)?.time else null
                         } catch (_: Exception) { null }
                         viewModel.updateItem(target.copy(expiryDate = parsedTime))
-                        sendResponse(writer, 200, "application/json", """{"status":"ok"}""")
+                        sendResponse(out, 200, "application/json", """{"status":"ok"}""")
                     } else {
-                        sendResponse(writer, 404, "application/json", """{"status":"not_found"}""")
+                        sendResponse(out, 404, "application/json", """{"status":"not_found"}""")
                     }
                 }
 
                 method == "POST" && path == "/api/inventory/consume" -> {
                     val params = try { gson.fromJson(body, Map::class.java) } catch (_: Exception) { null }
                     val id = params?.get("id")?.toString() ?: ""
-                    val items = runBlocking(Dispatchers.IO) { viewModel.allFridgeItems.first() }
+                    val items = viewModel.allFridgeItems.first()
                     val target = items.find { it.id == id }
                     if (target != null) {
                         viewModel.consumeItem(target)
-                        sendResponse(writer, 200, "application/json", """{"status":"ok"}""")
+                        sendResponse(out, 200, "application/json", """{"status":"ok"}""")
                     } else {
-                        sendResponse(writer, 404, "application/json", """{"status":"not_found"}""")
+                        sendResponse(out, 404, "application/json", """{"status":"not_found"}""")
                     }
                 }
 
                 method == "POST" && path == "/api/inventory/delete" -> {
                     val params = try { gson.fromJson(body, Map::class.java) } catch (_: Exception) { null }
                     val id = params?.get("id")?.toString() ?: ""
-                    val items = runBlocking(Dispatchers.IO) { viewModel.allFridgeItems.first() }
+                    val items = viewModel.allFridgeItems.first()
                     val target = items.find { it.id == id }
                     if (target != null) {
                         viewModel.removeItem(target)
-                        sendResponse(writer, 200, "application/json", """{"status":"ok"}""")
+                        sendResponse(out, 200, "application/json", """{"status":"ok"}""")
                     } else {
-                        sendResponse(writer, 404, "application/json", """{"status":"not_found"}""")
+                        sendResponse(out, 404, "application/json", """{"status":"not_found"}""")
                     }
                 }
 
                 method == "GET" && path == "/api/shopping" -> {
-                    val items = runBlocking(Dispatchers.IO) { viewModel.allShoppingItems.first() }
+                    val items = viewModel.allShoppingItems.first()
                     val json = gson.toJson(items)
-                    sendResponse(writer, 200, "application/json", json)
+                    sendResponse(out, 200, "application/json", json)
                 }
 
                 method == "POST" && path == "/api/shopping/add" -> {
                     val item = try { gson.fromJson(body, ShoppingItem::class.java) } catch (_: Exception) { null }
                     if (item != null && item.name.isNotBlank()) {
                         viewModel.addToShoppingList(item)
-                        sendResponse(writer, 200, "application/json", """{"status":"ok"}""")
+                        sendResponse(out, 200, "application/json", """{"status":"ok"}""")
                     } else {
-                        sendResponse(writer, 400, "application/json", """{"status":"error"}""")
+                        sendResponse(out, 400, "application/json", """{"status":"error"}""")
                     }
                 }
 
                 method == "POST" && path == "/api/shopping/toggle" -> {
                     val params = try { gson.fromJson(body, Map::class.java) } catch (_: Exception) { null }
                     val id = params?.get("id")?.toString() ?: ""
-                    val items = runBlocking(Dispatchers.IO) { viewModel.allShoppingItems.first() }
+                    val items = viewModel.allShoppingItems.first()
                     val target = items.find { it.id == id }
                     if (target != null) {
                         viewModel.toggleShoppingItem(target)
-                        sendResponse(writer, 200, "application/json", """{"status":"ok"}""")
+                        sendResponse(out, 200, "application/json", """{"status":"ok"}""")
                     } else {
-                        sendResponse(writer, 404, "application/json", """{"status":"not_found"}""")
+                        sendResponse(out, 404, "application/json", """{"status":"not_found"}""")
                     }
                 }
 
                 method == "GET" && path == "/api/history" -> {
-                    val history = runBlocking(Dispatchers.IO) { viewModel.dao.getAllPriceHistory().first() }
-                    sendResponse(writer, 200, "application/json", gson.toJson(history))
+                    val history = viewModel.dao.getAllPriceHistory().first()
+                    sendResponse(out, 200, "application/json", gson.toJson(history))
                 }
 
                 method == "POST" && path == "/api/upload-receipt" -> {
@@ -315,11 +400,11 @@ object WebCompanionServer {
                             )
                         )
                     }
-                    sendResponse(writer, 200, "application/json", gson.toJson(products))
+                    sendResponse(out, 200, "application/json", gson.toJson(products))
                 }
 
                 method == "GET" && path == "/api/recipes" -> {
-                    val inventory = runBlocking(Dispatchers.IO) { viewModel.allFridgeItems.first() }
+                    val inventory = viewModel.allFridgeItems.first()
                     val names = inventory.map { it.name }.filter { it.isNotBlank() }
                     val sampleIngredients = if (names.isNotEmpty()) names.take(4) else listOf("Kartoffeln", "Möhren", "Käse")
                     val recipes = listOf(
@@ -334,29 +419,40 @@ object WebCompanionServer {
                             "instructions" to "1. Backofen auf 180°C Umluft vorheizen.\n2. Zutaten in eine Auflaufform geben.\n3. Mit Sahne/Käse überbacken und 25 Min. garen."
                         )
                     )
-                    sendResponse(writer, 200, "application/json", gson.toJson(recipes))
+                    sendResponse(out, 200, "application/json", gson.toJson(recipes))
                 }
 
                 else -> {
-                    sendResponse(writer, 404, "text/plain", "Not Found")
+                    sendResponse(out, 404, "text/plain", "Not Found")
                 }
             }
             socket.close()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            e.printStackTrace()
             try { socket.close() } catch (_: Exception) {}
         }
     }
 
-    private fun sendResponse(writer: PrintWriter, statusCode: Int, contentType: String, content: String) {
-        val statusText = if (statusCode == 200) "OK" else if (statusCode == 401) "Unauthorized" else if (statusCode == 404) "Not Found" else "Bad Request"
+    private fun sendResponse(out: OutputStream, statusCode: Int, contentType: String, content: String) {
+        val statusText = if (statusCode == 200) "OK" else if (statusCode == 204) "No Content" else if (statusCode == 401) "Unauthorized" else if (statusCode == 404) "Not Found" else "Bad Request"
         val bytes = content.toByteArray(Charsets.UTF_8)
-        writer.print("HTTP/1.1 $statusCode $statusText\r\n")
-        writer.print("Content-Type: $contentType\r\n")
-        writer.print("Content-Length: ${bytes.size}\r\n")
-        writer.print("Access-Control-Allow-Origin: *\r\n")
-        writer.print("Connection: close\r\n\r\n")
-        writer.print(content)
-        writer.flush()
+        
+        val header = StringBuilder()
+        header.append("HTTP/1.1 $statusCode $statusText\r\n")
+        if (statusCode != 204) {
+            header.append("Content-Type: $contentType\r\n")
+            header.append("Content-Length: ${bytes.size}\r\n")
+        }
+        header.append("Access-Control-Allow-Origin: *\r\n")
+        header.append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
+        header.append("Access-Control-Allow-Headers: Content-Type, Authorization\r\n")
+        header.append("Connection: close\r\n\r\n")
+        
+        out.write(header.toString().toByteArray(Charsets.UTF_8))
+        if (statusCode != 204 && bytes.isNotEmpty()) {
+            out.write(bytes)
+        }
+        out.flush()
     }
 
     private fun getWebUiHtml(): String {
@@ -553,70 +649,91 @@ object WebCompanionServer {
                     let currentLocationFilter = '';
                     let authToken = localStorage.getItem('companion_token') || '';
 
+                    const originalFetch = window.fetch;
+                    window.fetch = async function(url, options = {}) {
+                        if (url.startsWith('/api/') && url !== '/api/auth' && url !== '/api/ping' && url !== '/api/verify-session') {
+                            options.headers = options.headers || {};
+                            options.headers['Authorization'] = 'Bearer ' + authToken;
+                        }
+                        const res = await originalFetch(url, options);
+                        if (res.status === 401 && url !== '/api/auth' && url !== '/api/verify-session') {
+                            updateStatusBanner(false, '🔴 Sitzung abgelaufen. Bitte neu anmelden.');
+                            localStorage.removeItem('companion_token');
+                            authToken = '';
+                            document.getElementById('auth-modal').style.display = 'flex';
+                            document.getElementById('app-content').style.display = 'none';
+                        }
+                        return res;
+                    };
+
                     document.addEventListener('DOMContentLoaded', () => {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const tokenFromUrl = urlParams.get('token');
+                        if (tokenFromUrl) {
+                            authToken = tokenFromUrl;
+                            localStorage.setItem('companion_token', authToken);
+                            window.history.replaceState({}, document.title, window.location.pathname);
+                        }
+
                         if (authToken) {
-                            tryAutoConnect();
+                            verifySession();
                         }
                         setInterval(checkHeartbeat, 3000);
                     });
 
-                    async function tryAutoConnect() {
+                    async function verifySession() {
                         try {
-                            const res = await fetch('/api/auth', {
+                            const res = await originalFetch('/api/verify-session', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ token: authToken })
                             });
                             if (res.ok) {
-                                const data = await res.json();
-                                if (data.token) {
-                                    authToken = data.token;
-                                    localStorage.setItem('companion_token', authToken);
-                                }
                                 document.getElementById('auth-modal').style.display = 'none';
                                 document.getElementById('app-content').style.display = 'block';
-                                updateStatusBanner(true);
+                                updateStatusBanner(true, '🟢 Verbunden (Sitzung aktiv)');
                                 loadInventory();
                             } else {
-                                updateStatusBanner(false);
+                                updateStatusBanner(false, '🔴 Sitzung ungültig.');
+                                localStorage.removeItem('companion_token');
+                                authToken = '';
                             }
                         } catch (e) {
-                            updateStatusBanner(false);
+                            updateStatusBanner(false, '🔴 Server nicht erreichbar.');
                         }
                     }
 
                     async function checkHeartbeat() {
                         try {
-                            const res = await fetch('/api/ping');
+                            const res = await originalFetch('/api/ping');
                             if (res.ok) {
-                                updateStatusBanner(true);
-                                if (document.getElementById('app-content').style.display === 'none' && authToken) {
-                                    tryAutoConnect();
+                                if (!authToken && document.getElementById('auth-modal').style.display !== 'none') {
+                                    updateStatusBanner(true, '🟡 Verbunden (Warte auf PIN-Eingabe)');
+                                } else if (authToken && document.getElementById('app-content').style.display === 'none') {
+                                    verifySession();
+                                } else if (authToken) {
+                                    updateStatusBanner(true, '🟢 Verbunden (Sitzung aktiv)');
                                 }
                             } else {
-                                updateStatusBanner(false);
+                                updateStatusBanner(false, '🔴 Verbindungsverlust. Bitte App prüfen.');
                             }
                         } catch (e) {
-                            updateStatusBanner(false);
+                            updateStatusBanner(false, '🔴 Server offline oder Verbindungsverlust.');
                         }
                     }
 
-                    function updateStatusBanner(online) {
+                    function updateStatusBanner(online, msg) {
                         const status = document.getElementById('connection-status');
                         if (status) {
-                            if (online) {
-                                status.innerText = '🟢 Verbunden (Auto-Connect / frischeradar.local)';
-                                status.style.background = 'rgba(255,255,255,0.3)';
-                            } else {
-                                status.innerText = '🟡 Verbindung wird wiederhergestellt...';
-                                status.style.background = '#d32f2f';
-                            }
+                            status.innerText = msg;
+                            status.style.background = online ? (msg.includes('Warte') ? '#f57c00' : 'rgba(255,255,255,0.3)') : '#d32f2f';
+                            status.style.color = 'white';
                         }
                     }
 
                     async function authenticate() {
                         const pin = document.getElementById('pin-input').value;
-                        const res = await fetch('/api/auth', {
+                        const res = await originalFetch('/api/auth', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ pin: pin })
@@ -629,7 +746,7 @@ object WebCompanionServer {
                             }
                             document.getElementById('auth-modal').style.display = 'none';
                             document.getElementById('app-content').style.display = 'block';
-                            updateStatusBanner(true);
+                            updateStatusBanner(true, '🟢 Verbunden (Sitzung aktiv)');
                             loadInventory();
                         } else {
                             document.getElementById('pin-error').style.display = 'block';
