@@ -13,7 +13,7 @@ try:
 except Exception:
     pass
 
-from kassenzettel_parser import parse_receipt_text
+from kassenzettel_parser import parse_receipt_text, process_uploaded_receipt
 
 
 HOST = "0.0.0.0"
@@ -191,7 +191,9 @@ HTML_CONTENT = """<!DOCTYPE html>
         .badge-yellow { background-color: #f57c00; }
         .badge-red { background-color: #d32f2f; }
         .badge-gray { background-color: #757575; }
-        .drop-zone { border: 2px dashed #2e7d32; border-radius: 8px; padding: 2rem; text-align: center; color: #2e7d32; background: #e8f5e9; cursor: pointer; }
+        .drop-zone { border: 2px dashed #2e7d32; border-radius: 8px; padding: 1.5rem; text-align: center; color: #2e7d32; background: #e8f5e9; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+        .drop-zone.dragover { background: #c8e6c9; border-color: #1b5e20; }
+
         .filter-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
         .filter-bar input { flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
         #auth-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
@@ -290,16 +292,26 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         <section id="section-receipt" style="display: none;">
             <div class="card">
-                <h2>🧾 Kassenbon Drag-and-Drop Import</h2>
-                <div id="drop-zone" class="drop-zone" ondragover="event.preventDefault()" ondrop="handleFileDrop(event)">
-                    <p>📄 Ziehe eine Kassenbon-Datei hierher oder füge den Bon-Text ein:</p>
-                    <textarea id="receipt-text" rows="5" placeholder="Kassenbon Text hier hineinkopieren (z.B. Bio Milch 1.49, Eier 2.19)..." style="width: 100%; box-sizing: border-box;"></textarea>
-                    <br><br>
-                    <button class="btn" onclick="uploadReceiptText()">Kassenbon verarbeiten</button>
+                <h2>🧾 Kassenbon Import (PDF, Foto oder Text)</h2>
+                <div id="drop-zone" class="drop-zone" 
+                     ondragover="handleDragOver(event)" 
+                     ondragleave="handleDragLeave(event)" 
+                     ondrop="handleFileDrop(event)">
+                    <p style="font-size: 1.1rem; margin-top: 0; font-weight: bold;">📄 Ziehe eine Kassenbon-PDF oder ein Foto hierher</p>
+                    <p style="color: #555; font-size: 0.9rem; margin-bottom: 0.8rem;">oder wähle eine Datei direkt von deinem Gerät aus:</p>
+                    <input type="file" id="receipt-file-input" accept=".pdf,image/*,.txt,.json" style="display: none;" onchange="handleFileSelect(event)">
+                    <button type="button" class="btn" onclick="document.getElementById('receipt-file-input').click()">📂 Datei auswählen (PDF / Bild)</button>
+                    
+                    <div style="margin: 1.5rem 0 0.5rem 0; text-align: left;">
+                        <label style="font-size: 0.85rem; font-weight: bold; color: #555;">Oder Bon-Text direkt eingeben / hineinkopieren:</label>
+                        <textarea id="receipt-text" rows="4" placeholder="Kassenbon-Text hier hineinkopieren (oder Datei oben ablegen)..." style="width: 100%; box-sizing: border-box; margin-top: 0.25rem; font-family: inherit; padding: 0.5rem; border-radius: 4px; border: 1px solid #ccc;"></textarea>
+                    </div>
+                    <button class="btn" style="width: 100%;" onclick="uploadReceiptManualText()">Kassenbon verarbeiten</button>
                 </div>
                 <div id="receipt-results" style="margin-top: 1rem;"></div>
             </div>
         </section>
+
 
         <section id="section-shop" style="display: none;">
             <div class="card">
@@ -580,36 +592,91 @@ HTML_CONTENT = """<!DOCTYPE html>
             loadInventory();
         }
 
+        function handleDragOver(e) {
+            e.preventDefault();
+            const zone = document.getElementById('drop-zone');
+            if (zone) zone.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            const zone = document.getElementById('drop-zone');
+            if (zone) zone.classList.remove('dragover');
+        }
+
         async function handleFileDrop(e) {
             e.preventDefault();
+            const zone = document.getElementById('drop-zone');
+            if (zone) zone.classList.remove('dragover');
             const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                const text = await files[0].text();
-                document.getElementById('receipt-text').value = text;
-                uploadReceiptText();
+            if (files && files.length > 0) {
+                await processSelectedFile(files[0]);
             }
         }
 
-        async function uploadReceiptText() {
-            const text = document.getElementById('receipt-text').value;
-            if (!text) return;
+        async function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                await processSelectedFile(files[0]);
+            }
+        }
 
-            const res = await fetch('/api/upload-receipt', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text })
-            });
-            const data = await res.json();
+        async function processSelectedFile(file) {
             const div = document.getElementById('receipt-results');
-            if (data.length === 0) {
-                div.innerHTML = '<p style="color: #f57c00; font-weight: bold;">⚠️ Keine Artikel im Kassenbon gefunden. Bitte überprüfe den Text.</p>';
+            div.innerHTML = '<p style="color: #2e7d32; font-weight: bold;">⏳ Datei <strong>' + file.name + '</strong> (' + Math.round(file.size / 1024) + ' KB) wird analysiert...</p>';
+
+            const isTextOrJson = file.name.endsWith('.txt') || file.name.endsWith('.json') || (file.type && file.type.startsWith('text/'));
+            
+            if (isTextOrJson) {
+                const text = await file.text();
+                document.getElementById('receipt-text').value = text;
+                await uploadReceiptPayload({ text: text, filename: file.name });
             } else {
-                div.innerHTML = '<h3>Erkannte Artikel (' + data.length + '):</h3><ul>' +
-                    data.map(p => '<li><strong>' + p.name + '</strong> - ' + p.quantity + ' ' + (p.unit || 'Stk.') + ' - ' + (p.price ? p.price.toFixed(2) : '0.00') + ' € <small style="color: #666;">(' + (p.storageLocation || 'Kühlschrank') + ')</small></li>').join('') +
-                    '</ul><p style="color: green; font-weight: bold;">✓ Erfolgreich in den Kühlschrank übernommen!</p>';
+                // PDF oder Bild: Als Base64 übertragen (KEIN Rohcode im Textfeld!)
+                document.getElementById('receipt-text').value = '📄 Kassenbon-Datei geladen: ' + file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+                const reader = new FileReader();
+                reader.onload = async function() {
+                    const base64Data = reader.result.split(',')[1];
+                    await uploadReceiptPayload({
+                        filename: file.name,
+                        fileType: file.type || 'application/pdf',
+                        fileBase64: base64Data
+                    });
+                };
+                reader.readAsDataURL(file);
             }
-            loadInventory();
         }
+
+        async function uploadReceiptManualText() {
+            const text = document.getElementById('receipt-text').value;
+            if (!text || text.startsWith('📄 Kassenbon-Datei')) return;
+            const div = document.getElementById('receipt-results');
+            div.innerHTML = '<p style="color: #2e7d32; font-weight: bold;">⏳ Kassenbon-Text wird verarbeitet...</p>';
+            await uploadReceiptPayload({ text: text });
+        }
+
+        async function uploadReceiptPayload(payload) {
+            const div = document.getElementById('receipt-results');
+            try {
+                const res = await fetch('/api/upload-receipt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!data || data.length === 0) {
+                    div.innerHTML = '<p style="color: #f57c00; font-weight: bold;">⚠️ Keine Artikel im Kassenbon gefunden. Bitte überprüfe den Beleg.</p>';
+                } else {
+                    div.innerHTML = '<h3>Erkannte Artikel (' + data.length + '):</h3><ul style="line-height: 1.6;">' +
+                        data.map(p => '<li><strong>' + p.name + '</strong> - ' + p.quantity + ' ' + (p.unit || 'Stk.') + ' - ' + (p.price ? p.price.toFixed(2) : '0.00') + ' € <small style="color: #666;">(' + (p.storageLocation || 'Kühlschrank') + ')</small></li>').join('') +
+                        '</ul><p style="color: green; font-weight: bold;">✓ Erfolgreich in den Kühlschrank übernommen!</p>';
+                }
+                loadInventory();
+            } catch (err) {
+                div.innerHTML = '<p style="color: red; font-weight: bold;">❌ Fehler beim Verarbeiten: ' + err.message + '</p>';
+            }
+        }
+
 
 
         async function loadShopping() {
@@ -915,9 +982,9 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if clean_path == "/api/upload-receipt":
-            text = params.get("text", "")
-            products = parse_receipt_text(text)
+            products = process_uploaded_receipt(params)
             imported = []
+
             for p in products:
                 item = {
                     "id": str(uuid.uuid4()),

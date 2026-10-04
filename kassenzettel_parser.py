@@ -7,7 +7,28 @@ Portierung und Erweiterung der robusten Filter- und Extraktionsregeln aus Kassen
 import re
 import json
 import uuid
+import base64
+import io
+import os
+import urllib.request
 from datetime import datetime, timedelta
+
+try:
+    import pypdf
+except Exception:
+    pypdf = None
+
+try:
+    import fitz
+except Exception:
+    fitz = None
+
+try:
+    import pytesseract
+    from PIL import Image
+except Exception:
+    pytesseract = None
+
 
 PRICE_REGEX = re.compile(r'(-?\d+[,.]\d{2})')
 TAX_SUFFIX_REGEX = re.compile(r'\s+(?:[AB12*#€]\s*|\d\s*)*$')
@@ -749,3 +770,167 @@ def add_product_to_list(items: list, raw_name: str, price: float, qty: int, defa
         "expiryDate": int((datetime.now() + timedelta(days=days)).timestamp() * 1000)
     }
     items.append(item)
+
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    """Extrahiert Text aus PDF-Bytes mittels pypdf oder fitz."""
+    extracted = ""
+    if pypdf:
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+            for page in reader.pages:
+                extracted += (page.extract_text() or "") + "\n"
+        except Exception:
+            pass
+
+    if len(extracted.strip()) < 20 and fitz:
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            for page in doc:
+                extracted += page.get_text() + "\n"
+        except Exception:
+            pass
+
+    return extracted.strip()
+
+def parse_receipt_with_gemini(text: str = "", image_bytes: bytes = None, mime_type: str = "image/png") -> list:
+    """Nutzt die Gemini API zur intelligenten Extraktion von Lebensmitteln."""
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "AQ.Ab8RN6JMrG58SZYH26xAGyDq1-F7WnZdvc5JszAuG5d0OxEwVA"
+    if not api_key:
+        return None
+
+    model = "gemini-2.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+    prompt = (
+        "Du bist ein intelligenter Kassenbon-Assistent für eine Kühlschrank-App. "
+        "Analysiere diesen Kassenbon und extrahiere NUR echte Lebensmittel und Vorräte. "
+        "Filtere Marktadresse, Kopfzeilen, Kassen-Nr., Datum, Summen, MwSt., Kartenzahlung und Pfandartikel vollständig heraus. "
+        "Berechne Mengenrabatte oder Aktionen in den Einzel-/Gesamtpreis ein. "
+        "Antworte AUSSCHLIESSLICH mit einem validen JSON-Array ohne Markdown-Codeblöcke im folgenden Format:\n"
+        '[{"name": "...", "quantity": 1, "unit": "Stk.", "price": 1.99, "storageLocation": "Kühlschrank"}]\n'
+        "Erlaubte Einheiten: 'Stk.', 'kg', 'Becher', 'Dose', 'Glas', 'Kiste', 'Packung', 'Flasche'. "
+        "Erlaubte Lagerorte: 'Kühlschrank', 'Gefrierfach', 'Vorratskammer'."
+    )
+
+    parts = [{"text": prompt}]
+    if image_bytes:
+        parts.append({
+            "inline_data": {
+                "mime_type": mime_type,
+                "data": base64.b64encode(image_bytes).decode("utf-8")
+            }
+        })
+    elif text:
+        parts.append({"text": f"Kassenbon-Text:\n{text[:4000]}"})
+    else:
+        return None
+
+    payload = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {"response_mime_type": "application/json"}
+    }
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            ans = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            # Falls Markdown-Codeblock vorhanden
+            if ans.startswith("```"):
+                ans = re.sub(r'^```(?:json)?\s*', '', ans)
+                ans = re.sub(r'\s*```$', '', ans)
+            raw_items = json.loads(ans)
+            if isinstance(raw_items, list) and len(raw_items) > 0:
+                validated = []
+                for it in raw_items:
+                    name = clean_product_name(str(it.get("name", "")))
+                    if not name or len(name) < 2:
+                        continue
+                    price_val = round(abs(float(it.get("price", 1.99))), 2)
+                    qty_val = max(1, int(it.get("quantity", 1)))
+                    unit_val = str(it.get("unit", "Stk."))
+                    storage_val = str(it.get("storageLocation", "Kühlschrank"))
+                    validated.append({
+                        "name": name,
+                        "quantity": qty_val,
+                        "unit": unit_val,
+                        "price": price_val,
+                        "storageLocation": storage_val,
+                        "supermarket": "Import (KI)",
+                        "expiryDate": int((datetime.now() + timedelta(days=7)).timestamp() * 1000)
+                    })
+                if validated:
+                    return validated
+    except Exception:
+        pass
+
+    return None
+
+def process_uploaded_receipt(params: dict) -> list:
+    """
+    Universelle Einstiegsfunktion für jeden Beleg-Upload:
+    Unterstützt Base64-Dateien (PDF oder Bild) sowie reinen Text.
+    Nutzt Gemini KI mit automatischem Fallback auf den hochpräzisen lokalen Parser.
+    """
+    file_b64 = params.get("fileBase64") or params.get("file_base64")
+    filename = params.get("filename") or ""
+    file_type = params.get("fileType") or params.get("file_type") or ""
+    raw_text = params.get("text") or ""
+
+    file_bytes = None
+    if file_b64:
+        try:
+            file_bytes = base64.b64decode(file_b64)
+        except Exception:
+            pass
+
+    # Doppelte Absicherung: Falls text rohe PDF-Signatur '%PDF' enthält
+    if not file_bytes and raw_text.startswith("%PDF"):
+        file_bytes = raw_text.encode("latin-1", errors="ignore")
+        filename = filename or "kassenbon.pdf"
+
+    # 1. Fall: PDF-Datei
+    if file_bytes and (filename.lower().endswith(".pdf") or file_bytes.startswith(b"%PDF")):
+        extracted_text = extract_text_from_pdf(file_bytes)
+        if extracted_text and len(extracted_text.strip()) > 30:
+            # Schneller lokaler Qualitäts-Check
+            local_items = parse_receipt_text(extracted_text)
+            if local_items:
+                return local_items
+            # Optionaler KI-Versuch
+            ai_items = parse_receipt_with_gemini(text=extracted_text)
+            if ai_items:
+                return ai_items
+            return local_items
+        
+        # Scanned PDF: Seite als Bild rendern
+        if fitz:
+            try:
+                doc = fitz.open(stream=file_bytes, filetype="pdf")
+                if len(doc) > 0:
+                    pix = doc[0].get_pixmap(dpi=150)
+                    img_bytes = pix.tobytes("png")
+                    ai_items = parse_receipt_with_gemini(image_bytes=img_bytes, mime_type="image/png")
+                    if ai_items:
+                        return ai_items
+            except Exception:
+                pass
+
+    # 2. Fall: Bilddatei (PNG, JPG, etc.)
+    if file_bytes and (any(filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp"]) or file_bytes[:4] in [b"\x89PNG", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1"]):
+        mime = "image/jpeg" if any(filename.lower().endswith(x) for x in [".jpg", ".jpeg"]) else "image/png"
+        ai_items = parse_receipt_with_gemini(image_bytes=file_bytes, mime_type=mime)
+        if ai_items:
+            return ai_items
+
+    # 3. Fall: Text-Kassenbon
+    if raw_text:
+        return parse_receipt_text(raw_text)
+
+    return []
+
