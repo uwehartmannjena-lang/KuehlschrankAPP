@@ -13,6 +13,9 @@ try:
 except Exception:
     pass
 
+from kassenzettel_parser import parse_receipt_text
+
+
 HOST = "0.0.0.0"
 PORT = 8080
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fridge_web_data.json")
@@ -598,11 +601,16 @@ HTML_CONTENT = """<!DOCTYPE html>
             });
             const data = await res.json();
             const div = document.getElementById('receipt-results');
-            div.innerHTML = '<h3>Erkannte Artikel (' + data.length + '):</h3><ul>' +
-                data.map(p => '<li><strong>' + p.name + '</strong> - ' + p.quantity + 'x - ' + (p.price ? p.price.toFixed(2) : '0.00') + ' €</li>').join('') +
-                '</ul><p style="color: green;">✓ Erfolgreich in den Kühlschrank übernommen!</p>';
+            if (data.length === 0) {
+                div.innerHTML = '<p style="color: #f57c00; font-weight: bold;">⚠️ Keine Artikel im Kassenbon gefunden. Bitte überprüfe den Text.</p>';
+            } else {
+                div.innerHTML = '<h3>Erkannte Artikel (' + data.length + '):</h3><ul>' +
+                    data.map(p => '<li><strong>' + p.name + '</strong> - ' + p.quantity + ' ' + (p.unit || 'Stk.') + ' - ' + (p.price ? p.price.toFixed(2) : '0.00') + ' € <small style="color: #666;">(' + (p.storageLocation || 'Kühlschrank') + ')</small></li>').join('') +
+                    '</ul><p style="color: green; font-weight: bold;">✓ Erfolgreich in den Kühlschrank übernommen!</p>';
+            }
             loadInventory();
         }
+
 
         async function loadShopping() {
             const res = await fetch('/api/shopping');
@@ -908,38 +916,35 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if clean_path == "/api/upload-receipt":
             text = params.get("text", "")
-            lines = text.split("\n")
+            products = parse_receipt_text(text)
             imported = []
-            for line in lines:
-                line = line.strip()
-                if not line or any(k in line.lower() for k in ["summe", "total", "bar", "karte", "mwst", "eur"]):
-                    continue
-                # Einfache Erkennung: Text gefolgt von Preis
-                parts = line.rsplit(None, 1)
-                name = line
-                price = 1.99
-                if len(parts) == 2 and any(c.isdigit() for c in parts[1]):
-                    name = parts[0]
-                    try:
-                        price = float(parts[1].replace(",", ".").replace("€", ""))
-                    except Exception:
-                        price = 1.99
+            for p in products:
                 item = {
                     "id": str(uuid.uuid4()),
-                    "name": name,
-                    "quantity": 1,
-                    "unit": "Stk.",
-                    "storageLocation": "Kühlschrank",
-                    "price": price,
-                    "expiryDate": int((datetime.now() + timedelta(days=7)).timestamp() * 1000)
+                    "name": p["name"],
+                    "quantity": p.get("quantity", 1),
+                    "unit": p.get("unit", "Stk."),
+                    "storageLocation": p.get("storageLocation", "Kühlschrank"),
+                    "price": p.get("price", 0.0),
+                    "supermarket": p.get("supermarket", "Import"),
+                    "expiryDate": p.get("expiryDate", int((datetime.now() + timedelta(days=7)).timestamp() * 1000))
                 }
+                if p.get("barcode"):
+                    item["barcode"] = p["barcode"]
                 db["inventory"].append(item)
-                imported.append({"name": name, "quantity": 1, "price": price})
+                imported.append({
+                    "name": p["name"],
+                    "quantity": p.get("quantity", 1),
+                    "unit": p.get("unit", "Stk."),
+                    "storageLocation": p.get("storageLocation", "Kühlschrank"),
+                    "price": p.get("price", 0.0)
+                })
             save_data(db)
             self.send_cors_headers(200, "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(imported, ensure_ascii=False).encode("utf-8"))
             return
+
 
         self.send_cors_headers(404, "text/plain")
         self.end_headers()
