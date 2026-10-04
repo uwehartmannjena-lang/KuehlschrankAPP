@@ -167,6 +167,9 @@ HTML_CONTENT = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <link rel="manifest" href="/manifest.json">
     <title>Kühlschrank Profi 🍏 PC-Begleiter</title>
     <style>
@@ -294,6 +297,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="card">
                 <h2>🧾 Kassenbon Import (PDF, Foto oder Text)</h2>
                 <div id="drop-zone" class="drop-zone" 
+                     ondragenter="handleDragOver(event)"
                      ondragover="handleDragOver(event)" 
                      ondragleave="handleDragLeave(event)" 
                      ondrop="handleFileDrop(event)">
@@ -303,8 +307,14 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <button type="button" class="btn" onclick="document.getElementById('receipt-file-input').click()">📂 Datei auswählen (PDF / Bild)</button>
                     
                     <div style="margin: 1.5rem 0 0.5rem 0; text-align: left;">
-                        <label style="font-size: 0.85rem; font-weight: bold; color: #555;">Oder Bon-Text direkt eingeben / hineinkopieren:</label>
-                        <textarea id="receipt-text" rows="4" placeholder="Kassenbon-Text hier hineinkopieren (oder Datei oben ablegen)..." style="width: 100%; box-sizing: border-box; margin-top: 0.25rem; font-family: inherit; padding: 0.5rem; border-radius: 4px; border: 1px solid #ccc;"></textarea>
+                        <label style="font-size: 0.85rem; font-weight: bold; color: #555;">Oder Bon-Text direkt eingeben / hineinkopieren (oder Datei auch hier direkt ablegen):</label>
+                        <textarea id="receipt-text" rows="4" 
+                                  ondragenter="handleDragOver(event)"
+                                  ondragover="handleDragOver(event)" 
+                                  ondragleave="handleDragLeave(event)" 
+                                  ondrop="handleFileDrop(event)"
+                                  placeholder="Kassenbon-Text hier hineinkopieren (oder PDF/Bild direkt hier ablegen)..." 
+                                  style="width: 100%; box-sizing: border-box; margin-top: 0.25rem; font-family: inherit; padding: 0.5rem; border-radius: 4px; border: 1px solid #ccc;"></textarea>
                     </div>
                     <button class="btn" style="width: 100%;" onclick="uploadReceiptManualText()">Kassenbon verarbeiten</button>
                 </div>
@@ -370,6 +380,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         const originalFetch = window.fetch;
         window.fetch = async function(url, options = {}) {
+            options.cache = 'no-store';
             if (url.startsWith('/api/') && url !== '/api/auth' && url !== '/api/ping' && url !== '/api/verify-session') {
                 options.headers = options.headers || {};
                 options.headers['Authorization'] = 'Bearer ' + authToken;
@@ -386,6 +397,15 @@ HTML_CONTENT = """<!DOCTYPE html>
         };
 
         document.addEventListener('DOMContentLoaded', () => {
+            // Alte Service Worker deregistrieren um Browser-Cache komplett zu leeren
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    for (let reg of registrations) { reg.unregister(); }
+                });
+            }
+
+            setupDragAndDrop();
+
             const urlParams = new URLSearchParams(window.location.search);
             const tokenFromUrl = urlParams.get('token');
             if (tokenFromUrl) {
@@ -592,26 +612,70 @@ HTML_CONTENT = """<!DOCTYPE html>
             loadInventory();
         }
 
+        function preventDefaults(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+
         function handleDragOver(e) {
-            e.preventDefault();
+            preventDefaults(e);
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'copy';
+            }
             const zone = document.getElementById('drop-zone');
             if (zone) zone.classList.add('dragover');
         }
 
         function handleDragLeave(e) {
-            e.preventDefault();
+            preventDefaults(e);
             const zone = document.getElementById('drop-zone');
-            if (zone) zone.classList.remove('dragover');
+            if (zone && (!e.relatedTarget || !zone.contains(e.relatedTarget))) {
+                zone.classList.remove('dragover');
+            }
         }
 
         async function handleFileDrop(e) {
-            e.preventDefault();
+            preventDefaults(e);
             const zone = document.getElementById('drop-zone');
             if (zone) zone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
+            
+            const dt = e.dataTransfer;
+            const files = dt ? dt.files : null;
             if (files && files.length > 0) {
                 await processSelectedFile(files[0]);
+            } else if (dt) {
+                const text = dt.getData('text');
+                if (text) {
+                    if (text.startsWith('%PDF')) {
+                        alert('Bitte PDF-Dateien als Datei ablegen, nicht als Rohtext!');
+                        return;
+                    }
+                    document.getElementById('receipt-text').value = text;
+                }
             }
+        }
+
+        function setupDragAndDrop() {
+            // Verhindert zuverlässig das Standard-Verhalten von Chrome für das gesamte Fenster
+            // (Chrome würde sonst die PDF im Browserfenster öffnen)
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                window.addEventListener(eventName, preventDefaults, false);
+                document.addEventListener(eventName, preventDefaults, false);
+            });
+
+            const dropZone = document.getElementById('drop-zone');
+            const receiptText = document.getElementById('receipt-text');
+
+            // Drag & Drop sowohl auf der grünen Box als auch auf der Textarea identisch aktivieren
+            [dropZone, receiptText].forEach(el => {
+                if (!el) return;
+                el.addEventListener('dragenter', handleDragOver, false);
+                el.addEventListener('dragover', handleDragOver, false);
+                el.addEventListener('dragleave', handleDragLeave, false);
+                el.addEventListener('drop', handleFileDrop, false);
+            });
         }
 
         async function handleFileSelect(e) {
@@ -621,19 +685,26 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
+        }
+
         async function processSelectedFile(file) {
+            if (!file) return;
+            const textarea = document.getElementById('receipt-text');
             const div = document.getElementById('receipt-results');
-            div.innerHTML = '<p style="color: #2e7d32; font-weight: bold;">⏳ Datei <strong>' + file.name + '</strong> (' + Math.round(file.size / 1024) + ' KB) wird analysiert...</p>';
+            textarea.value = '📄 Kassenbon-Datei geladen: ' + file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+            div.innerHTML = '<p style="color: #2e7d32; font-weight: bold;">⏳ Datei <strong>' + escapeHtml(file.name) + '</strong> (' + Math.round(file.size / 1024) + ' KB) wird analysiert...</p>';
 
             const isTextOrJson = file.name.endsWith('.txt') || file.name.endsWith('.json') || (file.type && file.type.startsWith('text/'));
             
             if (isTextOrJson) {
                 const text = await file.text();
-                document.getElementById('receipt-text').value = text;
+                textarea.value = text;
                 await uploadReceiptPayload({ text: text, filename: file.name });
             } else {
                 // PDF oder Bild: Als Base64 übertragen (KEIN Rohcode im Textfeld!)
-                document.getElementById('receipt-text').value = '📄 Kassenbon-Datei geladen: ' + file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
                 const reader = new FileReader();
                 reader.onload = async function() {
                     const base64Data = reader.result.split(',')[1];
@@ -642,6 +713,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                         fileType: file.type || 'application/pdf',
                         fileBase64: base64Data
                     });
+                };
+                reader.onerror = function() {
+                    div.innerHTML = '<p style="color: red; font-weight: bold;">❌ Fehler beim Lesen der Datei.</p>';
                 };
                 reader.readAsDataURL(file);
             }
@@ -756,6 +830,9 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Connection", "close")
 
     def do_OPTIONS(self):
