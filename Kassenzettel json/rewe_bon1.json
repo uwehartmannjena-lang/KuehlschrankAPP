@@ -1,5 +1,11 @@
 {
-  "market": "REWE",
-  "expected_total": 5.43,
-  "text": "REWE Markt GmbH\nMusterstraße 12\n07743 Jena\nJA! H-MILCH 1,5% 0.99 A\n2 STK x 1.29 A BANANEN LOSE 2.58 A\nPFAND FLASCHE 0.25 A\nAKTION -0.39\nSUMME EUR 5.43\nBAR 10.00\nRÜCKGELD 4.57"
+  "markt": "REWE",
+  "summe": 4.11,
+  "artikel": [
+    {"name": "3 x Kaisersemmel", "preis": 1.17},
+    {"name": "Bio Haferdrink", "preis": 1.99},
+    {"name": "Aktion Rabatt", "preis": -0.30},
+    {"name": "Cola 0,5L", "preis": 1.00},
+    {"name": "Einwegpfand", "preis": 0.25}
+  ]
 }

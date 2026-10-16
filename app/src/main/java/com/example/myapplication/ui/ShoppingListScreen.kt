@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -140,9 +141,14 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                     icon = {}
                 ) {
-                    Premium3DIcon(R.drawable.ic_nav_plan, !isSupermarketMode, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Einkaufsliste", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Premium3DIcon(R.drawable.ic_nav_plan, !isSupermarketMode, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Einkaufsliste", style = MaterialTheme.typography.labelLarge)
+                    }
                 }
                 SegmentedButton(
                     selected = isSupermarketMode,
@@ -157,9 +163,14 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                     ),
                     icon = {}
                 ) {
-                    Premium3DIcon(R.drawable.ic_nav_einkauf, isSupermarketMode, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Supermarkt-Tour", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Premium3DIcon(R.drawable.ic_nav_einkauf, isSupermarketMode, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Supermarkt-Tour", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -227,28 +238,28 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                         onDismissRequest = { showCleanupMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("🧹 Abgehakte aufräumen") },
+                            text = { Text("Abgehakte aufräumen") },
                             onClick = {
                                 viewModel.clearCheckedShoppingItems()
                                 showCleanupMenu = false
                             },
-                            leadingIcon = { Icon(Icons.Default.DeleteSweep, null) }
+                            leadingIcon = { Icon(Icons.Outlined.DeleteSweep, null) }
                         )
                         DropdownMenuItem(
-                            text = { Text("📦 Alle abgehakten ins Lager einräumen") },
+                            text = { Text("Alle abgehakten einlagern") },
                             onClick = {
                                 viewModel.transferAllCheckedShoppingItemsToInventory()
                                 showCleanupMenu = false
                             },
-                            leadingIcon = { Icon(Icons.Default.Archive, null) }
+                            leadingIcon = { Icon(Icons.Outlined.Archive, null) }
                         )
                         DropdownMenuItem(
-                            text = { Text("📋 In Zwischenablage kopieren") },
+                            text = { Text("In Zwischenablage kopieren") },
                             onClick = {
                                 viewModel.copyShoppingListToClipboard(context, items)
                                 showCleanupMenu = false
                             },
-                            leadingIcon = { Icon(Icons.Default.ContentCopy, null) }
+                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }
                         )
                     }
                 }
@@ -270,12 +281,21 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
 
         // --- 2b. INTELLIGENTE NACHKAUF-VORSCHLÄGE (REFILL CAROUSEL) ---
         if (!isSupermarketMode && refillSuggestions.isNotEmpty()) {
-            Text(
-                text = "💡 Intelligente Nachkauf-Vorschläge:",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = viewModel.themeColor.value
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Lightbulb,
+                    contentDescription = null,
+                    tint = viewModel.themeColor.value,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Intelligente Nachkauf-Vorschläge",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = viewModel.themeColor.value
+                )
+            }
             Spacer(Modifier.height(4.dp))
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -393,7 +413,7 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Premium3DIcon(
                         R.drawable.ic_nav_einkauf,
-                        selected = false,
+                        isSelected = false,
                         modifier = Modifier.size(64.dp)
                     )
                     Spacer(Modifier.height(12.dp))
@@ -430,21 +450,23 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                     }
 
                     items(categoryItems, key = { it.id }) { item ->
-                        ModernShoppingItemCard(
-                            item = item,
-                            viewModel = viewModel,
-                            isSupermarketMode = isSupermarketMode,
-                            onToggle = {
-                                if (!item.isChecked) {
-                                    // When checking off, trigger "Gekauft & Einräumen" dialog prompt
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    itemToTransfer = item
-                                } else {
-                                    viewModel.toggleShoppingItem(item)
-                                }
-                            },
-                            onEdit = { itemToEdit = item }
-                        )
+                        Box(modifier = Modifier.animateItem()) {
+                            ModernShoppingItemCard(
+                                item = item,
+                                viewModel = viewModel,
+                                isSupermarketMode = isSupermarketMode,
+                                onToggle = {
+                                    if (!item.isChecked) {
+                                        // When checking off, trigger "Gekauft & Einräumen" dialog prompt
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        itemToTransfer = item
+                                    } else {
+                                        viewModel.toggleShoppingItem(item)
+                                    }
+                                },
+                                onEdit = { itemToEdit = item }
+                            )
+                        }
                     }
                 }
 
@@ -485,13 +507,15 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
 
                     if (isCheckedSectionExpanded) {
                         items(checkedItems, key = { it.id }) { item ->
-                            ModernShoppingItemCard(
-                                item = item,
-                                viewModel = viewModel,
-                                isSupermarketMode = isSupermarketMode,
-                                onToggle = { viewModel.toggleShoppingItem(item) },
-                                onEdit = { itemToEdit = item }
-                            )
+                            Box(modifier = Modifier.animateItem()) {
+                                ModernShoppingItemCard(
+                                    item = item,
+                                    viewModel = viewModel,
+                                    isSupermarketMode = isSupermarketMode,
+                                    onToggle = { viewModel.toggleShoppingItem(item) },
+                                    onEdit = { itemToEdit = item }
+                                )
+                            }
                         }
                     }
                 }
@@ -696,6 +720,7 @@ fun ModernShoppingItemCard(
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize()
             .clip(RoundedCornerShape(16.dp))
             .then(
                 if (urgencyColor != Color.Transparent && !item.isChecked) {
@@ -726,7 +751,13 @@ fun ModernShoppingItemCard(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (item.urgency == "URGENT" && !item.isChecked) {
-                        Text("🔴 ", style = MaterialTheme.typography.bodySmall)
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.error)
+                        )
+                        Spacer(Modifier.width(6.dp))
                     }
                     Text(
                         item.name,
@@ -753,13 +784,22 @@ fun ModernShoppingItemCard(
                     }
 
                     if (!item.note.isNullOrBlank()) {
-                        Text(
-                            "📝 ${item.note}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.EditNote,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(2.dp))
+                            Text(
+                                item.note,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
                     if (item.priceEstimate > 0) {
@@ -951,19 +991,22 @@ fun EditShoppingItemDialog(
                     FilterChip(
                         selected = selectedUrgency == "URGENT",
                         onClick = { selectedUrgency = "URGENT" },
-                        label = { Text("🔴 Dringend") },
+                        leadingIcon = { Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFE53935))) },
+                        label = { Text("Dringend") },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
                         selected = selectedUrgency == "NORMAL",
                         onClick = { selectedUrgency = "NORMAL" },
-                        label = { Text("🟡 Normal") },
+                        leadingIcon = { Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFB8C00))) },
+                        label = { Text("Normal") },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
                         selected = selectedUrgency == "STOCK",
                         onClick = { selectedUrgency = "STOCK" },
-                        label = { Text("⚪ Auf Vorrat") },
+                        leadingIcon = { Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF757575))) },
+                        label = { Text("Vorrat") },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1044,5 +1087,15 @@ fun QuickInputDialog(
                 Text("Abbrechen")
             }
         }
+    )
+}
+
+@Composable
+fun Premium3DIcon(resId: Int, isSelected: Boolean, modifier: Modifier = Modifier) {
+    Icon(
+        painter = painterResource(id = resId),
+        contentDescription = null,
+        modifier = modifier,
+        tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     )
 }

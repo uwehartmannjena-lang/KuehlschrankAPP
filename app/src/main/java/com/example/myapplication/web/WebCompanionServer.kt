@@ -875,7 +875,16 @@ object WebCompanionServer {
                         e.preventDefault();
                         const files = e.dataTransfer.files;
                         if (files.length > 0) {
-                            const text = await files[0].text();
+                            const file = files[0];
+                            if (file.name.endsWith('.pdf') || (file.type && file.type.includes('pdf'))) {
+                                alert('PDF-Dateien bitte über den PC-Webservice (Port 8080) hochladen oder den Bon-Text direkt hineinkopieren.');
+                                return;
+                            }
+                            const text = await file.text();
+                            if (text.startsWith('%PDF')) {
+                                alert('Binärer PDF-Code kann nicht direkt als Text verarbeitet werden.');
+                                return;
+                            }
                             document.getElementById('receipt-text').value = text;
                             uploadReceiptText();
                         }
@@ -883,7 +892,10 @@ object WebCompanionServer {
 
                     async function uploadReceiptText() {
                         const text = document.getElementById('receipt-text').value;
-                        if (!text) return;
+                        if (!text || text.startsWith('%PDF')) {
+                            alert('Bitte gib lesbaren Kassenbon-Text ein.');
+                            return;
+                        }
 
                         const res = await fetch('/api/upload-receipt', {
                             method: 'POST',

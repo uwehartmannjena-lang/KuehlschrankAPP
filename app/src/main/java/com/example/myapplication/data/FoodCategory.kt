@@ -81,15 +81,15 @@ object CategoryDetector {
 
             // Konserven & Vorrat
             nameLower.contains("reis") || nameLower.contains("nudeln") || 
-            nameLower.contains("spaghetti") || nameLower.contains("mehl") ||
-            nameLower.contains("zucker") || nameLower.contains("konserve") ||
-            nameLower.contains("erdnüsse") || nameLower.contains("fixe") ||
-            nameLower.contains("tom") -> FoodCategory.VORRAT_KONSERVEN
+            nameLower.contains("spaghetti") || nameLower.contains("pasta") ||
+            nameLower.contains("mehl") || nameLower.contains("zucker") ||
+            nameLower.contains("konserve") || nameLower.contains("erdnüsse") ||
+            nameLower.contains("fixe") || nameLower.contains("tom") -> FoodCategory.VORRAT_KONSERVEN
 
             // Drogerie & Hygiene
             nameLower.contains("spüler") || nameLower.contains("wasch") || 
             nameLower.contains("seife") || nameLower.contains("shampoo") ||
-            nameLower.contains("pasta") || nameLower.contains("deo") ||
+            nameLower.contains("zahnpasta") || nameLower.contains("deo") ||
             nameLower.contains("pflege") || nameLower.contains("dusch") ||
             nameLower.contains("wc") || nameLower.contains("papier") ||
             nameLower.contains("creme") || nameLower.contains("lotion") ||

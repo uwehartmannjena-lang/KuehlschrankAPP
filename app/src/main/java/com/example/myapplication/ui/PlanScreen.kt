@@ -1,6 +1,8 @@
 package com.example.myapplication.ui
 
 import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -62,56 +65,67 @@ fun PlanScreen(
             Tab(
                 selected = selectedTab == 0,
                 onClick = { selectedTab = 0 },
-                text = { Text("Heute 📌", fontWeight = FontWeight.Bold) }
+                text = { Text("Heute", fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Outlined.Today, contentDescription = null, modifier = Modifier.size(20.dp)) }
             )
             Tab(
                 selected = selectedTab == 1,
                 onClick = { selectedTab = 1 },
-                text = { Text("Woche 📅", fontWeight = FontWeight.Bold) }
+                text = { Text("Woche", fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Outlined.DateRange, contentDescription = null, modifier = Modifier.size(20.dp)) }
             )
             Tab(
                 selected = selectedTab == 2,
                 onClick = { selectedTab = 2 },
-                text = { Text("Chefkoch & Reste 👨‍🍳", fontWeight = FontWeight.Bold) }
+                text = { Text("Rezepte & Reste", fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Outlined.Restaurant, contentDescription = null, modifier = Modifier.size(20.dp)) }
             )
         }
 
         Spacer(Modifier.height(8.dp))
 
-        when (selectedTab) {
-            0 -> TodayPlanTab(
-                viewModel = viewModel,
-                plans = plans,
-                topExpiring = topExpiring,
-                onCooked = { showCookedDialog = it },
-                onAddMissing = { showAddMissingDialog = it },
-                onTriggerRoulette = {
-                    if (inventory.isNotEmpty()) {
-                        rouletteIngredients = inventory.shuffled().take(3)
-                        showRouletteDialog = true
-                    } else {
-                        Toast.makeText(context, "Kühlschrank ist leer!", Toast.LENGTH_SHORT).show()
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150))
+            },
+            label = "plan_tab_transition"
+        ) { tab ->
+            when (tab) {
+                0 -> TodayPlanTab(
+                    viewModel = viewModel,
+                    plans = plans,
+                    topExpiring = topExpiring,
+                    onCooked = { showCookedDialog = it },
+                    onAddMissing = { showAddMissingDialog = it },
+                    onTriggerRoulette = {
+                        if (inventory.isNotEmpty()) {
+                            rouletteIngredients = inventory.shuffled().take(3)
+                            showRouletteDialog = true
+                        } else {
+                            Toast.makeText(context, "Kühlschrank ist leer!", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                }
-            )
-            1 -> WeeklyPlanTab(
-                viewModel = viewModel,
-                plans = plans,
-                onCooked = { showCookedDialog = it },
-                onAddMissing = { showAddMissingDialog = it }
-            )
-            2 -> ChefkochLeftoversTab(
-                viewModel = viewModel,
-                inventory = inventory,
-                onTriggerRoulette = {
-                    if (inventory.isNotEmpty()) {
-                        rouletteIngredients = inventory.shuffled().take(3)
-                        showRouletteDialog = true
-                    } else {
-                        Toast.makeText(context, "Kühlschrank ist leer!", Toast.LENGTH_SHORT).show()
+                )
+                1 -> WeeklyPlanTab(
+                    viewModel = viewModel,
+                    plans = plans,
+                    onCooked = { showCookedDialog = it },
+                    onAddMissing = { showAddMissingDialog = it }
+                )
+                2 -> ChefkochLeftoversTab(
+                    viewModel = viewModel,
+                    inventory = inventory,
+                    onTriggerRoulette = {
+                        if (inventory.isNotEmpty()) {
+                            rouletteIngredients = inventory.shuffled().take(3)
+                            showRouletteDialog = true
+                        } else {
+                            Toast.makeText(context, "Kühlschrank ist leer!", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 
@@ -148,7 +162,13 @@ fun PlanScreen(
     if (showRouletteDialog) {
         AlertDialog(
             onDismissRequest = { showRouletteDialog = false },
-            title = { Text("🎰 Reste-Roulette", fontWeight = FontWeight.Bold) },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Casino, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Reste-Roulette", fontWeight = FontWeight.Bold)
+                }
+            },
             text = {
                 Column {
                     Text("Dein Zufallstopf für heute:", style = MaterialTheme.typography.bodyMedium)
@@ -233,10 +253,10 @@ fun TodayPlanTab(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
+                            Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.error)
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "MHD-Retter-Menü 🚨",
+                                "MHD-Retter-Menü",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onErrorContainer
@@ -277,12 +297,13 @@ fun TodayPlanTab(
                             onClick = {
                                 ChefkochHelper.openChefkoch(context, topExpiring.map { it.name })
                             },
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.Restaurant, null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Restaurant, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Chefkoch-Rezepte anzeigen 👨‍🍳")
+                            Text("Chefkoch-Rezepte anzeigen")
                         }
                     }
                 }
@@ -297,15 +318,19 @@ fun TodayPlanTab(
             ) {
                 OutlinedButton(
                     onClick = onTriggerRoulette,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("🎰 Was koche ich heute?", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Outlined.Casino, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Was koche ich?", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
                     onClick = {
                         viewModel.addMealPlan(MealPlan(date = System.currentTimeMillis(), recipeTitle = "Neues Gericht"))
                     },
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
@@ -362,7 +387,11 @@ fun WeeklyPlanTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Wochenplan 🗓️", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Wochenplan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
         }
 
         if (plans.isEmpty()) {
@@ -405,7 +434,11 @@ fun ChefkochLeftoversTab(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Chefkoch Reste-Suche 👨‍🍳", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Restaurant, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Chefkoch Reste-Suche", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
                     Spacer(Modifier.height(4.dp))
                     Text("Wähle Zutaten aus deinem Vorrat und finde sofort Rezepte auf Chefkoch.de:", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                     
@@ -420,18 +453,22 @@ fun ChefkochLeftoversTab(
                                 ChefkochHelper.openChefkoch(context, selectedIngredients.toList())
                             },
                             enabled = selectedIngredients.isNotEmpty(),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.Search, null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Search, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Chefkoch (${selectedIngredients.size})")
                         }
 
                         OutlinedButton(
                             onClick = onTriggerRoulette,
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("🎰 Reste-Roulette")
+                            Icon(Icons.Outlined.Casino, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Reste-Roulette")
                         }
                     }
                 }
@@ -448,9 +485,9 @@ fun ChefkochLeftoversTab(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Eco, contentDescription = "Saison", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Icon(Icons.Outlined.Eco, contentDescription = "Saison", tint = MaterialTheme.colorScheme.onSecondaryContainer)
                             Spacer(Modifier.width(8.dp))
-                            Text("Jetzt frisch aus der Region 🍂", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("Frisch aus der Region", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(seasonal.joinToString(" • "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -545,12 +582,13 @@ fun MealPlanCard(
             ) {
                 Button(
                     onClick = onCooked,
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.weight(1f).widthIn(min = 120.dp)
                 ) {
-                    Icon(Icons.Default.Done, null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.Check, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Gekocht! 🍳", fontSize = 12.sp, maxLines = 1)
+                    Text("Gekocht", fontSize = 12.sp, maxLines = 1)
                 }
 
                 OutlinedButton(
@@ -561,15 +599,16 @@ fun MealPlanCard(
                             ChefkochHelper.openChefkochUrl(context, plan.recipeTitle)
                         }
                     },
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f).widthIn(min = 120.dp)
                 ) {
-                    Icon(Icons.Default.Restaurant, null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.MenuBook, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Rezept 👨‍🍳", fontSize = 12.sp, maxLines = 1)
+                    Text("Rezept", fontSize = 12.sp, maxLines = 1)
                 }
 
                 IconButton(onClick = onAddMissing) {
-                    Icon(Icons.Default.AddShoppingCart, "Einkaufsliste", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Outlined.AddShoppingCart, "Einkaufsliste", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -587,7 +626,7 @@ fun CookedDeductDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Gekocht & Abbuchen 🍳", fontWeight = FontWeight.Bold) },
+        title = { Text("Gekocht & Abbuchen", fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 Text("Welche Vorräte wurden für '${plan.recipeTitle}' verbraucht?", style = MaterialTheme.typography.bodySmall)
@@ -615,10 +654,13 @@ fun CookedDeductDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val selected = inventory.filter { selectedItemIds.contains(it.id) }
-                onConfirmDeduct(selected)
-            }) {
+            Button(
+                shape = RoundedCornerShape(12.dp),
+                onClick = {
+                    val selected = inventory.filter { selectedItemIds.contains(it.id) }
+                    onConfirmDeduct(selected)
+                }
+            ) {
                 Text("Abbuchen & Erledigt")
             }
         },
@@ -638,7 +680,7 @@ fun AddMissingIngredientsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Fehlende Zutat hinzufügen 🛒") },
+        title = { Text("Fehlende Zutat hinzufügen") },
         text = {
             Column {
                 Text("Füge eine fehlende Zutat für '$recipeTitle' zur Einkaufsliste hinzu:")

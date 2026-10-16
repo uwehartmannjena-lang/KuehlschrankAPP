@@ -85,4 +85,35 @@ class ReceiptImportSanitizerTest {
         assertEquals("Wagner Steinofen Pizza", ReceiptImportSanitizer.cleanReceiptText("Wagner St Pizza"))
         assertEquals("Quäse", ReceiptImportSanitizer.cleanReceiptText("Ouäse"))
     }
+
+    @Test
+    fun `prepareForImport filtert Summe MwSt Kartenzahlung Datum Pfand und Non-Food zuverlaessig heraus`() {
+        val candidates = listOf(
+            Product(name = "Frischmilch", price = 1.09, quantity = 1),
+            Product(name = "Summe", price = 14.50, quantity = 1),
+            Product(name = "MwSt 7%", price = 0.85, quantity = 1),
+            Product(name = "Kartenzahlung", price = 14.50, quantity = 1),
+            Product(name = "Datum: 04.10.2026", price = 1.00, quantity = 1),
+            Product(name = "Pfand Flasche", price = 0.25, quantity = 1),
+            Product(name = "Papiertragetasche", price = 0.35, quantity = 1),
+            Product(name = "Zahnpasta", price = 1.45, quantity = 1),
+            Product(name = "Weichspüler", price = 2.19, quantity = 1),
+            Product(name = "Gouda Käse", price = 2.49, quantity = 2)
+        )
+
+        val result = ReceiptImportSanitizer.prepareForImport(candidates)
+
+        assertEquals(2, result.size)
+        val names = result.map { it.name }
+        org.junit.Assert.assertTrue(names.contains("Frischmilch"))
+        org.junit.Assert.assertTrue(names.contains("Gouda Käse"))
+        org.junit.Assert.assertFalse(names.any { it.contains("Summe", ignoreCase = true) })
+        org.junit.Assert.assertFalse(names.any { it.contains("MwSt", ignoreCase = true) })
+        org.junit.Assert.assertFalse(names.any { it.contains("Kartenzahlung", ignoreCase = true) })
+        org.junit.Assert.assertFalse(names.any { it.contains("Datum", ignoreCase = true) })
+        org.junit.Assert.assertFalse(names.any { it.contains("Pfand", ignoreCase = true) })
+        org.junit.Assert.assertFalse(names.any { it.contains("Tasche", ignoreCase = true) })
+        org.junit.Assert.assertFalse(names.any { it.contains("Zahnpasta", ignoreCase = true) })
+        org.junit.Assert.assertFalse(names.any { it.contains("Weichspüler", ignoreCase = true) })
+    }
 }

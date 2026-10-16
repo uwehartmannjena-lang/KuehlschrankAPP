@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
@@ -57,12 +59,38 @@ class KassenzettelScannerActivity : ComponentActivity() {
         
     private val scanner = GmsDocumentScanning.getClient(scannerOptions)
 
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        val isFridgeMode = intent.getBooleanExtra("IS_FRIDGE_SCAN", false)
         setContent {
             MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    ScannerScreen()
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text(if (isFridgeMode) "Vorrats-Scanner" else "Kassenbon Scanner") },
+                            navigationIcon = {
+                                IconButton(onClick = { finish() }) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Zurück"
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    }
+                ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        ScannerScreen()
+                    }
                 }
             }
         }
@@ -126,12 +154,18 @@ class KassenzettelScannerActivity : ComponentActivity() {
         }
 
         Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val isFridgeMode = intent.getBooleanExtra("IS_FRIDGE_SCAN", false)
-            Text(if (isFridgeMode) "Vorrats-Scanner" else "Kassenbon Scanner (Premium)", style = MaterialTheme.typography.headlineMedium)
-            Text(if (isFridgeMode) "Fotografiere mehrere Artikel gleichzeitig" else "Scanne deinen Beleg für den Auto-Import", fontSize = 12.sp)
+            Text(
+                text = if (isFridgeMode) "Fotografiere mehrere Artikel gleichzeitig" else "Scanne deinen Beleg für den Auto-Import",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(modifier = Modifier.height(16.dp))
 
             if (bitmap != null) {

@@ -1,0 +1,9 @@
+{
+  "markt": "LIDL",
+  "summe": 2.09,
+  "artikel": [
+    {"name": "Mineralwasser Kiste", "preis": 3.49},
+    {"name": "Kastenpfand", "preis": 3.10},
+    {"name": "Leergut Rückgabe", "preis": -4.50}
+  ]
+}

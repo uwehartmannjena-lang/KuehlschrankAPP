@@ -12,6 +12,7 @@ import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -31,7 +32,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
@@ -270,10 +274,15 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
         }
     }
 
-    val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            if (it.toString().contains("pdf", true)) fridgeViewModel.importFromPdf(context, it)
-            else fridgeViewModel.importFromImage(context, it)
+    val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) {
+            if (uris.size == 1) {
+                val uri = uris.first()
+                if (fridgeViewModel.isPdf(context, uri)) fridgeViewModel.importFromPdf(context, uri)
+                else fridgeViewModel.importFromImage(context, uri)
+            } else {
+                fridgeViewModel.importMultipleFiles(context, uris)
+            }
         }
     }
 
@@ -296,9 +305,11 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
             topBar = {
                 TopBarWithSearch(
                     viewModel = fridgeViewModel,
-                    onMenuClick = { showMenu = true },
                     onBarcodeClick = { scannerLauncher.launch(Intent(context, ScannerActivity::class.java)) },
-                    onPositioned = { k, r -> tutorialTargets[k] = r }
+                    onPositioned = { k, r -> tutorialTargets[k] = r },
+                    onOpenSettings = { showSettings = true },
+                    onOpenHelp = { showHelp = true },
+                    onScanReceipt = { receiptScannerLauncher.launch(Intent(context, KassenzettelScannerActivity::class.java)) }
                 )
             },
             bottomBar = {
@@ -344,102 +355,122 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
             }
         ) { paddingValues ->
             Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-                when (selectedTab) {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                    },
+                    label = "main_screen_tab_transition"
+                ) { tab ->
+                    when (tab) {
                     0 -> {
-                        FilterAndSortSection(fridgeViewModel)
-                        when (fridgeViewModel.viewMode.value) {
-                            "grid" -> {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(2),
-                                    modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    item(span = { GridItemSpan(2) }) { Spacer(Modifier.height(4.dp)) }
-                                    items(displayedItems, key = { it.id }) { item ->
-                                        FridgeItemGridCard(
-                                            item = item,
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                tonalElevation = 1.dp,
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                FilterAndSortSection(fridgeViewModel)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                when (fridgeViewModel.viewMode.value) {
+                                    "grid" -> {
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(2),
+                                            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            item(span = { GridItemSpan(2) }) { Spacer(Modifier.height(4.dp)) }
+                                            items(displayedItems, key = { it.id }) { item ->
+                                                FridgeItemGridCard(
+                                                    item = item,
+                                                    viewModel = fridgeViewModel,
+                                                    onEdit = { itemToEditForSheet = item; showItemSheet = true },
+                                                    onLongClick = { itemForInfoDialog = item }
+                                                )
+                                            }
+                                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { Spacer(Modifier.height(80.dp)) }
+                                        }
+                                    }
+                                    "gallery" -> {
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Adaptive(minSize = 120.dp),
+                                            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(4.dp)) }
+                                            items(displayedItems, key = { it.id }) { item ->
+                                                FridgeItemGalleryCard(
+                                                    item = item,
+                                                    viewModel = fridgeViewModel,
+                                                    onEdit = { itemToEditForSheet = item; showItemSheet = true },
+                                                    onLongClick = { itemForInfoDialog = item }
+                                                )
+                                            }
+                                            item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(80.dp)) }
+                                        }
+                                    }
+                                    "kanban" -> {
+                                        KanbanBoardView(
+                                            items = displayedItems,
                                             viewModel = fridgeViewModel,
-                                            onEdit = { itemToEditForSheet = item; showItemSheet = true },
-                                            onLongClick = { itemForInfoDialog = item }
+                                            onEdit = { itemToEditForSheet = it; showItemSheet = true },
+                                            onLongClick = { itemForInfoDialog = it }
                                         )
                                     }
-                                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { Spacer(Modifier.height(80.dp)) }
-                                }
-                            }
-                            "gallery" -> {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Adaptive(minSize = 120.dp),
-                                    modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(4.dp)) }
-                                    items(displayedItems, key = { it.id }) { item ->
-                                        FridgeItemGalleryCard(
-                                            item = item,
+                                    "carousel" -> {
+                                        CarouselView(
+                                            items = displayedItems,
                                             viewModel = fridgeViewModel,
-                                            onEdit = { itemToEditForSheet = item; showItemSheet = true },
-                                            onLongClick = { itemForInfoDialog = item }
+                                            onEdit = { itemToEditForSheet = it; showItemSheet = true },
+                                            onLongClick = { itemForInfoDialog = it }
                                         )
                                     }
-                                    item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(80.dp)) }
-                                }
-                            }
-                            "kanban" -> {
-                                KanbanBoardView(
-                                    items = displayedItems,
-                                    viewModel = fridgeViewModel,
-                                    onEdit = { itemToEditForSheet = it; showItemSheet = true },
-                                    onLongClick = { itemForInfoDialog = it }
-                                )
-                            }
-                            "carousel" -> {
-                                CarouselView(
-                                    items = displayedItems,
-                                    viewModel = fridgeViewModel,
-                                    onEdit = { itemToEditForSheet = it; showItemSheet = true },
-                                    onLongClick = { itemForInfoDialog = it }
-                                )
-                            }
-                            "calendar" -> {
-                                CalendarView(
-                                    items = displayedItems,
-                                    viewModel = fridgeViewModel,
-                                    onEdit = { itemToEditForSheet = it; showItemSheet = true },
-                                    onLongClick = { itemForInfoDialog = it }
-                                )
-                            }
-                            "tree" -> {
-                                TreeView(
-                                    items = displayedItems,
-                                    viewModel = fridgeViewModel,
-                                    onEdit = { itemToEditForSheet = it; showItemSheet = true },
-                                    onLongClick = { itemForInfoDialog = it }
-                                )
-                            }
-                            "shelf" -> {
-                                ShelfView(
-                                    items = displayedItems,
-                                    viewModel = fridgeViewModel,
-                                    onEdit = { itemToEditForSheet = it; showItemSheet = true },
-                                    onLongClick = { itemForInfoDialog = it }
-                                )
-                            }
-                            // Default: "list"
-                            else -> {
-                                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    item { Spacer(Modifier.height(4.dp)) }
-                                    items(displayedItems, key = { it.id }) { item ->
-                                        ModernFridgeItemCard(
-                                            item = item,
+                                    "calendar" -> {
+                                        CalendarView(
+                                            items = displayedItems,
                                             viewModel = fridgeViewModel,
-                                            isSelected = fridgeViewModel.selectedItems.value.contains(item.id),
-                                            onEdit = { itemToEditForSheet = item; showItemSheet = true },
-                                            onLongClick = { itemForInfoDialog = item }
+                                            onEdit = { itemToEditForSheet = it; showItemSheet = true },
+                                            onLongClick = { itemForInfoDialog = it }
                                         )
                                     }
-                                    item { Spacer(Modifier.height(80.dp)) }
+                                    "tree" -> {
+                                        TreeView(
+                                            items = displayedItems,
+                                            viewModel = fridgeViewModel,
+                                            onEdit = { itemToEditForSheet = it; showItemSheet = true },
+                                            onLongClick = { itemForInfoDialog = it }
+                                        )
+                                    }
+                                    "shelf" -> {
+                                        ShelfView(
+                                            items = displayedItems,
+                                            viewModel = fridgeViewModel,
+                                            onEdit = { itemToEditForSheet = it; showItemSheet = true },
+                                            onLongClick = { itemForInfoDialog = it }
+                                        )
+                                    }
+                                    // Default: "list"
+                                    else -> {
+                                        LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            item { Spacer(Modifier.height(4.dp)) }
+                                            items(displayedItems, key = { it.id }) { item ->
+                                                Box(modifier = Modifier.animateItem()) {
+                                                    ModernFridgeItemCard(
+                                                        item = item,
+                                                        viewModel = fridgeViewModel,
+                                                        isSelected = fridgeViewModel.selectedItems.value.contains(item.id),
+                                                        onEdit = { itemToEditForSheet = item; showItemSheet = true },
+                                                        onLongClick = { itemForInfoDialog = item }
+                                                    )
+                                                }
+                                            }
+                                            item { Spacer(Modifier.height(80.dp)) }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -447,6 +478,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                     1 -> ShoppingList(fridgeViewModel, fridgeViewModel.allShoppingItems.collectAsState(initial = emptyList()).value)
                     2 -> PlanScreen(fridgeViewModel, mealPlans, allItems)
                     3 -> StatisticsView(fridgeViewModel, allItems, wastedItems, consumedItems)
+                    }
                 }
             }
         }
@@ -454,7 +486,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
         if (showOfferAlert && currentOffers.isNotEmpty()) {
             AlertDialog(
                 onDismissRequest = { fridgeViewModel.showOfferAlert.value = false },
-                title = { Text("Angebote für deine Favoriten! 🎉", fontWeight = FontWeight.Bold) },
+                title = { Text("Angebote für deine Favoriten", fontWeight = FontWeight.Bold) },
                 text = {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(currentOffers) { offer ->
@@ -548,7 +580,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
         dealAlertItem?.let { (item, retailer) ->
             AlertDialog(
                 onDismissRequest = { fridgeViewModel.dealAlertItem.value = null },
-                title = { Text("Favorit im Angebot! 🏷️") },
+                title = { Text("Favorit im Angebot") },
                 text = { Text("Dein Lieblingsprodukt '$item' ist diese Woche bei $retailer im Angebot!") },
                 confirmButton = {
                     Button(onClick = { 
@@ -562,14 +594,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
             )
         }
 
-        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-            DropdownMenuItem(text = { Text("Einstellungen ⚙️") }, onClick = { showSettings = true; showMenu = false })
-            DropdownMenuItem(text = { Text("Hilfe & Tour 💡") }, onClick = { showHelp = true; showMenu = false })
-            DropdownMenuItem(text = { Text("Kassenbon scannen 🧾") }, onClick = {
-                showMenu = false
-                receiptScannerLauncher.launch(Intent(context, KassenzettelScannerActivity::class.java))
-            })
-        }
+
 
         if (showSettings) SettingsDialog(
             viewModel = fridgeViewModel,
@@ -647,7 +672,7 @@ fun CorrectArticleDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Artikel korrigieren ✏️", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) },
+        title = { Text("Artikel korrigieren", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Original OCR-Text: \"$ocrText\"", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
@@ -703,13 +728,18 @@ fun CorrectArticleDialog(
                             isSearching = false
                         }
                     },
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSearching && searchQuery.isNotBlank()
                 ) {
                     if (isSearching) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Bild per API suchen 🔍")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.ImageSearch, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Bild online suchen")
+                        }
                     }
                 }
                 Box(
@@ -747,9 +777,14 @@ fun CorrectArticleDialog(
                     }
                     onSave(imageUrlInput)
                 },
+                shape = RoundedCornerShape(12.dp),
                 enabled = searchQuery.isNotBlank()
             ) {
-                Text("Speichern & Lernen 💾")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Speichern & Lernen")
+                }
             }
         },
         dismissButton = {
@@ -977,13 +1012,37 @@ fun PaywallDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Premium freischalten ⭐", fontWeight = FontWeight.Bold) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.WorkspacePremium,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Premium freischalten", fontWeight = FontWeight.Bold)
+            }
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Dein Testzeitraum ist abgelaufen. Schalte FrischeRadar Premium frei, um alle Funktionen weiterhin nutzen zu können:")
-                Text("✅ Unbegrenzter Kassenbon-Scan")
-                Text("✅ Automatischer Angebots-Alarm")
-                Text("✅ Keine Werbung")
+                listOf(
+                    "Unbegrenzter Kassenbon-Scan",
+                    "Automatischer Angebots-Alarm",
+                    "Keine Werbung"
+                ).forEach { feature ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(feature, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 if (subDetails != null) {
                     val offer = subDetails?.subscriptionOfferDetails?.firstOrNull()?.pricingPhases?.pricingPhaseList?.firstOrNull()
@@ -995,21 +1054,29 @@ fun PaywallDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val activity = context as? Activity
-                if (activity != null) {
-                    viewModel.billingManager.launchBillingFlow(activity)
+            Button(
+                shape = RoundedCornerShape(12.dp),
+                onClick = {
+                    val activity = context as? Activity
+                    if (activity != null) {
+                        viewModel.billingManager.launchBillingFlow(activity)
+                    }
                 }
-            }) {
+            ) {
                 Text("Jetzt abonnieren")
             }
         },
         dismissButton = {
-            TextButton(onClick = {
-                viewModel.billingManager.queryPurchases()
-                Toast.makeText(context, "Käufe werden wiederhergestellt...", Toast.LENGTH_SHORT).show()
-            }) {
-                Text("Käufe wiederherstellen")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onDismiss) {
+                    Text("Später")
+                }
+                TextButton(onClick = {
+                    viewModel.billingManager.queryPurchases()
+                    Toast.makeText(context, "Käufe werden wiederhergestellt...", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Käufe wiederherstellen")
+                }
             }
         }
     )
@@ -1027,10 +1094,13 @@ fun UnknownProductDialog(barcode: String, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Produkt unbekannt 🔍") },
+        title = { Text("Produkt unbekannt") },
         text = { Text("Der Barcode $barcode ist nicht in der Datenbank. Möchtest du ein Foto machen, um der Community zu helfen?") },
         confirmButton = {
-            Button(onClick = { photoLauncher.launch(null) }) {
+            Button(
+                shape = RoundedCornerShape(12.dp),
+                onClick = { photoLauncher.launch(null) }
+            ) {
                 Icon(Icons.Default.PhotoCamera, null)
                 Spacer(Modifier.width(8.dp))
                 Text("Foto machen")
@@ -1044,39 +1114,100 @@ fun UnknownProductDialog(barcode: String, onDismiss: () -> Unit) {
 @Composable
 fun TopBarWithSearch(
     viewModel: FridgeViewModel,
-    onMenuClick: () -> Unit,
     onBarcodeClick: () -> Unit,
-    onPositioned: (String, Rect) -> Unit
+    onPositioned: (String, Rect) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onScanReceipt: () -> Unit
 ) {
     var showWatchlistDialog by remember { mutableStateOf(false) }
+    var isSearchActive by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     TopAppBar(
         title = { 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Sensors,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(end = 8.dp)
+            if (isSearchActive) {
+                OutlinedTextField(
+                    value = viewModel.searchInput.value,
+                    onValueChange = { viewModel.searchInput.value = it },
+                    placeholder = { Text("Artikel suchen...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            viewModel.searchInput.value = ""
+                            isSearchActive = false
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Schließen")
+                        }
+                    }
                 )
-                Column {
-                    Text("FrischeRadar", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                    Text("Kühlschrank & MHD Tracker", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Kitchen,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Kühlschrank Profi 🍏",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "MHD & Vorrat",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         },
         actions = {
-            IconButton(onClick = { showWatchlistDialog = true }) {
-                Icon(Icons.Default.Favorite, "Watchlist")
+            if (!isSearchActive) {
+                IconButton(onClick = { isSearchActive = true }) {
+                    Icon(Icons.Default.Search, "Suchen")
+                }
+                IconButton(onClick = { showWatchlistDialog = true }) {
+                    Icon(Icons.Default.Favorite, "Watchlist")
+                }
+                IconButton(
+                    onClick = onBarcodeClick,
+                    modifier = Modifier.onGloballyPositioned { onPositioned("barcode_btn", Rect(it.positionInRoot(), it.size.toSize())) }
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, "Barcode scannen")
+                }
             }
-            IconButton(
-                onClick = onBarcodeClick,
-                modifier = Modifier.onGloballyPositioned { onPositioned("barcode_btn", Rect(it.positionInRoot(), it.size.toSize())) }
-            ) {
-                Icon(Icons.Default.QrCodeScanner, "Barcode scannen")
-            }
-            IconButton(onClick = onMenuClick) {
-                Icon(Icons.Default.MoreVert, "Menü")
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Default.MoreVert, "Menü")
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Einstellungen") },
+                        leadingIcon = { Icon(Icons.Outlined.Settings, null, modifier = Modifier.size(20.dp)) },
+                        onClick = { showMenu = false; onOpenSettings() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Hilfe & Tour") },
+                        leadingIcon = { Icon(Icons.Outlined.HelpOutline, null, modifier = Modifier.size(20.dp)) },
+                        onClick = { showMenu = false; onOpenHelp() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Kassenbon scannen") },
+                        leadingIcon = { Icon(Icons.Outlined.ReceiptLong, null, modifier = Modifier.size(20.dp)) },
+                        onClick = {
+                            showMenu = false
+                            onScanReceipt()
+                        }
+                    )
+                }
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -1155,15 +1286,6 @@ fun FilterAndSortSection(viewModel: FridgeViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             item {
-                FilterChip(
-                    selected = viewModel.showNutritionalDetails.value,
-                    onClick = { viewModel.showNutritionalDetails.value = !viewModel.showNutritionalDetails.value },
-                    label = { Text("Nährwerte") },
-                    leadingIcon = { if (viewModel.showNutritionalDetails.value) Icon(Icons.Default.Check, null) }
-                )
-            }
-
-            item {
                 Box {
                     OutlinedButton(onClick = { expandedViewMode = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                         val currentIcon = viewModes.find { it.first == viewModel.viewMode.value }?.second?.first ?: Icons.AutoMirrored.Default.List
@@ -1181,15 +1303,6 @@ fun FilterAndSortSection(viewModel: FridgeViewModel) {
                         }
                     }
                 }
-            }
-            
-            item {
-                FilterChip(
-                    selected = viewModel.showNutritionalDetails.value,
-                    onClick = { viewModel.showNutritionalDetails.value = !viewModel.showNutritionalDetails.value },
-                    label = { Text("Nährwerte") },
-                    leadingIcon = { if (viewModel.showNutritionalDetails.value) Icon(Icons.Default.Check, null) }
-                )
             }
 
             item {
@@ -1213,15 +1326,6 @@ fun FilterAndSortSection(viewModel: FridgeViewModel) {
             }
 
             item {
-                FilterChip(
-                    selected = viewModel.showNutritionalDetails.value,
-                    onClick = { viewModel.showNutritionalDetails.value = !viewModel.showNutritionalDetails.value },
-                    label = { Text("Nährwerte") },
-                    leadingIcon = { if (viewModel.showNutritionalDetails.value) Icon(Icons.Default.Check, null) }
-                )
-            }
-
-            item {
                 Box {
                     OutlinedButton(onClick = { expandedCategory = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                         Icon(Icons.Default.FilterList, null)
@@ -1239,24 +1343,78 @@ fun FilterAndSortSection(viewModel: FridgeViewModel) {
 
             item {
                 FilterChip(
-                    selected = viewModel.filterLocation.value == null && viewModel.filterCategory.value == null,
-                    onClick = { viewModel.filterLocation.value = null; viewModel.filterCategory.value = null },
+                    selected = viewModel.showNutritionalDetails.value,
+                    onClick = { viewModel.showNutritionalDetails.value = !viewModel.showNutritionalDetails.value },
+                    label = { Text("Nährwerte") },
+                    leadingIcon = { if (viewModel.showNutritionalDetails.value) Icon(Icons.Default.Check, null) }
+                )
+            }
+
+            item {
+                FilterChip(
+                    selected = viewModel.filterLocation.value == null && viewModel.filterCategory.value == null && viewModel.filterExpiryDays.intValue == 0,
+                    onClick = { 
+                        viewModel.filterLocation.value = null
+                        viewModel.filterCategory.value = null
+                        viewModel.filterExpiryDays.intValue = 0
+                    },
                     label = { Text("Alle") }
                 )
             }
+
+            item {
+                FilterChip(
+                    selected = viewModel.filterExpiryDays.intValue == 3,
+                    onClick = { 
+                        viewModel.filterExpiryDays.intValue = if (viewModel.filterExpiryDays.intValue == 3) 0 else 3 
+                    },
+                    label = { Text("< 3 Tage") },
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFFFEBEE))
+                )
+            }
+
+            item {
+                FilterChip(
+                    selected = viewModel.filterExpiryDays.intValue == 7,
+                    onClick = { 
+                        viewModel.filterExpiryDays.intValue = if (viewModel.filterExpiryDays.intValue == 7) 0 else 7 
+                    },
+                    label = { Text("< 7 Tage") },
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFFFF3E0))
+                )
+            }
+
             item {
                 FilterChip(
                     selected = viewModel.filterLocation.value == "BALD_ABLAUFEND",
                     onClick = { viewModel.filterLocation.value = if (viewModel.filterLocation.value == "BALD_ABLAUFEND") null else "BALD_ABLAUFEND" },
-                    label = { Text("⚠️ Bald ablaufend") },
+                    leadingIcon = { Icon(Icons.Outlined.WarningAmber, null, modifier = Modifier.size(16.dp)) },
+                    label = { Text("Bald ablaufend") },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFFFF3E0))
                 )
             }
+
             item {
                 FilterChip(
                     selected = viewModel.filterLocation.value == "Kühlschrank",
                     onClick = { viewModel.filterLocation.value = if (viewModel.filterLocation.value == "Kühlschrank") null else "Kühlschrank" },
                     label = { Text("Kühlschrank") }
+                )
+            }
+
+            item {
+                FilterChip(
+                    selected = viewModel.filterLocation.value == "Vorratskammer",
+                    onClick = { viewModel.filterLocation.value = if (viewModel.filterLocation.value == "Vorratskammer") null else "Vorratskammer" },
+                    label = { Text("Vorratskammer") }
+                )
+            }
+
+            item {
+                FilterChip(
+                    selected = viewModel.filterLocation.value == "Gefrierfach",
+                    onClick = { viewModel.filterLocation.value = if (viewModel.filterLocation.value == "Gefrierfach") null else "Gefrierfach" },
+                    label = { Text("Gefrierfach") }
                 )
             }
         }
@@ -1325,11 +1483,12 @@ fun ModernFridgeItemCard(
         }
     }
     
+    // Farbliches Ampelsystem: Grün (haltbar), Gelb (bald ablaufend in den nächsten 2 Tagen), Rot (abgelaufen)
     val indicatorColor = when {
-        daysLeft == null -> Color.Gray
-        daysLeft < 0 -> Color(0xFFE53935)
-        daysLeft <= 3 -> Color(0xFFE65100)
-        else -> Color(0xFF2E7D32)
+        daysLeft == null -> Color(0xFF9E9E9E)
+        daysLeft < 0 -> Color(0xFFE53935)       // Rot (abgelaufen)
+        daysLeft <= 2 -> Color(0xFFFBC02D)      // Gelb (bald ablaufend: <= 2 Tage)
+        else -> Color(0xFF4CAF50)               // Grün (haltbar: > 2 Tage)
     }
 
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -1468,6 +1627,7 @@ fun ModernFridgeItemCard(
         ElevatedCard(
             modifier = Modifier
                 .fillMaxWidth()
+                .animateContentSize()
                 .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
@@ -1557,7 +1717,8 @@ fun ModernFridgeItemCard(
                     daysLeft == null -> "Kein Ablaufdatum"
                     daysLeft < 0 -> "Abgelaufen!"
                     daysLeft == 0 -> "Läuft heute ab"
-                    else -> "Noch $daysLeft Tage"
+                    daysLeft <= 2 -> "Bald fällig (noch $daysLeft Tage)"
+                    else -> "Haltbar (noch $daysLeft Tage)"
                 }
                     Text(
                         text = buildString {
@@ -1598,16 +1759,17 @@ fun ModernFridgeItemCard(
                         }
                     }
 
-                    // MHD-Fortschrittsbalken (Batterie-Look)
+                    // MHD-Fortschrittsbalken (Ampel-Farben)
                     if (item.expiryDate != null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         val totalDuration = (item.expiryDate!! - item.purchaseDate).coerceAtLeast(1L)
                         val passedDuration = (System.currentTimeMillis() - item.purchaseDate).coerceAtLeast(0L)
                         val progress = (1f - (passedDuration.toFloat() / totalDuration.toFloat())).coerceIn(0f, 1f)
                         val barColor = when {
-                            progress > 0.5f -> Color(0xFF4CAF50)
-                            progress > 0.15f -> Color(0xFFFF9800)
-                            else -> Color(0xFFF44336)
+                            daysLeft == null -> Color(0xFF9E9E9E)
+                            daysLeft < 0 -> Color(0xFFE53935)
+                            daysLeft <= 2 -> Color(0xFFFBC02D)
+                            else -> Color(0xFF4CAF50)
                         }
                         LinearProgressIndicator(
                             progress = { progress },
@@ -1667,7 +1829,14 @@ fun FabActionBottomSheet(
     onUpload: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text("Option wählen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             ListItem(headlineContent = { Text("Kassenbon scannen", fontWeight = FontWeight.Bold) }, supportingContent = { Text("Mit KI & Foto-Erkennung") }, leadingContent = { Icon(Icons.Default.ReceiptLong, null, tint = MaterialTheme.colorScheme.primary) }, modifier = Modifier.clickable { onScanReceipt() })
             ListItem(headlineContent = { Text("Barcode scannen") }, supportingContent = { Text("Einzelartikel per EAN Barcode") }, leadingContent = { Icon(Icons.Default.QrCodeScanner, null) }, modifier = Modifier.clickable { onScanBarcode() })
@@ -1695,7 +1864,14 @@ fun ItemModalBottomSheet(
     var drawer by remember { mutableIntStateOf(item?.freezerDrawer ?: 0) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Text(if (item == null) "Neuer Artikel" else "Artikel bearbeiten", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1931,11 +2107,15 @@ fun StatisticsView(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Statistik & Analyse 📊",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.BarChart, null, tint = viewModel.themeColor.value, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Statistik & Analyse",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
 
                 IconButton(
                     onClick = {
@@ -2089,7 +2269,7 @@ fun StatisticsView(
                         Text("Limit: ${String.format(Locale.GERMANY, "%.2f €", limitVal)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
                     val diff = limitVal - totalValue
-                    val diffText = if (diff >= 0) "Noch ${String.format(Locale.GERMANY, "%.2f €", diff)} verfügbar" else "⚠️ Budget um ${String.format(Locale.GERMANY, "%.2f €", -diff)} überschritten!"
+                    val diffText = if (diff >= 0) "Noch ${String.format(Locale.GERMANY, "%.2f €", diff)} verfügbar" else "Budget um ${String.format(Locale.GERMANY, "%.2f €", -diff)} überschritten!"
                     Text(
                         text = diffText,
                         style = MaterialTheme.typography.labelMedium,
@@ -2109,7 +2289,7 @@ fun StatisticsView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Frische-Gesundheit 🌟", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("Frische-Gesundheit", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = when {
@@ -2131,15 +2311,30 @@ fun StatisticsView(
                     Spacer(Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("🟢 Frisch", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF2E7D32)))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Frisch", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Spacer(Modifier.height(2.dp))
                             Text("${freshness.freshCount}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("🟡 Bald fällig", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFF57C00)))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Bald fällig", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Spacer(Modifier.height(2.dp))
                             Text("${freshness.expiringSoonCount}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = Color(0xFFF57C00))
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("🔴 Abgelaufen", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFD32F2F)))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Abgelaufen", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Spacer(Modifier.height(2.dp))
                             Text("${freshness.expiredCount}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = Color(0xFFD32F2F))
                         }
                     }
@@ -2156,7 +2351,7 @@ fun StatisticsView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Ernährungs-Analyse 🥗", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("Ernährungs-Analyse", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     }
 
                     Spacer(Modifier.height(12.dp))
@@ -2182,7 +2377,7 @@ fun StatisticsView(
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Lagerort-Verteilung 📍", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text("Lagerort-Verteilung", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     locationStats.forEach { loc ->
                         val locPct = if (totalValue > 0.0) (loc.totalValue / totalValue).toFloat() else 0f
                         Column {
@@ -2207,7 +2402,7 @@ fun StatisticsView(
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Top Kategorien im Vorrat 🛒", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text("Top Kategorien im Vorrat", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     if (categoryStats.isEmpty()) {
                         Text("Noch keine Artikel im Vorrat vorhanden.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                     } else {
@@ -2239,11 +2434,11 @@ fun StatisticsView(
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Lieblingsprodukte & Verlust (${selectedTimeFrame.title}) 📈", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text("Lieblingsprodukte & Verlust (${selectedTimeFrame.title})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
 
                     // Trend-Anzeige
                     if (selectedTimeFrame != StatisticsTimeFrame.GESAMT && wasteTrend.previousPeriodLoss > 0.0) {
-                        val trendIcon = if (wasteTrend.isImproving) "📉" else "📈"
+                        val trendIcon = if (wasteTrend.isImproving) Icons.AutoMirrored.Filled.TrendingDown else Icons.AutoMirrored.Filled.TrendingUp
                         val trendColor = if (wasteTrend.isImproving) Color(0xFF2E7D32) else Color(0xFFD32F2F)
                         val trendText = if (wasteTrend.trendPercentage > 0) "+${wasteTrend.trendPercentage}%" else "${wasteTrend.trendPercentage}%"
                         
@@ -2253,7 +2448,7 @@ fun StatisticsView(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(trendIcon, style = MaterialTheme.typography.titleMedium)
+                                Icon(trendIcon, contentDescription = null, tint = trendColor, modifier = Modifier.size(24.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Column {
                                     Text("Verlust-Trend zur Vorperiode", style = MaterialTheme.typography.labelMedium)
@@ -2300,7 +2495,7 @@ fun StatisticsView(
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
                             Icon(Icons.Default.Celebration, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Ausgezeichnet! In diesem Zeitraum wurde nichts weggeworfen. 🎉", style = MaterialTheme.typography.bodyMedium)
+                            Text("Ausgezeichnet! In diesem Zeitraum wurde nichts weggeworfen.", style = MaterialTheme.typography.bodyMedium)
                         }
                     } else {
                         Text("Häufigste Müll-Kategorien:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
@@ -2341,14 +2536,14 @@ fun StatisticsView(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Lightbulb, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                         Spacer(Modifier.width(8.dp))
-                        Text("Spar- & Frische-Tipp 💡", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                        Text("Spar- & Frische-Tipp", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                     }
                     Spacer(Modifier.height(6.dp))
                     val tipText = when {
                         freshness.expiredCount > 0 -> "Du hast ${freshness.expiredCount} abgelaufene Produkte. Prüfe vor dem Wegwerfen mit Geruch & Geschmack, ob sie noch gut sind!"
                         freshness.expiringSoonCount > 0 -> "${freshness.expiringSoonCount} Artikel laufen bald ab. Nutze die Rezept-Ideen im 'Plan'-Tab, um sie zeitnah zu verwerten!"
                         wasteByCategory.any { it.category.contains("Obst", true) || it.category.contains("Gemüse", true) } -> "Obst & Gemüse landen bei dir am häufigsten im Müll. Lagere Bananen und Äpfel getrennt voneinander, um Nachreifen zu stoppen!"
-                        else -> "Toll gemacht! Durch die Kühlschrank-Organisation sparst du bares Geld und schützt die Umwelt. 🌱"
+                        else -> "Toll gemacht! Durch deine Vorrats-Organisation sparst du bares Geld und schützt die Umwelt."
                     }
                     Text(tipText, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -2430,7 +2625,13 @@ fun SettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Einstellungen ⚙️", fontWeight = FontWeight.Bold) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Settings, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Einstellungen", fontWeight = FontWeight.Bold)
+            }
+        },
         confirmButton = {
             Button(onClick = {
                 viewModel.setExpiryWarningDays(tempExpiryDays)
@@ -2651,7 +2852,7 @@ fun SettingsDialog(
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Wischen Rechts ➡️", style = MaterialTheme.typography.bodySmall)
+                            Text("Wischen nach rechts", style = MaterialTheme.typography.bodySmall)
                             Box {
                                 OutlinedButton(onClick = { expRight = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(tempSwipeRight, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2667,7 +2868,7 @@ fun SettingsDialog(
                     
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Wischen Oben ⬆️", style = MaterialTheme.typography.bodySmall)
+                            Text("Wischen nach oben", style = MaterialTheme.typography.bodySmall)
                             Box {
                                 OutlinedButton(onClick = { expUp = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(tempSwipeUp, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2680,7 +2881,7 @@ fun SettingsDialog(
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Wischen Unten ⬇️", style = MaterialTheme.typography.bodySmall)
+                            Text("Wischen nach unten", style = MaterialTheme.typography.bodySmall)
                             Box {
                                 OutlinedButton(onClick = { expDown = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(tempSwipeDown, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2733,7 +2934,7 @@ fun SettingsDialog(
                     ) {
                         Icon(Icons.Default.Computer, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Mit PC verbinden (WLAN-Modus) 💻", fontWeight = FontWeight.Bold)
+                        Text("Mit PC verbinden (WLAN-Modus)", fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -2820,7 +3021,7 @@ fun RecipeIdeasDialog(viewModel: FridgeViewModel, inventory: List<FridgeItem>, o
     LaunchedEffect(Unit) { viewModel.getRecipeSuggestions() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rezept-Ideen 💡") },
+        title = { Text("Rezept-Ideen") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (viewModel.isRecipeLoading.value) CircularProgressIndicator()
@@ -2862,15 +3063,19 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
                     )
                 }
 
-                // Status info
-                val statusInfo = when {
-                    item.openedDate != null -> "⚠️ Geöffnet am ${SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(item.openedDate!!))} (Noch $daysLeft Tage)"
-                    daysLeft == null -> "Kein Ablaufdatum"
-                    daysLeft < 0 -> "🔴 Abgelaufen!"
-                    daysLeft == 0 -> "🟡 Läuft heute ab"
-                    else -> "🟢 Noch $daysLeft Tage haltbar"
+                // Status info (Ampelsystem)
+                val (statusColor, statusInfo) = when {
+                    item.openedDate != null -> Pair(Color(0xFFFBC02D), "Geöffnet am ${SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(item.openedDate!!))} (Noch $daysLeft Tage)")
+                    daysLeft == null -> Pair(Color(0xFF9E9E9E), "Kein Ablaufdatum")
+                    daysLeft < 0 -> Pair(Color(0xFFE53935), "Abgelaufen!")
+                    daysLeft <= 2 -> Pair(Color(0xFFFBC02D), if (daysLeft == 0) "Läuft heute ab" else "Bald fällig (noch $daysLeft Tage)")
+                    else -> Pair(Color(0xFF4CAF50), "Haltbar (noch $daysLeft Tage)")
                 }
-                Text(statusInfo, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(statusColor))
+                    Spacer(Modifier.width(6.dp))
+                    Text(statusInfo, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                }
 
                 // Lagertipp
                 val storageTip = remember(item.name) { SeasonHelper.getStorageTip(item.name) }
@@ -2941,7 +3146,7 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
 
                 val purchaseHistory by viewModel.getPurchaseHistoryForProduct(item.name).collectAsState(initial = emptyList())
                 if (purchaseHistory.isNotEmpty()) {
-                    Text("🛒 Kaufhistorie:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                    Text("Kaufhistorie:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                     Column(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
@@ -2964,7 +3169,7 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
                     ) {
                         Icon(Icons.Default.Receipt, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Zugehörigen Kassenbon ansehen 🧾")
+                        Text("Zugehörigen Kassenbon ansehen")
                     }
                 }
                 if (!item.brand.isNullOrBlank()) Text("Marke: ${item.brand}")
@@ -3025,11 +3230,12 @@ fun WebCompanionDialog(
     var isServerRunning by remember { mutableStateOf(WebCompanionServer.isRunning) }
     var ipAddress by remember { mutableStateOf(WebCompanionServer.getLocalIpAddress(context)) }
     var pin by remember { mutableStateOf(WebCompanionServer.currentPin) }
+    var port by remember { mutableStateOf(WebCompanionServer.currentPort) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
-    val url = "http://$ipAddress:8080"
+    val url = "http://$ipAddress:$port"
 
-    LaunchedEffect(isServerRunning, ipAddress) {
+    LaunchedEffect(isServerRunning, ipAddress, port) {
         if (isServerRunning) {
             qrBitmap = QrUtils.generateQrCode(url, 400)
         }
@@ -3037,7 +3243,7 @@ fun WebCompanionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Mit PC verbinden (WLAN-Modus) 💻", fontWeight = FontWeight.Bold) },
+        title = { Text("Mit PC verbinden (WLAN-Modus)", fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -3045,6 +3251,7 @@ fun WebCompanionDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (isServerRunning) {
+                    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
                     Text(
                         text = "1. Öffne folgende Adresse im Browser auf deinem PC:",
                         style = MaterialTheme.typography.bodySmall
@@ -3052,11 +3259,23 @@ fun WebCompanionDialog(
                     SelectionContainer {
                         Text(
                             text = url,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                try {
+                                    uriHandler.openUri(url)
+                                } catch (e: Exception) {}
+                            }
                         )
                     }
+
+                    Text(
+                        text = "Alternativ über USB: adb reverse tcp:$port tcp:$port\nAufruf am PC: http://localhost:$port",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
 
                     qrBitmap?.let { bitmap ->
                         Image(
@@ -3086,6 +3305,10 @@ fun WebCompanionDialog(
 
                     Button(
                         onClick = {
+                            val stopIntent = Intent(context, com.example.myapplication.web.WebServerService::class.java).apply {
+                                action = "STOP"
+                            }
+                            context.startService(stopIntent)
                             WebCompanionServer.stopServer()
                             isServerRunning = false
                         },
@@ -3104,15 +3327,22 @@ fun WebCompanionDialog(
                     Button(
                         onClick = {
                             WebCompanionServer.startServer(context, viewModel)
+                            val startIntent = Intent(context, com.example.myapplication.web.WebServerService::class.java)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                context.startForegroundService(startIntent)
+                            } else {
+                                context.startService(startIntent)
+                            }
                             isServerRunning = true
                             ipAddress = WebCompanionServer.getLocalIpAddress(context)
                             pin = WebCompanionServer.currentPin
+                            port = WebCompanionServer.currentPort
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Icon(Icons.Default.PlayArrow, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Webserver Starten (Port 8080)")
+                        Text("Webserver Starten")
                     }
                 }
             }
@@ -3133,12 +3363,33 @@ fun FridgeItemGridCard(
     onEdit: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val daysLeft = remember(item.expiryDate) {
+        item.expiryDate?.let { 
+            TimeUnit.MILLISECONDS.toDays(it - System.currentTimeMillis()).toInt() 
+        }
+    }
+    val indicatorColor = when {
+        daysLeft == null -> Color(0xFF9E9E9E)
+        daysLeft < 0 -> Color(0xFFE53935)
+        daysLeft <= 2 -> Color(0xFFFBC02D)
+        else -> Color(0xFF4CAF50)
+    }
+
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onEdit, onLongClick = onLongClick),
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            ProductThumbnail(item.imageUrl, item.category, item.name, item.storageLocation, Modifier.size(60.dp))
+            Box {
+                ProductThumbnail(item.imageUrl, item.category, item.name, item.storageLocation, Modifier.size(60.dp))
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(indicatorColor)
+                        .align(Alignment.TopEnd)
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(item.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${item.quantity} ${item.unit}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)

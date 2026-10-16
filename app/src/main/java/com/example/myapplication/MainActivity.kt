@@ -43,11 +43,13 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     private var nfcAdapter: NfcAdapter? = null
+    private val currentIntentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        currentIntentState.value = intent
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -57,6 +59,7 @@ class MainActivity : ComponentActivity() {
         }
         createNotificationChannel(this)
         scheduleExpiryCheck(this)
+        scheduleWebserviceSync(this)
         scheduleEnrichmentWorker(this)
         SyncManager.init(applicationContext)
         KassenzettelParser.loadProfiles(this)
@@ -76,8 +79,10 @@ class MainActivity : ComponentActivity() {
                 RefrigeratorApp(fridgeViewModel)
             }
 
-            LaunchedEffect(intent) {
-                handleIntent(intent, context, fridgeViewModel)
+            LaunchedEffect(currentIntentState.value) {
+                currentIntentState.value?.let { currentIntent ->
+                    handleIntent(currentIntent, context, fridgeViewModel)
+                }
             }
             
             LaunchedEffect(intent) {
@@ -107,6 +112,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        currentIntentState.value = intent
         if (NfcAdapter.ACTION_NDEF_DISCOVERED == intent.action || NfcAdapter.ACTION_TAG_DISCOVERED == intent.action) {
             val tag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
@@ -148,7 +154,17 @@ class MainActivity : ComponentActivity() {
         val workRequest = PeriodicWorkRequestBuilder<ExpiryWorker>(1, TimeUnit.DAYS)
             .setInitialDelay(calculateDelayToNineAM(), TimeUnit.MILLISECONDS)
             .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork("ExpiryCheck", ExistingPeriodicWorkPolicy.KEEP, workRequest)
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork("ExpiryCheck", ExistingPeriodicWorkPolicy.UPDATE, workRequest)
+    }
+
+    private fun scheduleWebserviceSync(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val workRequest = PeriodicWorkRequestBuilder<com.example.myapplication.data.WebserviceSyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(constraints)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork("WebserviceSync", ExistingPeriodicWorkPolicy.UPDATE, workRequest)
     }
 
     private fun scheduleEnrichmentWorker(context: Context) {
@@ -195,38 +211,74 @@ class MainActivity : ComponentActivity() {
 
         try {
             if (Intent.ACTION_SEND == action || Intent.ACTION_SEND_MULTIPLE == action || Intent.ACTION_VIEW == action) {
-                val uri = intent.data ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                } ?: intent.clipData?.getItemAt(0)?.uri
+                val uris = mutableListOf<Uri>()
 
-                if (uri != null) {
+                if (Intent.ACTION_SEND_MULTIPLE == action) {
+                    val streamUris = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                    }
+                    if (streamUris != null) {
+                        uris.addAll(streamUris.filterNotNull())
+                    }
+                }
+
+                if (uris.isEmpty()) {
+                    val singleUri = intent.data ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                    } ?: intent.clipData?.getItemAt(0)?.uri
+
+                    if (singleUri != null) {
+                        uris.add(singleUri)
+                    }
+                }
+
+                if (uris.isEmpty() && intent.clipData != null) {
+                    val clipData = intent.clipData!!
+                    for (i in 0 until clipData.itemCount) {
+                        clipData.getItemAt(i).uri?.let { uris.add(it) }
+                    }
+                }
+
+                if (uris.isNotEmpty()) {
                     intent.putExtra("INTENT_PROCESSED", true)
+                    val cachedUris = mutableListOf<Uri>()
 
-                    try {
-                        context.grantUriPermission(context.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    } catch (_: Exception) {}
+                    for ((index, uri) in uris.withIndex()) {
+                        try {
+                            context.grantUriPermission(context.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        } catch (_: Exception) {}
 
-                    val mimeType = try { context.contentResolver.getType(uri) ?: type ?: "" } catch (_: Exception) { type ?: "" }
-                    val isPdf = mimeType == "application/pdf" ||
-                                uri.toString().lowercase().endsWith(".pdf") ||
-                                isPdfStream(context, uri)
+                        val mimeType = try { context.contentResolver.getType(uri) ?: type ?: "" } catch (_: Exception) { type ?: "" }
+                        val isPdf = mimeType == "application/pdf" ||
+                                    uri.toString().lowercase().endsWith(".pdf") ||
+                                    isPdfStream(context, uri)
 
-                    val fileName = if (isPdf) "shared_receipt.pdf" else "shared_receipt.jpg"
-                    val cachedFile = copyUriToCacheSync(context, uri, fileName)
+                        val fileName = if (isPdf) "shared_receipt_$index.pdf" else "shared_receipt_$index.jpg"
+                        val cachedFile = copyUriToCacheSync(context, uri, fileName)
 
-                    if (cachedFile != null && cachedFile.exists() && cachedFile.length() > 0) {
-                        Log.d("ReceiptDebug", "Kassenbon erfolgreich gecacht: ${cachedFile.absolutePath} (${cachedFile.length()} Bytes)")
-                        val cachedUri = Uri.fromFile(cachedFile)
+                        if (cachedFile != null && cachedFile.exists() && cachedFile.length() > 0) {
+                            Log.d("ReceiptDebug", "Kassenbon erfolgreich gecacht: ${cachedFile.absolutePath} (${cachedFile.length()} Bytes)")
+                            cachedUris.add(Uri.fromFile(cachedFile))
+                        } else {
+                            Log.e("ReceiptDebug", "Datei konnte nicht synchron in den Cache kopiert werden: $uri")
+                        }
+                    }
+
+                    if (cachedUris.size == 1) {
+                        val cachedUri = cachedUris.first()
+                        val isPdf = isPdfStream(context, cachedUri) || cachedUri.toString().lowercase().endsWith(".pdf")
                         when {
                             isPdf -> viewModel.importFromPdf(context, cachedUri)
                             else -> viewModel.importFromImage(context, cachedUri)
                         }
-                    } else {
-                        Log.e("ReceiptDebug", "Datei konnte nicht synchron in den Cache kopiert werden: $uri")
-                        Toast.makeText(context, "Kassenbon konnte nicht gelesen werden.", Toast.LENGTH_LONG).show()
+                    } else if (cachedUris.size > 1) {
+                        viewModel.importMultipleFiles(context, cachedUris)
                     }
                 } else if (Intent.ACTION_SEND == action && type?.startsWith("text/") == true) {
                     intent.getStringExtra(Intent.EXTRA_TEXT)?.let {
@@ -247,7 +299,19 @@ class MainActivity : ComponentActivity() {
             if (cacheFile.exists()) {
                 cacheFile.delete()
             }
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            val openStream: () -> java.io.InputStream? = {
+                if (uri.scheme == "file" && uri.path != null) {
+                    val directFile = File(uri.path!!)
+                    if (directFile.exists() && directFile.canRead()) {
+                        java.io.FileInputStream(directFile)
+                    } else {
+                        context.contentResolver.openInputStream(uri)
+                    }
+                } else {
+                    context.contentResolver.openInputStream(uri)
+                }
+            }
+            openStream()?.use { input ->
                 FileOutputStream(cacheFile).use { output ->
                     input.copyTo(output)
                 }

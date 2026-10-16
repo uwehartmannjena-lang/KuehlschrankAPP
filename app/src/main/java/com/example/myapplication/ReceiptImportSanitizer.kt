@@ -208,7 +208,67 @@ object ReceiptImportSanitizer {
     private val HARD_TRANSLATIONS = mapOf(
         "schww schinken" to "Schwarzwälder Schinken",
         "knorr fix chili c car" to "Knorr Fix Chili con Carne",
+        "klc.cash.cranb.mix" to "K-Classic Cashew-Cranberry-Mix",
+        "klc cash cranb mix" to "K-Classic Cashew-Cranberry-Mix",
         "cash cranb mix" to "Cashew-Cranberry-Mix",
+        "cash.cranb.mix" to "Cashew-Cranberry-Mix",
+        "klc. royal nuts" to "K-Classic Royal Nuts",
+        "klc royal nuts" to "K-Classic Royal Nuts",
+        "klc.royal nuts" to "K-Classic Royal Nuts",
+        "klc lachsfilet" to "K-Classic Lachsfilet",
+        "kbb lachsfil" to "Lachsfilet",
+        "kbb lachsfil." to "Lachsfilet",
+        "kbio.bandn.500g" to "K-Bio Bandnudeln 500g",
+        "kbio.bandn" to "K-Bio Bandnudeln",
+        "kbio bandn" to "K-Bio Bandnudeln",
+        "tradizion.speciale" to "Tradizionale Pizza Speciale",
+        "tradizion speciale" to "Tradizionale Pizza Speciale",
+        "kart.vfk 2,5kg" to "Speisekartoffeln vorwiegend festkochend (2,5 kg)",
+        "kart.vfk" to "Speisekartoffeln vorwiegend festkochend",
+        "fin.sweet chili 100g" to "Herta Finesse Sweet Chili 100g",
+        "fin.sweet chili" to "Herta Finesse Sweet Chili",
+        "finesse hähnchen bbq" to "Herta Finesse Hähnchenbrust BBQ",
+        "finesse hähnchen bbq" to "Herta Finesse Hähnchenbrust BBQ",
+        "finesse hähnbbq" to "Herta Finesse Hähnchenbrust BBQ",
+        "metzgerei sb plu 602" to "Metzgerei SB Frischetheke (PLU 602)",
+        "metzgerei sb plu" to "Metzgerei SB Frischetheke",
+        "metzgerei sb" to "Metzgerei SB Frischetheke",
+        "ma.fix bandn.lachs" to "Maggi Fix Bandnudeln mit Lachs",
+        "ma fix bandn lachs" to "Maggi Fix Bandnudeln mit Lachs",
+        "maggi fix carbo" to "Maggi Fix Carbonara",
+        "erben grauburg." to "Erben Grauburgunder Weißwein",
+        "erben grauburg" to "Erben Grauburgunder Weißwein",
+        "reb.müller-thurgau" to "Rebenschoppen Müller-Thurgau",
+        "reb. müller-thurgau" to "Rebenschoppen Müller-Thurgau",
+        "reb müller thurgau" to "Rebenschoppen Müller-Thurgau",
+        "reb. reinhessen" to "Rebenschoppen Rheinhessen",
+        "reb.reinhessen" to "Rebenschoppen Rheinhessen",
+        "reb reinhessen" to "Rebenschoppen Rheinhessen",
+        "hähn.mini-schnitte" to "Hähnchen Mini-Schnitzel",
+        "hähn.mini-schnitt" to "Hähnchen Mini-Schnitzel",
+        "hähn mini schnitte" to "Hähnchen Mini-Schnitzel",
+        "brotauf.tom./mozz." to "Brotaufstrich Tomate-Mozzarella",
+        "brotauf.tom/mozz" to "Brotaufstrich Tomate-Mozzarella",
+        "brotauf tom mozz" to "Brotaufstrich Tomate-Mozzarella",
+        "knoten vanille" to "Vanille-Knoten",
+        "chio popcorn süss" to "Chio Popcorn süß",
+        "chio popcorn suess" to "Chio Popcorn süß",
+        "ja! schlagsahne" to "ja! Schlagsahne",
+        "ja schlagsahne" to "ja! Schlagsahne",
+        "k.schlagsahne" to "K-Classic Schlagsahne",
+        "moench.landbier" to "Mönchshof Landbier",
+        "moenchshof zwick" to "Mönchshof Zwickl",
+        "kochschinken o." to "Kochschinken ohne Fettrand",
+        "rosenbroe. dkl" to "Rosenbrötchen dunkel",
+        "rosenbroe. dkl." to "Rosenbrötchen dunkel",
+        "rosenbroe dkl" to "Rosenbrötchen dunkel",
+        "karottenkruest." to "Karottenkrüstchen",
+        "karottenkruest" to "Karottenkrüstchen",
+        "dinkelbroetchen" to "Dinkelbrötchen",
+        "kfav.v-f.brötchen" to "K-Favourites Vollkorn-Fit-Brötchen",
+        "kfav.v-f.broetchen" to "K-Favourites Vollkorn-Fit-Brötchen",
+        "v f brötchen" to "Vollkorn-Fit-Brötchen",
+        "vollkorn kumpel" to "Vollkorn Kumpel Brot",
         "erdn gerös ges" to "Erdnüsse geröstet gesalzen",
         "erdn geros ges" to "Erdnüsse geröstet gesalzen",
         "h brustfilet" to "Hähnchen-Brustfilet",
@@ -228,8 +288,6 @@ object ReceiptImportSanitizer {
         "PRES." to "",
         "PRES" to "",
         "ES." to "",
-        "Kbb Lachsfil." to "Lachsfilet",
-        "Kbb Lachsfil" to "Lachsfilet",
         "Fin. Hähnchenbrust C" to "Hähnchenbrust",
         "Fin. Hähnchenbrust" to "Hähnchenbrust",
         "Fin. Hähnchenbr" to "Hähnchenbrust",
@@ -237,13 +295,10 @@ object ReceiptImportSanitizer {
         "KLOSSTEIG 750 G" to "Kloßteig",
         "KLOSSTEIG" to "Kloßteig",
         "KLOßTEIG" to "Kloßteig",
-        "Kart.vfk 2,5kg" to "Kartoffeln",
-        "Kart.vfk" to "Kartoffeln",
         "K.Blattspinat" to "Blattspinat",
         "Hä-Geschnetzeltes" to "Hähnchen-Geschnetzeltes",
         "Harzbube Edelschi." to "Harzer Käse",
         "Gefl." to "Geflügel",
-        "KLC" to "K-Classic",
         "Edelschi." to "Edelschimmel",
         "Kn. Fixe" to "Knorr Fix",
         "TH.WQ." to "Thüringer Waldquell",
@@ -257,11 +312,15 @@ object ReceiptImportSanitizer {
     )
 
     fun cleanReceiptText(rawText: String): String {
+        val learned = getLearnedCorrection(rawText)
+        if (learned != null) return learned
+
         var text = rawText
 
-        // 11. Lern-Vorrang: ZUERST UserLearnedCorrections prüfen
-        val learned = getLearnedCorrection(text)
-        if (learned != null) return learned
+        // Zahlen direkt an Buchstaben trennen (z.B. "Lachsfilet250g" -> "Lachsfilet 250g")
+        text = text.replace(Regex("""(?i)(\p{L}+)(\d+(?:[.,]\d+)?\s*(?:kg|g|ml|l|stk|st)\b)""")) {
+            "${it.groupValues[1]} ${it.groupValues[2]}"
+        }
 
         // 1. Zuerst gezielte Übersetzungen für bekannte Kürzel anwenden (z.B. "TH.WQ." -> "Thüringer Waldquell")
         for ((key, value) in HARD_TRANSLATIONS) {
@@ -328,6 +387,24 @@ object ReceiptImportSanitizer {
     @Deprecated("Use cleanReceiptText instead", ReplaceWith("cleanReceiptText(rawName)"))
     fun cleanSearchTerm(rawName: String): String = cleanReceiptText(rawName)
 
+    fun isFoodItem(name: String): Boolean {
+        val lower = name.lowercase().trim()
+        if (lower.isBlank()) return false
+        if (learnedCorrections.containsKey(lower)) return true
+
+        val nonFoodTerms = setOf(
+            "papiertragetasche", "tragetasche", "knotenbeutel", "permanenttasche", "einkaufstasche", "einkaufstüte", "einkaufstuete",
+            "müllbeutel", "muellbeutel", "müllsack", "gefrierbeutel", "alufolie", "frischhaltefolie", "backpapier",
+            "küchenrolle", "kuechenrolle", "toilettenpapier", "klopapier", "taschentücher", "taschentuecher", "feuchttücher", "kosmetiktücher", "wattepads",
+            "zahnpasta", "zahnbürste", "shampoo", "duschgel", "haarspray", "haargel", "deodorant",
+            "spülmittel", "spuelmittel", "waschmittel", "weichspüler", "weichspueler", "geschirrspültabs", "allzweckreiniger", "scheibenklar", "glasreiniger", "wc-reiniger",
+            "batterie", "batterien", "glühbirne", "gluehbirne", "zigaretten", "tabak", "feuerzeug", "zeitung", "zeitschrift",
+            "blumenstrauss", "topfpflanze", "schnittblumen", "blumenerde", "gutschein", "geschenkkarte"
+        )
+        if (nonFoodTerms.any { lower.contains(it) }) return false
+        return true
+    }
+
     fun prepareForImport(products: List<Product>): List<Product> = products
         .asSequence()
         .filter { product ->
@@ -345,20 +422,32 @@ object ReceiptImportSanitizer {
                 cleanNameUpper.matches(Regex("""^\d+\s*(KG|G|ML|L|STÜCK|STK|ST)$""")) ||
                 cleanNameUpper.contains("PFANDARTIKEL") ||
                 cleanNameUpper.contains("PFAND") || cleanNameUpper.contains("LEERGUT") ||
+                cleanNameUpper.contains("MEHRWEG") || cleanNameUpper.contains("EINWEG") || cleanNameUpper.contains("DPG") ||
                 cleanNameUpper.contains("TEL.") || cleanNameUpper.contains("TEL:") || cleanNameUpper.contains("TEL ") ||
                 cleanNameUpper.startsWith("TEL") || cleanNameUpper.matches(Regex("""^0\d{3,5}[/-]?\d+.*""")) ||
                 cleanNameUpper.contains("GMBH") || cleanNameUpper.contains("FILIALE") ||
                 cleanNameUpper.contains("STRASSE") || cleanNameUpper.contains("STR.") ||
                 cleanNameUpper.contains("FAX") || cleanNameUpper.contains("K CARD") ||
                 cleanNameUpper.contains("RABATT") || cleanNameUpper.contains("KARTENZAHLUNG") ||
-                cleanNameUpper.contains("GUTSCHRIFT") || cleanNameUpper.contains("STEUER") ||
-                cleanNameUpper.contains("BRUTTO") || cleanNameUpper == "EUR" ||
-                cleanNameUpper == "SUMME" || cleanNameUpper == "WEIMAR" || cleanNameUpper == "ISSERSTEDT"
+                cleanNameUpper.contains("EC-KARTE") || cleanNameUpper.contains("GIROCARD") ||
+                cleanNameUpper.contains("VISA") || cleanNameUpper.contains("MASTERCARD") ||
+                cleanNameUpper.contains("GUTSCHRIFT") || cleanNameUpper.contains("GUTSCHEIN") || cleanNameUpper.contains("COUPON") ||
+                cleanNameUpper.contains("STEUER") || cleanNameUpper.contains("MWST") || cleanNameUpper.contains("UST") ||
+                cleanNameUpper.contains("BRUTTO") || cleanNameUpper.contains("NETTO") ||
+                cleanNameUpper.contains("PAPIERTRAGETASCHE") || cleanNameUpper.contains("KNOTENBEUTEL") ||
+                cleanNameUpper.contains("TRAGETASCHE") || cleanNameUpper.contains("EINKAUFSTÜTE") || cleanNameUpper.contains("EINKAUFSTUETE") ||
+                cleanNameUpper.contains("DATUM") || cleanNameUpper.contains("UHRZEIT") ||
+                cleanNameUpper.matches(Regex("""\d{2}[./]\d{2}[./]\d{2,4}.*""")) ||
+                cleanNameUpper == "EUR" || cleanNameUpper == "BAR" ||
+                cleanNameUpper == "SUMME" || cleanNameUpper.startsWith("SUMME ") ||
+                cleanNameUpper == "GESAMT" || cleanNameUpper.startsWith("GESAMT ") ||
+                cleanNameUpper == "WEIMAR" || cleanNameUpper == "ISSERSTEDT"
 
             product.name.length >= 3 &&
                 product.name != "___IGNORE___" &&
                 product.price in 0.01..399.99 &&
-                !isGarbage
+                !isGarbage &&
+                isFoodItem(product.name)
         }
         .map { product ->
             var safeQty = product.quantity
@@ -394,10 +483,12 @@ object ReceiptImportSanitizer {
             product.copy(
                 name = finalName,
                 quantity = safeQty,
-                purchaseDate = System.currentTimeMillis(),
+                purchaseDate = product.purchaseDate ?: System.currentTimeMillis(),
                 category = marketMatch?.category ?: product.category,
                 defaultStorage = guessedStorage,
-                expiryDays = marketMatch?.default_shelf_life_days
+                expiryDays = marketMatch?.default_shelf_life_days,
+                supermarket = product.supermarket,
+                rawText = product.rawText
             )
         }
         .groupBy { product ->

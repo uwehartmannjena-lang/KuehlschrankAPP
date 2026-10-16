@@ -231,4 +231,68 @@ class KassenzettelParserTest {
         val cleanedEmpty = ReceiptImportSanitizer.cleanReceiptText("")
         assertEquals("", cleanedEmpty)
     }
+
+    @Test
+    fun `test filtert Summe MwSt Kartenzahlung Datum und Pfand automatisch heraus`() {
+        val text = """
+            REWE Markt
+            Musterstr. 45, 07743 Jena
+            Datum: 04.10.2026 14:30
+            TSE-Signatur: A1B2C3D4E5
+            BIO BANANEN 1,99 A
+            2 x 0,89 A FRISCHMILCH 1,78 A
+            EINWEGPFAND 0,25
+            MWST. A 7,00% 0,25
+            MWST. B 19,00% 0,05
+            KARTENZAHLUNG 4,02
+            SUMME EUR 4,02
+            VIELEN DANK FÜR IHREN EINKAUF
+        """.trimIndent()
+
+        val detailed = KassenzettelParser.parseReceiptDetailed(text)
+        val products = detailed.products
+
+        assertEquals(2, products.size)
+        assertEquals("Bio Bananen", products[0].name)
+        assertEquals(1, products[0].quantity)
+        assertEquals(1.99, products[0].price, 0.001)
+
+        assertEquals("Frischmilch", products[1].name)
+        assertEquals(2, products[1].quantity)
+        assertEquals(1.78, products[1].price, 0.001)
+
+        assertEquals(0.25, detailed.sumDeposit, 0.001)
+        assertTrue("Keine MwSt als Artikel", products.none { it.name.contains("Mwst", ignoreCase = true) })
+        assertTrue("Keine Summe als Artikel", products.none { it.name.contains("Summe", ignoreCase = true) })
+        assertTrue("Keine Kartenzahlung als Artikel", products.none { it.name.contains("Karten", ignoreCase = true) })
+        assertTrue("Kein Datum als Artikel", products.none { it.name.contains("Datum", ignoreCase = true) || it.name.contains("2026") })
+        assertTrue("Kein Pfand als Artikel", products.none { it.name.contains("Pfand", ignoreCase = true) })
+    }
+
+    @Test
+    fun `test Kaufland Beleg filtert MwSt Datum Kartenzahlung und Pfand`() {
+        val text = """
+            KAUFLAND
+            04.10.2026 11:22
+            GOUDA JUNG
+            2,49
+            PFAND FLASCHE
+            0,25
+            H-MILCH
+            0,99
+            MWST 7% 0,23
+            KARTENZAHLUNG 3,73
+            SUMME 3,73
+        """.trimIndent()
+
+        val detailed = KassenzettelParser.parseReceiptDetailed(text)
+        val products = detailed.products
+
+        assertEquals(2, products.size)
+        assertEquals("Gouda Jung", products[0].name)
+        assertEquals(2.49, products[0].price, 0.001)
+        assertEquals("H-Milch", products[1].name)
+        assertEquals(0.99, products[1].price, 0.001)
+        assertEquals(0.25, detailed.sumDeposit, 0.001)
+    }
 }

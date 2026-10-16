@@ -30,16 +30,171 @@ except Exception:
     pytesseract = None
 
 
+def sanitize_ocr_text(text: str) -> str:
+    """Entfernt unlesbare C0/C1-Steuerzeichen (z. B. \\x9f aus PDF-Extraktionen) und normalisiert Leerzeichen."""
+    if not text:
+        return ""
+    clean = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', ' ', text)
+    clean = clean.replace('\u00A0', ' ').replace('\u202F', ' ').replace('\u2007', ' ').replace('\uFEFF', ' ').replace('\u200B', ' ')
+    return clean
+
+NON_FOOD_KEYWORDS = {
+    # Hygiene & Drogerie
+    "zahnpasta", "zahncreme", "dentagard", "blend-a-med", "colgate", "elmex", "aronal",
+    "sensodyne", "oral-b", "zahnbürste", "zahnbuerste", "zahnseide", "mundspülung", "mundspuelung",
+    "shampoo", "duschgel", "dusche", "deodorant", "deo", "seife", "handseife",
+    "bodylotion", "hautcreme", "gesichtscreme", "haarspray", "haargel", "haarlack",
+    "taschentücher", "taschentuecher", "feuchttücher", "feuchttuecher", "kosmetiktücher", "kosmetiktuecher",
+    "wattepads", "wattestäbchen", "wattestaebchen", "toilettenpapier", "klopapier", "wc-papier",
+    "küchenrolle", "kuechenrolle", "tampons", "binden", "slipeinlagen", "windeln",
+    "rasierer", "rasierklingen", "rasierschaum", "aftershave",
+    # Reinigung & Haushalt
+    "weichspüler", "weichspueler", "kuschelweich", "lenor", "comfort", "waschmittel",
+    "persil", "ariel", "spee", "weißer riese", "dash", "spülmittel", "spuelmittel",
+    "geschirrspültabs", "geschirrspueltabs", "spültabs", "spueltabs", "somat", "finish",
+    "klarspüler", "klarspueler", "spülsalz", "spuelsalz", "fit gsm", "allzweckreiniger", "reiniger",
+    "meister proper", "der general", "ajax", "biff", "antikal", "cillit bang", "sagrotan",
+    "wc-reiniger", "wc-frisch", "wc-stein", "glasreiniger", "fensterreiniger", "scheibenklar",
+    "scheibenreiniger", "entkalker", "müllbeutel", "muellbeutel", "müllsack", "muellsack",
+    "gefrierbeutel", "alufolie", "frischhaltefolie", "backpapier", "schwamm", "putzlappen", "spültuch",
+    # Kleidung & Textilien
+    "retroshorts", "shorts", "boxershorts", "unterhose", "unterwäsche", "unterwaesche",
+    "slip", "socken", "strümpfe", "struempfe", "strumpfhose", "bluse", "hemd",
+    "t-shirt", "shirt", "hose", "pullover", "jacke", "schuhe", "bettwäsche", "handtuch",
+    # Büro, Schreibwaren & Medien
+    "kugelschreiber", "karteikarten", "stift", "bleistift", "marker", "textmarker",
+    "notizblock", "heft", "ordner", "kopierpapier", "tesafilm", "klebestift", "kleber",
+    "zeitung", "zeitschrift", "magazin", "rätselheft", "raetselheft", "buch",
+    # Sonstiges Non-Food
+    "batterie", "batterien", "glühbirne", "gluehbirne", "led-lampe", "leuchtmittel", "feuerzeug",
+    "kerze", "kerzen", "teelichter", "zigaretten", "tabak", "zigarren", "katzenstreu", "vogelsand",
+    "blumenerde", "blumenstrauss", "schnittblumen", "topfpflanze", "orchidee", "gutschein",
+    "geschenkkarte", "guthabenkarte", "itunes", "google play", "amazon karte"
+}
+
+CORRECTIONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "receipt_corrections.json")
+
+def load_receipt_corrections() -> dict:
+    if os.path.exists(CORRECTIONS_FILE):
+        try:
+            with open(CORRECTIONS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_receipt_corrections(corrections: dict):
+    try:
+        with open(CORRECTIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(corrections, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def add_receipt_correction(original_name: str, corrected_name: str):
+    if not original_name or not corrected_name:
+        return
+    orig = original_name.strip()
+    corr = corrected_name.strip()
+    if not orig or not corr or orig.lower() == corr.lower():
+        return
+    corrections = load_receipt_corrections()
+    corrections[orig] = corr
+    save_receipt_corrections(corrections)
+
+PET_FOOD_KEYWORDS = {
+    "perle", "gourmet", "felix", "whiskas", "sheba", "purina", "chappi", "pedigree",
+    "cesar", "vitakraft", "katzenfutter", "hundefutter", "tiernahrung", "tierfutter",
+    "nassfutter", "trockenfutter", "katzensnack", "hundesnack", "dreamies", "kitekat",
+    "frolic", "royal canin", "animonda", "rinti", "miamor", "catessy", "katzen", "hunde",
+    "gourmet perle", "felix soup", "sheba sauce"
+}
+
+def is_pet_food(text: str) -> bool:
+    if not text:
+        return False
+    lower = text.lower()
+    return any(k in lower for k in PET_FOOD_KEYWORDS)
+
+def is_non_food(text: str) -> bool:
+    lower = text.lower()
+    if is_pet_food(lower):
+        return False
+    return any(k in lower for k in NON_FOOD_KEYWORDS)
+
+EXPANSIONS = [
+    # Tiernahrung & Haustierbedarf
+    (r'\bGOURM\.?\s*PERLE\b', 'Gourmet Perle'),
+    (r'\bGOURM\.?\b', 'Gourmet'),
+    (r'\bFELIX\b', 'Felix'),
+    (r'\bWHISKAS\b', 'Whiskas'),
+    (r'\bSHEBA\b', 'Sheba'),
+    (r'\bPURINA\b', 'Purina'),
+    (r'\bKATZENF\.?\b', 'Katzenfutter'),
+    (r'\bHUNDEF\.?\b', 'Hundefutter'),
+    # Marken & Weine & Getränke
+    (r'\bMAYB\.?\s*GRAUB\.?\b', 'Maybach Grauburgunder'),
+    (r'\bMAYB\.?\s*WEISSB\.?\b', 'Maybach Weißburgunder'),
+    (r'\bMAYB\.?\b', 'Maybach'),
+    (r'\bGRAUB\.?\b', 'Grauburgunder'),
+    (r'\bWEISSB\.?\b', 'Weißburgunder'),
+    (r'\bTR\.?\b', 'trocken'),
+    (r'\bLEFILOU\b', 'Le Filou'),
+    (r'\bROSE\b', 'Rosé'),
+    (r'\bELCAR\s+AIREN\b', 'El Coto Airen'),
+    (r'\bREB\.?\s*PORTUG\.?\s*WEISSH\.?\b', 'Rebenschoppen Portugieser Weißherbst'),
+    (r'\bREB\.?\s*MÜLLER[- ]?THURGAU\b', 'Rebenschoppen Müller-Thurgau'),
+    (r'\bREB\.?\b', 'Rebenschoppen'),
+    (r'\bPORTUG\.?\b', 'Portugieser'),
+    (r'\bWEISSH\.?\b', 'Weißherbst'),
+    (r'\bADELH\.?\s*MIWA\b', 'Adelholzener Mineralwasser'),
+    (r'\bADELH\.?\b', 'Adelholzener'),
+    (r'\bMIWA\b', 'Mineralwasser'),
+    (r'\bTH\.?\s*WQ\.?\b', 'Thüringer Waldquell'),
+    (r'\bTWQ\b', 'Thüringer Waldquell'),
+    (r'\bSELECT\.D\.J\.?\b', 'Selektion des Jahres'),
+    (r'\bZÖPF\.?\s*KÄSE\+SPECK\b', 'Käse-Speck-Zöpfchen'),
+    (r'\bHÄH\.?\s*KNUSPERSCHNITZEL\b', 'Hähnchen-Knusperschnitzel'),
+    (r'\bHÄH\.?\b', 'Hähnchen'),
+    (r'\bHAEH\.?\b', 'Hähnchen'),
+    (r'\bHÄHNCHENBR\.?\b', 'Hähnchenbrust'),
+    (r'\bJT\.?\b', 'Jeden Tag'),
+    (r'\bMÜ\.?\s*GRIESSPUDDING\b', 'Müller Grießpudding'),
+    (r'\bMÜ\.?\b', 'Müller'),
+    (r'\bCAF\.?\b', 'Coppenrath & Wiese'),
+    (r'\bKN\.?\s*FIXE?\b', 'Knorr Fix'),
+    (r'\bKPur\.\b', 'K-Purland'),
+    (r'\bKlc\.\b', 'K-Classic'),
+    (r'\bKfav\.\b', 'K-Favourites'),
+    (r'\bK\.SCHLAGSAHNE\b', 'K-Classic Schlagsahne'),
+    (r'\bK\.RAHMSPINAT\b', 'K-Classic Rahmspinat'),
+    (r'\bK\.BLATTSPINAT\b', 'K-Classic Blattspinat'),
+    (r'\bK\.NATURJOGHURT\b', 'K-Classic Naturjoghurt'),
+    (r'\bK\.SCHWW\.SCHINKEN\b', 'K-Classic Schwarzwälder Schinken'),
+    (r'\bK\.(?=[A-Za-z])', 'K-Classic '),
+    (r'\bMETZGEREI\s+(?:BEDIENUNG|SB)\b', 'Metzgerei Frischetheke'),
+    (r'\bMIREE\s+DATTEL-CUR\b', 'Miree Dattel-Curry'),
+    (r'\bMAGGI\s+FIX\s+CARBO\b', 'Maggi Fix Carbonara'),
+    (r'\bKOCHSCHINKEN\s+O\.?\b', 'Kochschinken'),
+    (r'\bEDELSCHI\.?\b', 'Edelschimmelkäse'),
+    (r'\bHARZBUBE\s+EDELSCHI\.?\b', 'Harzbube Edelschimmelkäse'),
+    (r'\bBENS\s+EXPRESSREIS\b', "Ben's Original Expressreis"),
+    (r'\bDELV\.SPAGHETTI\b', 'Delverde Spaghetti'),
+    (r'\bÜLTJE\b', 'Ültje'),
+    (r'\bVITA\s+COLA\s+PUR\s+L\b', 'Vita Cola Pur'),
+    (r'\bVITA\s+COLA\b', 'Vita Cola'),
+    (r'\bM\.?\s*FRZ\.?\s*CAM\.?\b', 'mit franz. Camembert'),
+    (r'\bPACKUN\b', 'Packung'),
+]
+
 PRICE_REGEX = re.compile(r'(-?\d+[,.]\d{2})')
 TAX_SUFFIX_REGEX = re.compile(r'\s+(?:[AB12*#€]\s*|\d\s*)*$')
-MULTIPLIER_REGEX = re.compile(r'^(\d+(?:[,.]\d+)?)\s*(?:kg|g|l|ml|stk|stück)?\s*[*xX]\s*(\d+[,.]\d{2})', re.IGNORECASE)
+MULTIPLIER_REGEX = re.compile(r'^\s*(\d+(?:[,.]\d+)?)\s*(?:kg|g|l|ml|stk|stück|stueck|packun|packung|pack|btl|becher|dose|glas|fl)?\s*[*xX]\s*(\d+[,.]\d{2})', re.IGNORECASE)
 WEIGHING_REGEX = re.compile(r'^(\d+[,.]\d+)\s*(kg|g)\s*[*xX]\s*(\d+[,.]\d{2})\s*(?:€/kg|EUR/kg|€|EUR)?(?:\s+(-?\d+[,.]\d{2}))?', re.IGNORECASE)
 
 ALDI_MULT_REGEX = re.compile(
     r'^(\d+)\s*(?:Stk\.?\s*)?(?:[xX*]|Stk\.?\s*[aáà])\s*(\d+[,.]\d{2})\s*€?\s+(.*?)\s+(-?\d+[,.]\d{2})\s*(?:€\s*)?[AB12]?$',
     re.IGNORECASE
 )
-
 
 LIDL_MULT_REGEX = re.compile(
     r'^(.*?)\s+(\d+[,.]\d{2})\s*(?:[xX*]|Stk\.?\s*[aáà])\s*(\d+)\s+(-?\d+[,.]\d{2})\s*[AB12]?$',
@@ -103,17 +258,11 @@ BRAND_DATABASE = {
     "TH.WQ.": "Thüringer Waldquell",
     "TWQ MEDIUM": "Thüringer Waldquell Medium",
     "TWQ KLASSIK": "Thüringer Waldquell Classic",
-    "PERF.FIT SENIOR": "Katzenfutter Senior",
-    "PERF.FIT": "Perfect Fit Katzenfutter",
-    "ES. BLUSE": "Esmara Bluse",
     "SÖHNLEIN WHITE ICE": "Söhnlein White Ice",
     "APEROL APERITIVO": "Aperol Aperitivo",
-    "KUSCHELWEICH": "Kuschelweich Weichspüler",
     "PROTEIN KÄSE MILD": "Protein Käse mild",
     "BAUTZ.SENF MS": "Bautz'ner Senf mittelscharf",
     "PRES. LA BRIQUE": "Président La Brique Weichkäse",
-    "SCHEIBENKL. APFEL": "Scheibenklar Apfel Scheibenreiniger",
-    "GOURMET PERLE": "Gourmet Perle Katzenfutter",
     "HÄ-GESCHNETZELTES": "Hähnchen-Geschnetzeltes",
     "GEFL.FLEISCHWURST": "Geflügelfleischwurst",
     "EDELSCHI.": "Edelschimmelkäse",
@@ -142,7 +291,6 @@ BRAND_DATABASE = {
     "DBIO": "dmBio",
     "DABIO": "dmBio",
     "DEBIO": "dmBio",
-    "DEIN BESTES": "Dein Bestes",
     "HACKF. GEM.": "Hackfleisch gemischt",
     "LANDLEBERWURST": "Landleberwurst",
     "ASTRA URTYP": "Astra Urtyp",
@@ -153,7 +301,6 @@ BRAND_DATABASE = {
     "LIGHT ROHSCHINKEN": "Rohschinken Light",
     "CLC": "K-Classic",
     "MEG. FEINESÜSSRAHM": "Meggler Feine Süßrahmbutter",
-    "CATSAN": "Catsan Katzenstreu",
     "K-CLASSIC": "K-Classic",
     "GUT&G": "Gut & Günstig",
     "G&G": "Gut & Günstig",
@@ -189,11 +336,6 @@ BRAND_DATABASE = {
     "FIN.SWEET CHILI": "Finesse Sweet Chili",
     "FINESSE HÄHNCHEN": "Finesse Hähnchen",
     "FINESSE HAEHNCHEN": "Finesse Hähnchen",
-    "GG ENTE/SPINAT": "Gourmet Gold Ente & Spinat",
-    "GG LAMM/BOHN": "Gourmet Gold Lamm & Bohnen",
-    "GG PAST": "Gourmet Gold Pastete",
-    "GOUR.PASTETE": "Gourmet Gold Pastete",
-    "GOUR.PAST.": "Gourmet Gold Pastete",
     "BROTAUFSTR.THUNFISCH": "Brotaufstrich Thunfisch",
     "BROT TOMA/MOZARELLA": "Brotaufstrich Tomate-Mozzarella"
 }
@@ -255,6 +397,8 @@ def is_date_or_time_line(line: str, upper: str) -> bool:
     return False
 
 def is_non_food_or_garbage(upper: str) -> bool:
+    if is_non_food(upper):
+        return True
     if any(k in upper for k in [
         "PAPIERTRAGETASCHE", "TRAGETASCHE", "KNOTENBEUTEL", "PAPIERTASCHE",
         "PERMANENTTASCHE", "EINKAUFSTASCHE", "EINKAUFSTÜTE", "EINKAUFSTUETE"
@@ -354,7 +498,7 @@ def detect_supermarket(text: str) -> str:
 def determine_smart_unit_and_storage(name: str, price: float, raw_text: str = ""):
     combined = f"{name.lower()} {raw_text.lower()}"
     
-    # 1. Einheit bestimmen
+    # 1. Einheit bestimmen & bereinigen
     if any(k in combined for k in ["kiste", "kasten", "20x", "24x", "12x", "träger", "traeger"]) or (
         any(k in combined for k in ["wasser", "bier", "cola", "limo", "waldquell"]) and price >= 3.50
     ):
@@ -383,74 +527,164 @@ def determine_smart_unit_and_storage(name: str, price: float, raw_text: str = ""
         unit = "Flasche"
     elif any(k in combined for k in ["kg", "lose"]) or (any(k in combined for k in ["bananen", "äpfel", "kartoffeln", "möhren", "zwiebeln"]) and not any(k in combined for k in ["saft", "apfelmus", "kuchen", "tee", "2,5kg"])):
         unit = "kg"
-    elif any(k in combined for k in ["reis", "nudeln", "spaghetti", "kloßteig", "cookies", "spekulatius", "cantuccini"]):
+    elif any(k in combined for k in ["packun", "packung", "pkg", "pck", "reis", "nudeln", "spaghetti", "kloßteig", "cookies", "spekulatius", "cantuccini"]):
         unit = "Packung"
     else:
         unit = "Stk."
 
+    # Abkürzungen ausschreiben ('Packun' -> 'Packung')
+    if unit.lower() in ["packun", "pack", "pck"]:
+        unit = "Packung"
 
-    # 2. Lagerort & Haltbarkeit (Tage)
-    if any(k in combined for k in ["pizza", "tiefkühl", "tk ", "spinat", "eiscreme"]):
+    # 2. Automatische Lagerort-Zuordnung & MHD-Datumsvorschlag nach Kategorie
+    # Tiefkühl -> Gefrierfach, +180 Tage
+    if any(k in combined for k in ["pizza", "tiefkühl", "tk ", "spinat", "eiscreme", "rustipani", "pommes", "erbsen sehr fein"]):
         storage = "Gefrierfach"
-        days = 90
+        days = 180
+    # Geflügel / Hack -> Kühlschrank, +2 Tage
     elif any(k in combined for k in [
-        "milch", "käse", "kaese", "quark", "joghurt", "butter", "sahne", "schinken",
-        "fleisch", "hackfleisch", "hähnchen", "haehnchen", "wurst", "salami", "lachs",
-        "crème fraîche", "creme fraiche", "miree", "frischkäse", "eier", "salat"
+        "hackfleisch", "hackf", "rinderhack", "schweinehack", "geflügel", "gefluegel",
+        "hähnchen", "haehnchen", "pute", "h-brustfilet", "hähnchenbrust", "knusperschnitzel"
     ]):
         storage = "Kühlschrank"
-        days = 10 if any(k in combined for k in ["milch", "butter", "käse", "eier"]) else 4
-    elif any(k in combined for k in ["dose", "glas", "reis", "nudeln", "spaghetti", "mehl", "zucker", "konserve", "öl", "essig"]):
+        days = 2
+    # Molkerei / Käse -> Kühlschrank, +14 Tage
+    elif any(k in combined for k in [
+        "milch", "käse", "kaese", "gouda", "butter", "joghurt", "quark", "sahne",
+        "schmand", "creme fraiche", "crème fraîche", "camembert", "brique", "edelschi",
+        "edelschimmel", "parmesan", "mozzarella", "frischkäse", "miree", "ricotta",
+        "mascarpone", "magerquark", "buttermilch", "kefir", "pudding"
+    ]):
+        storage = "Kühlschrank"
+        days = 14
+    # Frische Wurst, Fleisch & Fischwaren -> Kühlschrank, +5 Tage
+    elif any(k in combined for k in [
+        "wurst", "salami", "schinken", "fleischwurst", "leberwurst", "wiener",
+        "mortadella", "fleisch", "steak", "schnitzel", "gulasch", "lachs", "forelle",
+        "eier", "salat", "gartensalat"
+    ]):
+        storage = "Kühlschrank"
+        days = 5
+    # Tiernahrung -> Vorratskammer, +365 Tage
+    elif is_pet_food(combined) or any(k in combined for k in [
+        "perle", "gourmet", "felix", "whiskas", "sheba", "chappi", "pedigree",
+        "katzenfutter", "hundefutter", "tiernahrung", "tierfutter", "nassfutter", "trockenfutter"
+    ]):
+        storage = "Vorratskammer"
+        days = 365
+    # Snacks -> Vorratskammer, +180 Tage
+    elif any(k in combined for k in [
+        "cookies", "keks", "kekse", "chips", "erdnüsse", "erdnuss", "cashew", "walnuss",
+        "nüsse", "schokolade", "riegel", "churro", "waffeln", "spekulatius", "cantuccini"
+    ]):
         storage = "Vorratskammer"
         days = 180
+    # Trockenware / Konserven (Reis, Nudeln, Konserven) -> Vorratskammer, +365 Tage
+    elif any(k in combined for k in [
+        "reis", "nudeln", "spaghetti", "expressreis", "mehl", "zucker", "grieß", "haferflocken",
+        "müsli", "cornflakes", "dose", "glas", "konserve", "eintopf", "tomatenmark", "tomaten",
+        "gehackte tomaten", "bohnen", "erbsen", "kidneybohnen", "mais", "öl", "essig", "pesto",
+        "senf", "ketchup", "sauerkraut", "rotkohl", "gurken", "marmelade", "honig", "nutella",
+        "fix", "maggi", "knorr", "tee", "kaffee"
+    ]):
+        storage = "Vorratskammer"
+        days = 365
     else:
-        storage = "Kühlschrank"
-        days = 7
+        # Fallback nach Warengruppe
+        if any(k in combined for k in ["brot", "brötchen", "bananen", "äpfel", "kartoffeln", "zwiebeln"]):
+            storage = "Vorratskammer"
+            days = 5
+        elif any(k in combined for k in ["wasser", "cola", "limo", "bier", "wein", "saft"]):
+            storage = "Vorratskammer"
+            days = 180
+        else:
+            storage = "Kühlschrank"
+            days = 7
 
     return unit, storage, days
 
 def clean_product_name(raw_name: str) -> str:
-    clean = raw_name.strip()
+    # 0. Gelerntes Wörterbuch (receipt_corrections.json) vorab prüfen
+    corrections = load_receipt_corrections()
+    raw_strip = raw_name.strip()
+    if raw_strip in corrections:
+        return corrections[raw_strip]
+    for orig_k, corr_v in corrections.items():
+        if orig_k.lower() == raw_strip.lower():
+            return corr_v
+
+    clean = sanitize_ocr_text(raw_name).strip()
+    if clean in corrections:
+        return corrections[clean]
+    for orig_k, corr_v in corrections.items():
+        if orig_k.lower() == clean.lower():
+            return corr_v
+
     # Entferne führende Multiplikatoren (z.B. "3 x Kaisersemmel", "12 x 0,19 EUR", etc.)
-    clean = re.sub(r'^\d+\s*(?:5tk|stk|st|x)\s*', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'^[AB12*#€]\s+', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'^\d+\s*(?:5tk|stk|st|stück|stueck|x)\s*', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'^[AB12*#€-]\s+', '', clean, flags=re.IGNORECASE)
     clean = re.sub(r'\b\d+([.,]\d+)?%', '', clean)
     clean = re.sub(r'\s+\d+[,.]\d{2}\s*€?$', '', clean)
     clean = re.sub(r'\s+\d{1,2}\s*$', '', clean)
     clean = re.sub(r'[,.]\d{2}\s*$', '', clean)
     clean = re.sub(r'\s+-QS\b', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'\b\d+\s*(?:stk|st|stück|stueck)\b', '', clean, flags=re.IGNORECASE)
     clean = re.sub(r'\b(?:MW)?\d+\s*x\s*\d+([.,]\d+)?\s*(?:kg|g|l|ml)?\b', '', clean, flags=re.IGNORECASE)
     clean = re.sub(r'\b\d+([.,]\d+)?\s*(?:kg|g|l|ml)\b', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'^[-*#\s.+:,]+', '', clean)
-    clean = re.sub(r'[-*#\s.+:,]+$', '', clean)
-    clean = re.sub(r'\s+', ' ', clean).strip()
+    clean = re.sub(r'\b\d+\s*(?:stk|st|stück|stueck)\b', '', clean, flags=re.IGNORECASE)
 
+    # 1. Spezifische Expansions anwenden
+    for pattern, rep in EXPANSIONS:
+        clean = re.sub(pattern, rep, clean, flags=re.IGNORECASE)
 
-    # Ersetze Marken-Abkürzungen (auch wenn der Punkt fehlt oder abgetrennt wurde)
+    # 2. BRAND_DATABASE Mappings
     for short_brand, full_brand in BRAND_DATABASE.items():
         base = re.escape(short_brand.rstrip('.'))
         pattern = r'\b' + base + r'(?:\.|\b|[^\w\s]|$)'
         clean = re.sub(pattern, full_brand, clean, flags=re.IGNORECASE)
 
+    # 3. Trailing Noise & Füllwörter entfernen
+    clean = re.sub(r'\b(?:sort\.ab\d+ml|sort\.ab\d+g|sort\.ab|sort)\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b\d+(?:er|pack)\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(?:stk|st|fl|btl|ausl|scheib|herzh|dkl)\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b\d{3,}\b', '', clean)
+    clean = re.sub(r'[-*#\s.+:,/]+$', '', clean)
+    clean = re.sub(r'^[-*#\s.+:,/]+', '', clean)
+    clean = re.sub(r'\s+', ' ', clean).strip()
 
-    # Bereinigung nach Wörtern und saubere Großschreibung
+    # 4. Titel-Schreibweise (Groß-/Kleinschreibung)
     words = clean.split()
     capitalized_words = []
     for w in words:
         wl = w.lower()
-        if wl in ["gut", "günstig", "bio", "classic", "original"]:
-            capitalized_words.append(wl.capitalize())
+        if wl in ["und", "mit", "vom", "der", "die", "das", "des", "im", "in", "von", "franz.", "franz"]:
+            capitalized_words.append(wl)
         elif wl == "dmbio":
             capitalized_words.append("dmBio")
         elif wl == "h-milch":
             capitalized_words.append("H-Milch")
-        elif wl in ["und", "mit", "vom", "der", "die", "das", "von"]:
-            capitalized_words.append(wl)
+        elif wl == "k-classic":
+            capitalized_words.append("K-Classic")
+        elif wl == "k-purland":
+            capitalized_words.append("K-Purland")
+        elif wl == "k-favourites":
+            capitalized_words.append("K-Favourites")
+        elif wl == "le":
+            capitalized_words.append("Le")
+        elif wl == "filou":
+            capitalized_words.append("Filou")
+        elif wl == "rosé":
+            capitalized_words.append("Rosé")
         else:
             capitalized_words.append(w.capitalize())
-    
+
     clean = " ".join(capitalized_words)
+    if clean in corrections:
+        return corrections[clean]
+    for orig_k, corr_v in corrections.items():
+        if orig_k.lower() == clean.lower():
+            return corr_v
+        if len(orig_k) >= 3 and orig_k.lower() in clean.lower():
+            clean = re.sub(r'\b' + re.escape(orig_k) + r'\b', corr_v, clean, flags=re.IGNORECASE)
     return clean
 
 def parse_receipt_json(data: dict) -> list:
@@ -493,14 +727,22 @@ def parse_receipt_json(data: dict) -> list:
             continue
 
         unit, storage, days = determine_smart_unit_and_storage(name, price_val, raw_name)
+        pet = is_pet_food(name) or is_pet_food(raw_name)
+        if pet:
+            storage = "Vorratskammer"
+        exp_date = datetime.now() + timedelta(days=days)
         item = {
             "name": name,
+            "rawName": raw_name,
             "quantity": qty,
             "unit": unit,
             "storageLocation": storage,
             "price": round(price_val, 2),
             "supermarket": supermarket,
-            "expiryDate": int((datetime.now() + timedelta(days=days)).timestamp() * 1000)
+            "expiryDate": int(exp_date.timestamp() * 1000),
+            "expiryDateStr": exp_date.strftime("%Y-%m-%d"),
+            "isPetFood": pet,
+            "category": "Tiernahrung" if pet else "Lebensmittel"
         }
         products.append(item)
         last_item = item
@@ -527,8 +769,8 @@ def parse_receipt_text(text: str) -> list:
             pass
 
 
-    # 2. Text normalisieren (schmale Leerzeichen etc.)
-    norm_text = text.replace('\u202F', ' ').replace('\u00A0', ' ').replace('\u2007', ' ').replace('\uFEFF', ' ')
+    # 2. Text normalisieren (Steuerzeichen und schmale Leerzeichen entfernen)
+    norm_text = sanitize_ocr_text(text)
     raw_lines = [line.strip() for line in norm_text.splitlines() if line.strip()]
     if not raw_lines:
         return []
@@ -738,11 +980,15 @@ def add_product_to_list(items: list, raw_name: str, price: float, qty: int, defa
     upper_raw = raw_name.upper()
     if is_unwanted_receipt_line(raw_name, upper_raw) or is_header_or_noise_line(raw_name, upper_raw) or is_stop_line(upper_raw):
         return
+    if is_non_food(raw_name):
+        return
 
     clean_name = clean_product_name(raw_name)
     if len(clean_name) < 2 or sum(1 for c in clean_name if c.isalpha()) < 2:
         return
     if is_unwanted_receipt_line(clean_name, clean_name.upper()) or is_header_or_noise_line(clean_name, clean_name.upper()):
+        return
+    if is_non_food(clean_name):
         return
 
     unit, storage, days = determine_smart_unit_and_storage(clean_name, price, raw_name)
@@ -759,15 +1005,24 @@ def add_product_to_list(items: list, raw_name: str, price: float, qty: int, defa
             existing["price"] = round(existing["price"] + final_price, 2)
             return
 
+    pet = is_pet_food(clean_name) or is_pet_food(raw_name)
+    if pet:
+        storage = "Vorratskammer"
+
+    exp_date = datetime.now() + timedelta(days=days)
     item = {
         "name": clean_name,
+        "rawName": raw_name,
         "quantity": final_qty,
         "unit": unit,
         "storageLocation": storage,
         "price": final_price,
         "supermarket": supermarket,
         "barcode": barcode,
-        "expiryDate": int((datetime.now() + timedelta(days=days)).timestamp() * 1000)
+        "expiryDate": int(exp_date.timestamp() * 1000),
+        "expiryDateStr": exp_date.strftime("%Y-%m-%d"),
+        "isPetFood": pet,
+        "category": "Tiernahrung" if pet else "Lebensmittel"
     }
     items.append(item)
 
@@ -790,7 +1045,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         except Exception:
             pass
 
-    return extracted.strip()
+    return sanitize_ocr_text(extracted).strip()
 
 def parse_receipt_with_gemini(text: str = "", image_bytes: bytes = None, mime_type: str = "image/png") -> list:
     """Nutzt die Gemini API zur intelligenten Extraktion von Lebensmitteln."""
@@ -871,15 +1126,45 @@ def parse_receipt_with_gemini(text: str = "", image_bytes: bytes = None, mime_ty
 
     return None
 
-def process_uploaded_receipt(params: dict) -> list:
+def extract_purchase_date(text: str) -> str:
+    """Extrahiert das Kaufdatum aus dem Belegtext im Format DD.MM.YYYY."""
+    m = re.search(r'\b(\d{2})[./](\d{2})[./](20\d{2}|\d{2})\b', text)
+    if m:
+        d, mth, y = m.group(1), m.group(2), m.group(3)
+        if len(y) == 2:
+            y = "20" + y
+        return f"{d}.{mth}.{y}"
+    return datetime.now().strftime("%d.%m.%Y")
+
+def extract_receipt_total(text: str):
+    """Extrahiert die Gesamtsumme/Endsumme des Kassenbons aus dem Belegtext."""
+    if not text:
+        return None
+    patterns = [
+        r'(?:SUMME|GESAMTBETRAG|ENDSUMME|GESAMT|ZU\s+ZAHLEN|TOTAL|ZAHLBETRAG|RECHNUNGSBETRAG)[^\d\n]*?(\d{1,4}[,.]\d{2})',
+        r'(\d{1,4}[,.]\d{2})\s*(?:EUR|€)?\s*[\n\r]+.*?(?:GEGEBEN|BAR|KARTENZAHLUNG|EC)',
+        r'(?:BAR|KARTENZAHLUNG|EC-KARTE|VISA|MASTERCARD)[^\d\n]*?(\d{1,4}[,.]\d{2})'
+    ]
+    for p in patterns:
+        matches = list(re.finditer(p, text, re.IGNORECASE))
+        if matches:
+            val_str = matches[-1].group(1).replace(',', '.')
+            try:
+                val = float(val_str)
+                if 0.05 <= val <= 9999.0:
+                    return val
+            except ValueError:
+                pass
+    return None
+
+def analyze_uploaded_receipt(params: dict) -> dict:
     """
-    Universelle Einstiegsfunktion für jeden Beleg-Upload:
-    Unterstützt Base64-Dateien (PDF oder Bild) sowie reinen Text.
-    Nutzt Gemini KI mit automatischem Fallback auf den hochpräzisen lokalen Parser.
+    Analysiert einen Beleg (PDF Base64, Bild oder Text) und liefert strukturierte
+    Metadaten (Supermarkt, Kaufdatum, Artikel-Vorschau und gefilterte Non-Food-Einträge)
+    für die interaktive Import-Vorschau in der WebApp.
     """
     file_b64 = params.get("fileBase64") or params.get("file_base64")
     filename = params.get("filename") or ""
-    file_type = params.get("fileType") or params.get("file_type") or ""
     raw_text = params.get("text") or ""
 
     file_bytes = None
@@ -889,27 +1174,15 @@ def process_uploaded_receipt(params: dict) -> list:
         except Exception:
             pass
 
-    # Doppelte Absicherung: Falls text rohe PDF-Signatur '%PDF' enthält
     if not file_bytes and raw_text.startswith("%PDF"):
         file_bytes = raw_text.encode("latin-1", errors="ignore")
         filename = filename or "kassenbon.pdf"
 
-    # 1. Fall: PDF-Datei
+    extracted_text = ""
+    # 1. Fall: PDF
     if file_bytes and (filename.lower().endswith(".pdf") or file_bytes.startswith(b"%PDF")):
         extracted_text = extract_text_from_pdf(file_bytes)
-        if extracted_text and len(extracted_text.strip()) > 30:
-            # Schneller lokaler Qualitäts-Check
-            local_items = parse_receipt_text(extracted_text)
-            if local_items:
-                return local_items
-            # Optionaler KI-Versuch
-            ai_items = parse_receipt_with_gemini(text=extracted_text)
-            if ai_items:
-                return ai_items
-            return local_items
-        
-        # Scanned PDF: Seite als Bild rendern
-        if fitz:
+        if (not extracted_text or len(extracted_text.strip()) < 20) and fitz:
             try:
                 doc = fitz.open(stream=file_bytes, filetype="pdf")
                 if len(doc) > 0:
@@ -917,20 +1190,72 @@ def process_uploaded_receipt(params: dict) -> list:
                     img_bytes = pix.tobytes("png")
                     ai_items = parse_receipt_with_gemini(image_bytes=img_bytes, mime_type="image/png")
                     if ai_items:
-                        return ai_items
+                        return {
+                            "supermarket": "Supermarkt (Scan)",
+                            "purchaseDate": datetime.now().strftime("%d.%m.%Y"),
+                            "receiptTotal": round(sum(it.get("price", 0.0) for it in ai_items), 2),
+                            "items": ai_items,
+                            "filteredNonFood": [],
+                            "rawText": ""
+                        }
             except Exception:
                 pass
-
-    # 2. Fall: Bilddatei (PNG, JPG, etc.)
-    if file_bytes and (any(filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp"]) or file_bytes[:4] in [b"\x89PNG", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1"]):
+    # 2. Fall: Bilddatei
+    elif file_bytes and (any(filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp"]) or file_bytes[:4] in [b"\x89PNG", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1"]):
         mime = "image/jpeg" if any(filename.lower().endswith(x) for x in [".jpg", ".jpeg"]) else "image/png"
         ai_items = parse_receipt_with_gemini(image_bytes=file_bytes, mime_type=mime)
         if ai_items:
-            return ai_items
+            return {
+                "supermarket": "Supermarkt (Foto)",
+                "purchaseDate": datetime.now().strftime("%d.%m.%Y"),
+                "receiptTotal": round(sum(it.get("price", 0.0) for it in ai_items), 2),
+                "items": ai_items,
+                "filteredNonFood": [],
+                "rawText": ""
+            }
+    # 3. Fall: Text
+    else:
+        extracted_text = sanitize_ocr_text(raw_text)
 
-    # 3. Fall: Text-Kassenbon
-    if raw_text:
-        return parse_receipt_text(raw_text)
+    if not extracted_text:
+        return {
+            "supermarket": "Unbekannt",
+            "purchaseDate": datetime.now().strftime("%d.%m.%Y"),
+            "receiptTotal": None,
+            "items": [],
+            "filteredNonFood": [],
+            "rawText": ""
+        }
 
-    return []
+    supermarket = detect_supermarket(extracted_text)
+    purchase_date = extract_purchase_date(extracted_text)
+    receipt_total = extract_receipt_total(extracted_text)
+
+    # Lokales Parsing mit Zählung von Non-Food Artikeln
+    all_raw_lines = [l.strip() for l in extracted_text.splitlines() if l.strip()]
+    non_food_found = []
+    for l in all_raw_lines:
+        if is_non_food(l):
+            clean_l = re.sub(r'[\d,.]', '', l).strip()
+            if len(clean_l) >= 3 and clean_l not in non_food_found:
+                non_food_found.append(clean_l)
+
+    items = parse_receipt_text(extracted_text)
+    for it in items:
+        it["supermarket"] = supermarket
+        it["purchaseDate"] = purchase_date
+
+    return {
+        "supermarket": supermarket,
+        "purchaseDate": purchase_date,
+        "receiptTotal": receipt_total,
+        "items": items,
+        "filteredNonFood": non_food_found[:5],
+        "rawText": extracted_text[:500]
+    }
+
+def process_uploaded_receipt(params: dict) -> list:
+    """Universelle Schnittstelle für Beleg-Upload, liefert direkt die Artikel."""
+    analysis = analyze_uploaded_receipt(params)
+    return analysis.get("items", [])
 

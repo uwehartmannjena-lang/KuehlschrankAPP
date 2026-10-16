@@ -15,6 +15,9 @@ interface FridgeItemDao {
     @Query("SELECT * FROM fridge_items WHERE importHash = :hash")
     suspend fun getItemsByImportHash(hash: String): List<FridgeItem>
 
+    @Query("SELECT * FROM fridge_items WHERE householdId = :householdId ORDER BY expiry_date ASC")
+    suspend fun getItemsByHouseholdSync(householdId: String): List<FridgeItem>
+
     @Query("SELECT importHash FROM fridge_items WHERE importHash IS NOT NULL")
     suspend fun getImportHashes(): List<String>
 

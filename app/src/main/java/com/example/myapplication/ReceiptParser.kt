@@ -14,7 +14,8 @@ object ReceiptParser {
 
     fun cleanGlobusTaxSuffix(text: String): String {
         if (text.isBlank()) return ""
-        return text.lines().joinToString("\n") { line ->
+        val normalized = KassenzettelParser.normalizeText(text)
+        return normalized.lines().joinToString("\n") { line ->
             line.replace(TRAILING_TAX_SUFFIX_REGEX, "").trim()
         }
     }

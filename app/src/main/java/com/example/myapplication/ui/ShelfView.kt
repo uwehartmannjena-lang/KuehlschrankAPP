@@ -14,6 +14,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AcUnit
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Kitchen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,23 +70,23 @@ fun ShelfView(
     val shelves = remember(items) {
         val mapped = items.groupBy { item ->
             when (item.storageLocation.lowercase()) {
-                "gefrierfach" -> Pair(StorageZoneType.FREEZER, "Gefrierfach 🧊")
-                "vorratskammer" -> Pair(StorageZoneType.PANTRY, "Vorratskammer 📦")
+                "gefrierfach" -> Pair(StorageZoneType.FREEZER, "Gefrierfach")
+                "vorratskammer" -> Pair(StorageZoneType.PANTRY, "Vorratskammer")
                 else -> {
                     val label = when {
-                        item.category.contains("gemüse", true) || item.category.contains("obst", true) -> "Gemüsefach 🥦"
-                        item.category.contains("getränke", true) || item.category.contains("soße", true) -> "Türfächer 🍾"
-                        item.category.contains("fleisch", true) || item.category.contains("fisch", true) -> "Unteres Fach (Kalt) 🥩"
-                        item.category.contains("milch", true) || item.category.contains("käse", true) -> "Mittleres Fach 🧀"
-                        else -> "Oberes Fach 🥛"
+                        item.category.contains("gemüse", true) || item.category.contains("obst", true) -> "Gemüsefach"
+                        item.category.contains("getränke", true) || item.category.contains("soße", true) -> "Türfächer"
+                        item.category.contains("fleisch", true) || item.category.contains("fisch", true) -> "Unteres Fach (Kalt)"
+                        item.category.contains("milch", true) || item.category.contains("käse", true) -> "Mittleres Fach"
+                        else -> "Oberes Fach"
                     }
                     Pair(StorageZoneType.FRIDGE, label)
                 }
             }
         }
         val order = listOf(
-            "Oberes Fach 🥛", "Mittleres Fach 🧀", "Unteres Fach (Kalt) 🥩", "Gemüsefach 🥦", "Türfächer 🍾",
-            "Gefrierfach 🧊", "Vorratskammer 📦"
+            "Oberes Fach", "Mittleres Fach", "Unteres Fach (Kalt)", "Gemüsefach", "Türfächer",
+            "Gefrierfach", "Vorratskammer"
         )
         mapped.toSortedMap(compareBy { order.indexOf(it.second).takeIf { idx -> idx != -1 } ?: 99 })
     }
@@ -216,12 +220,26 @@ fun PhotorealisticShelfContainer(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = shelfName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = titleColor
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val zoneIcon = when (zoneType) {
+                        StorageZoneType.FREEZER -> Icons.Outlined.AcUnit
+                        StorageZoneType.PANTRY -> Icons.Outlined.Inventory2
+                        else -> Icons.Outlined.Kitchen
+                    }
+                    Icon(
+                        imageVector = zoneIcon,
+                        contentDescription = null,
+                        tint = titleColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = shelfName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = titleColor
+                    )
+                }
                 Text(
                     text = "${shelfItems.size} Artikel",
                     style = MaterialTheme.typography.labelSmall,

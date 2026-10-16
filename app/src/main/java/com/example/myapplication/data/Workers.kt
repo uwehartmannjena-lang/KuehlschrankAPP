@@ -1,6 +1,7 @@
 package com.example.myapplication.data
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -96,30 +97,32 @@ class ExpiryWorker(private val context: Context, workerParams: WorkerParameters)
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
             val dao = AppDatabase.getDatabase(context).fridgeItemDao()
-            val warningDays = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("expiry_warning", 3)
             val now = System.currentTimeMillis()
-            val tomorrow = now + 86400000L // +1 Tag
+            val twoDaysMs = TimeUnit.DAYS.toMillis(2)
             
             val items = dao.getAllFridgeItems().first()
-            val expiringItems = items.filter { 
-                it.expiryDate != null && (it.expiryDate!! - now) < TimeUnit.DAYS.toMillis(warningDays.toLong()) 
+            val expiringInNext2Days = items.filter { item ->
+                item.expiryDate != null && (item.expiryDate!! - now) in 0..twoDaysMs
+            }
+            val alreadyExpired = items.filter { item ->
+                item.expiryDate != null && (item.expiryDate!! - now) < 0
             }
             
-            val criticalItems = items.filter {
-                it.expiryDate != null && it.expiryDate!! <= tomorrow
-            }
-            
-            val freezerBurnItems = items.filter {
-                it.isFrozen && (now - it.purchaseDate) > TimeUnit.DAYS.toMillis(180)
-            }
-            
-            if (expiringItems.isNotEmpty() || freezerBurnItems.isNotEmpty()) {
-                val msg = if (expiringItems.isNotEmpty()) {
-                    "${expiringItems.size} Artikel laufen bald ab!"
+            if (expiringInNext2Days.isNotEmpty() || alreadyExpired.isNotEmpty()) {
+                val title = if (expiringInNext2Days.isNotEmpty()) {
+                    "MHD-Erinnerung: ${expiringInNext2Days.size} Artikel bald fällig!"
                 } else {
-                    "${freezerBurnItems.size} Artikel zu lange eingefroren (Gefrierbrand-Gefahr)!"
+                    "MHD-Warnung: ${alreadyExpired.size} Artikel abgelaufen!"
                 }
-                sendNotification(msg, criticalItems.size)
+                
+                val previewList = (expiringInNext2Days + alreadyExpired).take(3).map { it.name }
+                val count = expiringInNext2Days.size + alreadyExpired.size
+                val msg = if (count <= 3) {
+                    previewList.joinToString(", ")
+                } else {
+                    "${previewList.joinToString(", ")} und ${count - 3} weitere"
+                }
+                sendNotification(title, msg, count)
             }
             Result.success()
         } catch (e: Exception) {
@@ -127,12 +130,24 @@ class ExpiryWorker(private val context: Context, workerParams: WorkerParameters)
         }
     }
 
-    private fun sendNotification(message: String, badgeCount: Int) {
+    private fun sendNotification(title: String, message: String, badgeCount: Int) {
+        val intent = Intent(context, com.example.myapplication.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val builder = NotificationCompat.Builder(context, "EXPIRY_ALERTS")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("FrischeRadar")
+            .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
 
         if (badgeCount > 0) {
             builder.setNumber(badgeCount)
@@ -140,6 +155,18 @@ class ExpiryWorker(private val context: Context, workerParams: WorkerParameters)
 
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(context).notify(202, builder.build())
+        }
+    }
+}
+
+class WebserviceSyncWorker(private val context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        try {
+            val dao = AppDatabase.getDatabase(context).fridgeItemDao()
+            val synced = SyncManager.syncWithWebservice(context, dao)
+            if (synced) Result.success() else Result.retry()
+        } catch (e: Exception) {
+            Result.retry()
         }
     }
 }

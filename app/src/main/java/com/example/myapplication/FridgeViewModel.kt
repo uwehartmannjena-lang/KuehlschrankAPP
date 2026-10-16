@@ -211,6 +211,15 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     init {
         runAutomaticRecallCheck()
         billingManager.startConnection()
+        viewModelScope.launch {
+            com.example.myapplication.data.SyncManager.syncWithWebservice(applicationContext, dao)
+        }
+    }
+
+    fun syncWithWebservice() {
+        viewModelScope.launch {
+            com.example.myapplication.data.SyncManager.syncWithWebservice(applicationContext, dao)
+        }
     }
 
     private fun runAutomaticRecallCheck() {
@@ -561,7 +570,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
     fun extractRawName(item: FridgeItem): String {
         return if (item.notes.contains("RAW:")) {
-            item.notes.substringAfter("RAW:").substringBefore(" @").trim()
+            item.notes.substringAfter("RAW:").substringBefore(" @").substringBefore(" #").trim()
         } else {
             item.name.trim()
         }
@@ -765,6 +774,13 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
             }
 
+            if (item.lastPrice <= 0.0) {
+                val pastRecord = dao.getHistoryByName(item.name).firstOrNull { it.price > 0.0 }
+                if (pastRecord != null) {
+                    item.lastPrice = if (pastRecord.quantity > 0) pastRecord.price / pastRecord.quantity else pastRecord.price
+                }
+            }
+
             if (item.price > 0) {
                 checkProductWarner(item.name, item.price, item.quantity)
                 dao.insertPriceRecord(PriceRecord(itemId = item.id, itemName = item.name, price = item.price, quantity = item.quantity, barcode = item.barcode))
@@ -784,7 +800,8 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             dao.insertItem(item.copy(
                 expiryDate = item.expiryDate ?: (System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000),
                 householdId = currentHouseholdId.value,
-                lastRecallStatus = recallStatus
+                lastRecallStatus = recallStatus,
+                lastPrice = item.lastPrice
             ))
 
             val shoppingList = allShoppingItems.first()
@@ -1312,6 +1329,24 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         }
     }
 
+    fun isPdf(context: Context, uri: Uri): Boolean {
+        val mimeType = try { context.contentResolver.getType(uri) } catch (_: Exception) { null }
+        if (mimeType == "application/pdf") return true
+        val name = getFileName(context, uri)?.lowercase() ?: ""
+        if (name.endsWith(".pdf")) return true
+        if (uri.toString().lowercase().contains(".pdf")) return true
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val header = ByteArray(4)
+                val read = stream.read(header)
+                read == 4 && header[0] == '%'.code.toByte() && header[1] == 'P'.code.toByte() &&
+                        header[2] == 'D'.code.toByte() && header[3] == 'F'.code.toByte()
+            } ?: false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun importFromPdf(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
@@ -1346,7 +1381,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 }
 
                 val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
-                val (pdfProducts, previewBmp) = KassenzettelParser.processPdf(context, tempFile, recognizer, corrections)
+                val (pdfProducts, previewBmp) = KassenzettelParser.processPdf(context, tempFile, recognizer, corrections, originalFileName = fileName)
 
                 if (previewBmp != null) {
                     withContext(Dispatchers.Main) { receiptBitmap.value = previewBmp }
@@ -1370,6 +1405,92 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         }
     }
 
+    fun importMultipleFiles(context: Context, uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) {
+                isSyncing.value = true
+                showImportPreview.value = true
+                receiptBitmap.value = null
+            }
+
+            val allProducts = mutableListOf<Product>()
+            val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
+            var previewBitmap: Bitmap? = null
+
+            for ((index, uri) in uris.withIndex()) {
+                try {
+                    val fileName = getFileName(context, uri) ?: "beleg_$index"
+                    val isPdfFile = isPdf(context, uri)
+
+                    if (isPdfFile) {
+                        val tempFile = File(context.cacheDir, "temp_multi_${index}.pdf")
+                        if (uri.scheme == "file" && uri.path != null && File(uri.path!!).exists()) {
+                            File(uri.path!!).copyTo(tempFile, overwrite = true)
+                        } else {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                            }
+                        }
+                        if (tempFile.exists() && tempFile.length() > 0) {
+                            val (pdfProducts, previewBmp) = KassenzettelParser.processPdf(
+                                context, tempFile, recognizer, corrections, originalFileName = fileName
+                            )
+                            if (previewBitmap == null && previewBmp != null) {
+                                previewBitmap = previewBmp
+                            }
+                            allProducts.addAll(pdfProducts)
+                            tempFile.delete()
+                        }
+                    } else {
+                        val tempFile = File(context.cacheDir, "temp_multi_${index}.jpg")
+                        if (uri.scheme == "file" && uri.path != null && File(uri.path!!).exists()) {
+                            File(uri.path!!).copyTo(tempFile, overwrite = true)
+                        } else {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                            }
+                        }
+                        val bitmap = if (tempFile.exists() && tempFile.length() > 0) {
+                            BitmapFactory.decodeFile(tempFile.absolutePath)
+                        } else null
+
+                        if (bitmap != null) {
+                            if (previewBitmap == null) {
+                                previewBitmap = bitmap
+                            }
+                            val image = InputImage.fromBitmap(bitmap, 0)
+                            val visionText = Tasks.await(recognizer.process(image))
+                            var products = try {
+                                KassenzettelParser.parseReceipt(visionText, corrections)
+                            } catch (e: Exception) {
+                                emptyList()
+                            }
+                            if (products.isEmpty() || products.sumOf { it.price } <= 0.0) {
+                                products = geminiRepository.analyzeReceipt(bitmap)
+                            }
+                            allProducts.addAll(products)
+                            tempFile.delete()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("FridgeViewModel", "Fehler beim Verarbeiten von Mehrfach-Upload $uri", e)
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                previewBitmap?.let { receiptBitmap.value = it }
+                isSyncing.value = false
+                if (allProducts.isNotEmpty()) {
+                    handleScannedProducts(allProducts, "MULTI_UPLOAD_" + System.currentTimeMillis())
+                } else {
+                    Toast.makeText(applicationContext, "Keine Artikel in den ausgewählten Belegen erkannt.", Toast.LENGTH_SHORT).show()
+                    showImportPreview.value = false
+                }
+            }
+        }
+    }
+
     fun searchAndAddItems(text: String) {
         viewModelScope.launch {
             try {
@@ -1379,17 +1500,25 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 val newItems = mutableListOf<FridgeItem>()
                 val sourceId = "TEXT_IMPORT_" + text.hashCode().toString()
 
-                val parsedProducts = KassenzettelParser.parseReceiptText(text)
+                val parsedResult = KassenzettelParser.parseReceiptDetailed(text)
+                val parsedProducts = parsedResult.products
                 val corrections = learnedCorrections.toMap()
 
                 parsedProducts.forEach { p ->
-                    val itemNotes = p.rawText?.let { "RAW:$it" } ?: ""
+                    val purchaseDateMillis = p.purchaseDate ?: parsedResult.purchaseDate ?: System.currentTimeMillis()
+                    val dateFormatted = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMANY).format(java.util.Date(purchaseDateMillis))
+                    val marketTag = if (p.supermarket != null) " @${p.supermarket}" else if (parsedResult.supermarket != null) " @${parsedResult.supermarket}" else ""
+                    val dateTag = " #$dateFormatted"
+                    val itemNotes = (p.rawText?.let { "RAW:$it" } ?: "") + marketTag + dateTag
+
                     val item = FridgeItem(
                         name = p.name,
                         price = p.price,
                         quantity = p.quantity,
-                        unit = if (p.rawText?.contains("kg", true) == true) "kg" else "Stk.",
+                        unit = p.unit.ifBlank { if (p.rawText?.contains("kg", true) == true) "kg" else "Stk." },
+                        barcode = p.barcode,
                         notes = itemNotes,
+                        purchaseDate = purchaseDateMillis,
                         importHash = generateImportHash(sourceId, p.name)
                     )
                     val enriched = enrichItemWithSmartLogic(item, corrections)
@@ -1491,6 +1620,34 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
         // 2. Abkürzungen & Tippfehler mit Regex ersetzen
         val replacements = listOf(
+            Regex("""\bklc\.?\s*cash\.?\s*cranb\.?\s*mix\b""", RegexOption.IGNORE_CASE) to "K-Classic Cashew-Cranberry-Mix",
+            Regex("""\bklc\.?\s*royal\s*nuts\b""", RegexOption.IGNORE_CASE) to "K-Classic Royal Nuts",
+            Regex("""\bklc\.?\s*lachsfilet\s*(250\s*g)?\b""", RegexOption.IGNORE_CASE) to "K-Classic Lachsfilet 250g",
+            Regex("""\bkbio\.?\s*bandn\.?\s*(500\s*g)?\b""", RegexOption.IGNORE_CASE) to "K-Bio Bandnudeln 500g",
+            Regex("""\btradizion\.?\s*speciale\b""", RegexOption.IGNORE_CASE) to "Tradizionale Pizza Speciale",
+            Regex("""\bkart\.?\s*vfk\s*(2[,.]5\s*kg)?\b""", RegexOption.IGNORE_CASE) to "Speisekartoffeln vorwiegend festkochend (2,5 kg)",
+            Regex("""\bfin\.?\s*sweet\s*chili\s*(100\s*g)?\b""", RegexOption.IGNORE_CASE) to "Herta Finesse Sweet Chili 100g",
+            Regex("""\bfinesse\s*hähnchen\s*bbq\b""", RegexOption.IGNORE_CASE) to "Herta Finesse Hähnchenbrust BBQ",
+            Regex("""\bmetzgerei\s*sb\s*plu\s*602\b""", RegexOption.IGNORE_CASE) to "Metzgerei SB Frischetheke (PLU 602)",
+            Regex("""\bma\.?\s*fix\s*bandn\.?\s*lachs\b""", RegexOption.IGNORE_CASE) to "Maggi Fix Bandnudeln mit Lachs",
+            Regex("""\bmaggi\s*fix\s*carbo\b""", RegexOption.IGNORE_CASE) to "Maggi Fix Carbonara",
+            Regex("""\berben\s*grauburg\.?\b""", RegexOption.IGNORE_CASE) to "Erben Grauburgunder Weißwein",
+            Regex("""\breb\.?\s*müller[- ]?thurgau\b""", RegexOption.IGNORE_CASE) to "Rebenschoppen Müller-Thurgau",
+            Regex("""\breb\.?\s*reinhessen\b""", RegexOption.IGNORE_CASE) to "Rebenschoppen Rheinhessen",
+            Regex("""\bhähn\.?\s*mini[- ]?schnitte\b""", RegexOption.IGNORE_CASE) to "Hähnchen Mini-Schnitzel",
+            Regex("""\bbrotauf\.?\s*tom\.?\s*/?\s*mozz\.?\b""", RegexOption.IGNORE_CASE) to "Brotaufstrich Tomate-Mozzarella",
+            Regex("""\bknoten\s*vanille\b""", RegexOption.IGNORE_CASE) to "Vanille-Knoten",
+            Regex("""\bchio\s*popcorn\s*(süss|suess|süß)\b""", RegexOption.IGNORE_CASE) to "Chio Popcorn süß",
+            Regex("""\bja!?\s*schlagsahne\b""", RegexOption.IGNORE_CASE) to "ja! Schlagsahne",
+            Regex("""\bk\.?\s*schlagsahne\b""", RegexOption.IGNORE_CASE) to "K-Classic Schlagsahne",
+            Regex("""\bmoench\.?\s*landbier\b""", RegexOption.IGNORE_CASE) to "Mönchshof Landbier",
+            Regex("""\bmoenchshof\s*zwick\b""", RegexOption.IGNORE_CASE) to "Mönchshof Zwickl",
+            Regex("""\bkochschinken\s*o\.?\b""", RegexOption.IGNORE_CASE) to "Kochschinken ohne Fettrand",
+            Regex("""\brosenbroe\.?\s*dkl\.?\b""", RegexOption.IGNORE_CASE) to "Rosenbrötchen dunkel",
+            Regex("""\bkarottenkruest\.?\b""", RegexOption.IGNORE_CASE) to "Karottenkrüstchen",
+            Regex("""\bdinkelbroetchen\b""", RegexOption.IGNORE_CASE) to "Dinkelbrötchen",
+            Regex("""\bkfav\.?\s*v[- ]?f\.?\s*brötchen\b""", RegexOption.IGNORE_CASE) to "K-Favourites Vollkorn-Fit-Brötchen",
+            Regex("""\bvollkorn\s*kumpel\b""", RegexOption.IGNORE_CASE) to "Vollkorn Kumpel Brot",
             Regex("""\b(Pres\.la\s*Briqü|Pres\.la\s*Brique|PRES\.?\s*La\s*Brique)\b""", RegexOption.IGNORE_CASE) to "Président La Brique",
             Regex("""\b(PRES\.?|Pres\.)\b""", RegexOption.IGNORE_CASE) to "Président",
             Regex("""\b(TH\.WQ\.?|Thüringer\s*Waldqüll|Waldqüll)\b""", RegexOption.IGNORE_CASE) to "Thüringer Waldquell",
@@ -1597,7 +1754,8 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
         var location = learnedEntry?.defaultStorageLocation ?: when {
             lower.contains("tiefkühl") || lower.contains("tk ") || lower.contains("eis ") || lower.contains("spinat") ||
-                    (lower.contains("pizza") && !lower.contains("brötchen")) || lower.contains("pommes") || lower.contains("gefroren") -> "Gefrierfach"
+                    (lower.contains("pizza") && !lower.contains("brötchen")) || lower.contains("pommes") || lower.contains("gefroren") ||
+                    lower.contains("tradizionale") || lower.contains("speciale") || lower.contains("frikassee") -> "Gefrierfach"
 
             detectedCat == FoodCategory.MILCHPRODUKTE ||
                     detectedCat == FoodCategory.FLEISCH_FISCH ||
@@ -1608,13 +1766,16 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                     lower.contains("brique") || lower.contains("la brique") || lower.contains("président") ||
                     lower.contains("president") || lower.contains("butter") || lower.contains("milch") ||
                     lower.contains("joghurt") || lower.contains("quark") || lower.contains("skyr") ||
-                    lower.contains("miree") || lower.contains("aufstrich") || lower.contains("wurst") ||
-                    lower.contains("fleisch") || lower.contains("schinken") || lower.contains("salami") ||
+                    lower.contains("miree") || lower.contains("aufstrich") || lower.contains("brotaufstrich") ||
+                    lower.contains("wurst") || lower.contains("fleisch") || lower.contains("schinken") ||
+                    lower.contains("salami") || lower.contains("schnitzel") || lower.contains("finesse") ||
                     lower.contains("lachs") || lower.contains("feinkost") || lower.contains("senf") ||
                     lower.contains("kefir") || lower.contains("nackenst") || lower.contains("gurke") ||
                     lower.contains("kohlrabi") || lower.contains("salat") || lower.contains("aufschnitt") ||
                     lower.contains("wiener") || lower.contains("hefe") || lower.contains("mozzarella") || 
-                    lower.contains("parmesan") || lower.contains("dressing") || lower.contains("pesto") -> "Kühlschrank"
+                    lower.contains("parmesan") || lower.contains("dressing") || lower.contains("pesto") ||
+                    lower.contains("bier") || lower.contains("pils") || lower.contains("landbier") ||
+                    lower.contains("zwickl") || lower.contains("lübzer") || lower.contains("mönchshof") -> "Kühlschrank"
 
             lower.contains("kuschelweich") || lower.contains("weichspüler") || lower.contains("reiniger") ||
                     lower.contains("shampoo") || lower.contains("seife") || lower.contains("katzenfutter") ||
@@ -1679,7 +1840,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             name.split(" ")
                 .filter { it.isNotBlank() }
                 .joinToString(" ") { it.lowercase().replaceFirstChar { c -> c.uppercase() } }
-                .take(30)
+                .take(60)
         }
 
         if (!isUserTaught && ((formattedName.startsWith("2 St") || formattedName.startsWith("2 Stk") || formattedName == "Tiefkühlpizza") && item.price == 0.59)) {
@@ -1716,16 +1877,20 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 val hash = generateImportHash(sourceId, p.name)
                 val duplicate = existingHashes.contains(hash)
 
-                val itemNotes = p.rawText?.let { "RAW:$it" + (if (p.supermarket != null) " @${p.supermarket}" else "") } ?: ""
+                val purchaseDateMillis = p.purchaseDate ?: System.currentTimeMillis()
+                val dateFormatted = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMANY).format(java.util.Date(purchaseDateMillis))
+                val marketTag = if (p.supermarket != null) " @${p.supermarket}" else ""
+                val dateTag = " #$dateFormatted"
+                val itemNotes = (p.rawText?.let { "RAW:$it" } ?: "") + marketTag + dateTag
 
                 val item = FridgeItem(
                     name = p.name, price = p.price, quantity = p.quantity, barcode = p.barcode,
                     imageUrl = p.imageUrl, allergens = p.allergens, kcal = p.kcal,
                     notes = itemNotes,
-                    boundingBox = p.boundingBox, purchaseDate = p.purchaseDate ?: System.currentTimeMillis(),
+                    boundingBox = p.boundingBox, purchaseDate = purchaseDateMillis,
                     importHash = hash,
                     storageLocation = p.defaultStorage ?: "Kühlschrank",
-                    expiryDate = p.expiryDays?.let { (p.purchaseDate ?: System.currentTimeMillis()) + it * 24L * 60L * 60L * 1000L }
+                    expiryDate = p.expiryDays?.let { purchaseDateMillis + it * 24L * 60L * 60L * 1000L }
                 ).apply { this.isDuplicate = duplicate }
 
                 val enriched = enrichItemWithSmartLogic(item, correctionsCopy)
@@ -1733,6 +1898,14 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 if (enriched.name == "___IGNORE___") {
                     null
                 } else {
+                    // Automatische Preishistorie: Stückpreise mit früheren Einkäufen abgleichen
+                    val pastRecord = dao.getHistoryByName(enriched.name).firstOrNull { it.price > 0.0 }
+                        ?: dao.getHistoryByName(p.name).firstOrNull { it.price > 0.0 }
+                    if (pastRecord != null) {
+                        val prevUnit = if (pastRecord.quantity > 0) pastRecord.price / pastRecord.quantity else pastRecord.price
+                        enriched.lastPrice = prevUnit
+                    }
+
                     if (p.price > 0 && !duplicate) {
                         checkProductWarner(enriched.name, p.price, p.quantity)
                         dao.insertPriceRecord(PriceRecord(itemId = enriched.id, itemName = enriched.name, price = p.price, quantity = p.quantity, barcode = p.barcode))
@@ -1981,6 +2154,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                             existing.name = item.name
                             existing.category = item.category
                             existing.price = item.price
+                            existing.lastPrice = item.lastPrice
                             existing.isVegan = item.isVegan
                             existing.storageLocation = item.storageLocation
                             dao.updateItem(existing)

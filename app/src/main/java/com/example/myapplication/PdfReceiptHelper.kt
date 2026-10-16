@@ -102,8 +102,10 @@ object PdfReceiptHelper {
         context: Context,
         pdfFile: File,
         recognizer: TextRecognizer,
-        corrections: Map<String, String> = emptyMap()
+        corrections: Map<String, String> = emptyMap(),
+        originalFileName: String? = null
     ): Pair<List<Product>, Bitmap?> {
+        val effectiveFilename = originalFileName ?: pdfFile.name
         return try {
             if (!pdfFile.exists() || pdfFile.length() == 0L) {
                 return Pair(emptyList(), null)
@@ -113,7 +115,7 @@ object PdfReceiptHelper {
             val embeddedText = extractEmbeddedText(pdfFile)
             if (embeddedText.isNotBlank()) {
                 val parsedProducts = try {
-                    KassenzettelParser.parseReceiptText(embeddedText, corrections)
+                    KassenzettelParser.parseReceiptText(embeddedText, corrections, effectiveFilename)
                 } catch (e: Throwable) {
                     emptyList()
                 }
@@ -187,7 +189,7 @@ object PdfReceiptHelper {
             // 3. OCR-Ergebnisse der verschiedenen Chunks sauber zusammenführen, bevor der Parser startet
             val fullOcrText = ocrTextChunks.joinToString("\n")
             val ocrProducts = if (fullOcrText.isNotBlank()) {
-                KassenzettelParser.parseReceiptText(fullOcrText, corrections)
+                KassenzettelParser.parseReceiptText(fullOcrText, corrections, effectiveFilename)
             } else {
                 emptyList()
             }

@@ -1,0 +1,859 @@
+{
+  "pin": "1234",
+  "persistent_token": "8d53b54a-fc22-4cc1-ae05-0d7aa2529d46",
+  "inventory": [
+    {
+      "id": "eff0d26f-dee3-4655-bfdf-461569bf7f0d",
+      "name": "Bio Vollmilch",
+      "quantity": 4,
+      "unit": "l",
+      "storageLocation": "Kühlschrank",
+      "expiryDate": 1791572174215,
+      "supermarket": "REWE",
+      "price": 1.49,
+      "category": "Milchprodukte"
+    },
+    {
+      "id": "78e19e23-1bf6-4e90-9f7c-52917757b32f",
+      "name": "Gouda Jung in Scheiben",
+      "quantity": 1,
+      "unit": "Packung",
+      "storageLocation": "Kühlschrank",
+      "expiryDate": 1791917774215,
+      "supermarket": "ALDI",
+      "price": 2.29,
+      "category": "Käse"
+    },
+    {
+      "id": "432b1a96-a88e-4f5f-ace4-15b31f3b18ab",
+      "name": "Frische Eier Freiland",
+      "quantity": 1,
+      "unit": "Packung",
+      "storageLocation": "Kühlschrank",
+      "expiryDate": 1791312974215,
+      "supermarket": "LIDL",
+      "price": 2.19,
+      "category": "Eier"
+    },
+    {
+      "id": "51fa6a32-5368-42af-90cd-ed92b61c3e51",
+      "name": "Rinderhackfleisch",
+      "quantity": 6,
+      "unit": "Packung",
+      "storageLocation": "Kühlschrank",
+      "expiryDate": 1791226574215,
+      "supermarket": "EDEKA",
+      "price": 4.99,
+      "category": "Fleisch"
+    },
+    {
+      "id": "de78d4a3-5529-4315-a316-a1dc82f43302",
+      "name": "Tk Erbsen Sehr Fein",
+      "quantity": 1,
+      "unit": "Btl.",
+      "storageLocation": "Gefrierfach",
+      "expiryDate": 1806692174215,
+      "supermarket": "Kaufland",
+      "price": 1.79,
+      "category": "Tiefkühl"
+    },
+    {
+      "id": "8077bd76-6502-48fc-a93b-c557b90a8653",
+      "name": "Speisekartoffeln Vorw. Festkochend",
+      "quantity": 3.5,
+      "unit": "kg",
+      "storageLocation": "Vorratskammer",
+      "expiryDate": 1792958174215,
+      "supermarket": "Netto",
+      "price": 2.49,
+      "category": "Gemüse"
+    },
+    {
+      "id": "f315eaf6-aaf1-40e4-a9a3-0da2fcba625c",
+      "name": "Kochschinken",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.48,
+      "supermarket": "Rewe",
+      "expiryDate": 1791485785471
+    },
+    {
+      "id": "2bc0a17f-9926-4121-b731-4b8b582e0ca4",
+      "name": "Miree Dattel-curry",
+      "quantity": 4,
+      "unit": "Becher",
+      "storageLocation": "Kühlschrank",
+      "price": 1.19,
+      "supermarket": "Rewe",
+      "expiryDate": 1791485785472
+    },
+    {
+      "id": "675787ef-b9ec-4854-b4fa-879657ad4578",
+      "name": "Maggi Fix Carbonara",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.18,
+      "supermarket": "Rewe",
+      "expiryDate": 1791744985473
+    },
+    {
+      "id": "3e90e67a-f588-4bc7-b8f5-c7e8319076e1",
+      "name": "Mönchshof Landbier",
+      "quantity": 2,
+      "unit": "Flasche",
+      "storageLocation": "Kühlschrank",
+      "price": 1.39,
+      "supermarket": "Rewe",
+      "expiryDate": 1791744985474
+    },
+    {
+      "id": "3792875a-40ff-4e45-9dbc-4c1ad2eada11",
+      "name": "Harzbube Edelschimmelkäse",
+      "quantity": 5,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.99,
+      "supermarket": "Kaufland",
+      "expiryDate": 1792004203380
+    },
+    {
+      "id": "56592f96-ca48-4fc2-ba2f-1512ff693f7d",
+      "name": "Lübzer Pils",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.18,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791745003382
+    },
+    {
+      "id": "ca57dda0-7a5c-410f-a59d-937bc5714e43",
+      "name": "Ben's Original Expressreis",
+      "quantity": 14,
+      "unit": "Packung",
+      "storageLocation": "Vorratskammer",
+      "price": 2.67,
+      "supermarket": "Kaufland",
+      "expiryDate": 1806692203383
+    },
+    {
+      "id": "87d7ada5-af9b-44ff-a910-a8f2aba92a0d",
+      "name": "Schnittbrötchen",
+      "quantity": 60,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.28,
+      "supermarket": "Netto",
+      "expiryDate": 1791745004408
+    },
+    {
+      "id": "1303a090-d62f-42b4-8a39-eb18c01cb888",
+      "name": "Thüringer Waldquell Medium",
+      "quantity": 9,
+      "unit": "Kiste",
+      "storageLocation": "Kühlschrank",
+      "price": 4.44,
+      "supermarket": "Netto",
+      "expiryDate": 1791745004410
+    },
+    {
+      "id": "4e1dd35b-79d7-45e9-9b09-fb054101891b",
+      "name": "Crème Fraîche Natur",
+      "quantity": 5,
+      "unit": "Becher",
+      "storageLocation": "Kühlschrank",
+      "price": 0.79,
+      "supermarket": "Netto",
+      "expiryDate": 1791485804411
+    },
+    {
+      "id": "0c4e3293-5147-4a29-93d5-ad8b13ffe1a6",
+      "name": "Kiwi Gold",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.38,
+      "supermarket": "Netto",
+      "expiryDate": 1791745004411
+    },
+    {
+      "id": "94cc877c-11f3-4c05-8315-6ad8e131ad6c",
+      "name": "Bio Bananen Lose",
+      "quantity": 5,
+      "unit": "kg",
+      "storageLocation": "Kühlschrank",
+      "price": 0.72,
+      "supermarket": "Netto",
+      "expiryDate": 1791745004412
+    },
+    {
+      "id": "3b8d5b5a-4b0b-4a9b-a0d0-4e9df88f9e96",
+      "name": "Kartoffeln",
+      "quantity": 1,
+      "unit": "kg",
+      "storageLocation": "Kühlschrank",
+      "price": 2.49,
+      "supermarket": "Globus",
+      "expiryDate": 1791745005440,
+      "barcode": "2070000602755"
+    },
+    {
+      "id": "45b2bd9e-f50e-4252-b8ba-ca86dea1786f",
+      "name": "Finesse Sweet Chili",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.39,
+      "supermarket": "Globus",
+      "expiryDate": 1791745005441,
+      "barcode": "4000582188093"
+    },
+    {
+      "id": "a78fa3db-743d-4a44-a087-2adbea9b455b",
+      "name": "Kloßteig",
+      "quantity": 6,
+      "unit": "Packung",
+      "storageLocation": "Kühlschrank",
+      "price": 5.97,
+      "supermarket": "Globus",
+      "expiryDate": 1791745005443,
+      "barcode": "4009268333093"
+    },
+    {
+      "id": "37406588-4517-438a-aa84-4c57f5514dc2",
+      "name": "Paprika Gelb Lose",
+      "quantity": 2,
+      "unit": "kg",
+      "storageLocation": "Kühlschrank",
+      "price": 1.12,
+      "supermarket": "Globus",
+      "expiryDate": 1791745005444
+    },
+    {
+      "id": "58346170-5d9b-4314-9a55-18857d25b922",
+      "name": "Hähnchen-geschnetzeltes",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 4.99,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791487114138
+    },
+    {
+      "id": "0ffc5ce3-3be0-4c3d-acd5-c71f5aee67cf",
+      "name": "Geflügelfleischwurst",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.11,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791487114139
+    },
+    {
+      "id": "6b9fabd9-49c7-4b47-8f7c-c119bbaabd59",
+      "name": "Delverde Spaghetti",
+      "quantity": 4,
+      "unit": "Packung",
+      "storageLocation": "Vorratskammer",
+      "price": 1.89,
+      "supermarket": "Kaufland",
+      "expiryDate": 1806693514142
+    },
+    {
+      "id": "12da1b1a-c3c9-442a-ae6e-b117a417a253",
+      "name": "Churro Bites",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.49,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314143
+    },
+    {
+      "id": "fa34ce85-4c95-44c1-b354-d97242d9ab90",
+      "name": "Salami M.frz.cam",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.59,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791487114144
+    },
+    {
+      "id": "74dadb94-2e3a-42f1-a73a-fb829c47b413",
+      "name": "K-Classic Naturjoghurt",
+      "quantity": 4,
+      "unit": "Becher",
+      "storageLocation": "Kühlschrank",
+      "price": 0.89,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791487114145
+    },
+    {
+      "id": "b24c0684-b9da-4f42-866b-9748c5125c3c",
+      "name": "Ültje Erdnüsse",
+      "quantity": 8,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.98,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314146
+    },
+    {
+      "id": "092bf7c1-34db-4e31-ba4e-b5df333db756",
+      "name": "K-Classic Gehackte Tomaten",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.59,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314147
+    },
+    {
+      "id": "ab57cc9e-4a9b-4113-8353-93ec8ad34766",
+      "name": "Rotwein Weißburgunder Htr",
+      "quantity": 2,
+      "unit": "Flasche",
+      "storageLocation": "Kühlschrank",
+      "price": 2.99,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314148
+    },
+    {
+      "id": "afbc32d1-5776-4b9d-9c26-d5874c8c2ed0",
+      "name": "Wagner Rustipani",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.79,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314149
+    },
+    {
+      "id": "d5c40d6b-ce89-467e-84f8-af091dac37dc",
+      "name": "Knorr Fix",
+      "quantity": 8,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.78,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314150
+    },
+    {
+      "id": "46dc0036-f752-4c3f-af97-8c7fcf382712",
+      "name": "Fol Epi Légère",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.39,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314151
+    },
+    {
+      "id": "5406167d-2e92-497e-acf6-c946d549259b",
+      "name": "Knorr Fix Beste Bolog",
+      "quantity": 8,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.78,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314152
+    },
+    {
+      "id": "d9b28ada-ccf2-4f21-bbae-1df5b7ca7628",
+      "name": "K-Classic American Cookies",
+      "quantity": 4,
+      "unit": "Packung",
+      "storageLocation": "Kühlschrank",
+      "price": 2.58,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314153
+    },
+    {
+      "id": "6c99379d-23e6-4eba-89c5-0a2ccfef4af4",
+      "name": "Gourmet Perle Katzenfutter",
+      "quantity": 44,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 10.78,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791746314154
+    },
+    {
+      "id": "9d361615-a2ca-49d3-a6f0-10407b513f5d",
+      "name": "Thüringer Waldquell Classic",
+      "quantity": 2,
+      "unit": "Kiste",
+      "storageLocation": "Kühlschrank",
+      "price": 4.44,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315219
+    },
+    {
+      "id": "827cd892-9d65-4c75-9daa-3d0777b15d8f",
+      "name": "Belsina Apfelsaft Klar",
+      "quantity": 4,
+      "unit": "Flasche",
+      "storageLocation": "Kühlschrank",
+      "price": 8.99,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315220
+    },
+    {
+      "id": "39439bc5-6483-4c44-84af-99fc21059b0e",
+      "name": "Milram Müritzer Käse",
+      "quantity": 8,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.98,
+      "supermarket": "Netto",
+      "expiryDate": 1792005515223
+    },
+    {
+      "id": "c027e15e-03ea-413c-a5a2-a989ee6c4e7a",
+      "name": "Joghurtger",
+      "quantity": 4,
+      "unit": "Becher",
+      "storageLocation": "Kühlschrank",
+      "price": 0.99,
+      "supermarket": "Netto",
+      "expiryDate": 1791487115224
+    },
+    {
+      "id": "9cd3ae0a-9a26-4602-86d2-c7be7e9b2177",
+      "name": "Bio Zitronensaft",
+      "quantity": 4,
+      "unit": "Flasche",
+      "storageLocation": "Kühlschrank",
+      "price": 1.49,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315224
+    },
+    {
+      "id": "f1281f19-5c05-4b34-961f-2854129a7f1c",
+      "name": "Vl Eier Bh",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.99,
+      "supermarket": "Netto",
+      "expiryDate": 1792005515225
+    },
+    {
+      "id": "6b6e95c8-2748-4909-9c8e-66a1681670c3",
+      "name": "Natur Werk Suppe",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.99,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315227
+    },
+    {
+      "id": "ce5674f4-db48-48c9-b4be-deda290baaef",
+      "name": "Mini-pflaumentomaten",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.49,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315228
+    },
+    {
+      "id": "475f0c47-5092-4f2f-a31b-ea9c918700eb",
+      "name": "Milram Rahmkäse",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.49,
+      "supermarket": "Netto",
+      "expiryDate": 1792005515230
+    },
+    {
+      "id": "e3beac70-eb28-4db3-a560-58cec5bb412f",
+      "name": "Vita Cola",
+      "quantity": 8,
+      "unit": "Flasche",
+      "storageLocation": "Kühlschrank",
+      "price": 2.98,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315231
+    },
+    {
+      "id": "741cba0b-98e8-4a2b-aac6-60ba7cda4ce1",
+      "name": "Fanta",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.11,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315231
+    },
+    {
+      "id": "a2d6d0dc-76a6-492a-ab22-a47fc26db683",
+      "name": "Sprite Zero",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.11,
+      "supermarket": "Netto",
+      "expiryDate": 1791746315232
+    },
+    {
+      "id": "f4d8d81c-97f5-4520-9e5b-d6bf5ba0407b",
+      "name": "Gartensalat",
+      "quantity": 8,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.98,
+      "supermarket": "Netto",
+      "expiryDate": 1791487115233
+    },
+    {
+      "id": "e5850f56-fea4-4398-b3e4-58ae89c3debc",
+      "name": "Vollkorn Kumpel",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.45,
+      "supermarket": "Rewe",
+      "expiryDate": 1791746941366
+    },
+    {
+      "id": "08cb30b6-5796-4107-8cba-c7defa2389bf",
+      "name": "Karottenkruest",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.18,
+      "supermarket": "Rewe",
+      "expiryDate": 1791746941367
+    },
+    {
+      "id": "7f7b35d8-24f8-4fe8-8616-2c8d06089f37",
+      "name": "Rosenbroe",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.45,
+      "supermarket": "Rewe",
+      "expiryDate": 1791746941368
+    },
+    {
+      "id": "ee4f4b14-da65-4cef-8fd3-75a19933d3ad",
+      "name": "Dinkelbroetchen",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.49,
+      "supermarket": "Rewe",
+      "expiryDate": 1791746941368
+    },
+    {
+      "id": "ded47fc3-2631-4ef0-a136-534e3000099a",
+      "name": "Rotw. Weißburgunder. Htr",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 2.99,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791820259424
+    },
+    {
+      "id": "6c4c3afc-f8d8-4250-8a29-7b6edf056e9d",
+      "name": "K-classicamer.cookies",
+      "quantity": 4,
+      "unit": "Packung",
+      "storageLocation": "Kühlschrank",
+      "price": 2.58,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791820259434
+    },
+    {
+      "id": "f5415437-d98f-48c6-ae4c-4dec397b4fea",
+      "name": "Gourmet Perle",
+      "quantity": 44,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 10.78,
+      "supermarket": "Kaufland",
+      "expiryDate": 1791820259435
+    },
+    {
+      "id": "140a05a3-4cf9-485b-8537-e2ddba802541",
+      "name": "Thüringer Waldquell Klassik",
+      "quantity": 2,
+      "unit": "Kiste",
+      "storageLocation": "Kühlschrank",
+      "price": 4.44,
+      "supermarket": "Netto",
+      "expiryDate": 1791820260716
+    },
+    {
+      "id": "3c1c32fa-a899-4d4e-a599-8efc31d61d2f",
+      "name": "Bio Vollmilch 3.8%",
+      "quantity": 2,
+      "unit": "l",
+      "storageLocation": "Kühlschrank",
+      "price": 1.49,
+      "supermarket": "Import",
+      "expiryDate": 1791820295324
+    },
+    {
+      "id": "02b1287c-e128-416f-af9e-db822dae5258",
+      "name": "Gouda Scheiben",
+      "quantity": 1,
+      "unit": "Packung",
+      "storageLocation": "Kühlschrank",
+      "price": 1.99,
+      "supermarket": "Import",
+      "expiryDate": 1791820295324
+    },
+    {
+      "id": "c2a30f93-f91e-465b-8154-4d13c1ebb30f",
+      "name": "Maggi Fix Carbonara",
+      "quantity": 4,
+      "unit": "Stk.",
+      "storageLocation": "Vorratskammer",
+      "price": 2.18,
+      "supermarket": "Rewe",
+      "expiryDate": 1822755839874
+    },
+    {
+      "id": "42ec8449-1685-4e73-b623-7b41c1f913dd",
+      "name": "Mönchshof Landbier",
+      "quantity": 2,
+      "unit": "Flasche",
+      "storageLocation": "Vorratskammer",
+      "price": 1.39,
+      "supermarket": "Rewe",
+      "expiryDate": 1806771839875
+    },
+    {
+      "id": "1207c20b-7dd3-4f44-a68c-a9fe22961422",
+      "name": "Metzgerei Frischetheke Plu",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 3.8,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "8eec3623-65aa-4f54-bc70-a0f0c7e718e1",
+      "name": "Finesse Hähnchen Bbq",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.39,
+      "supermarket": "Globus",
+      "expiryDate": 1791324000000
+    },
+    {
+      "id": "93696cf7-2e1f-4c69-b2be-d44806687015",
+      "name": "Hähnchenbrust",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.39,
+      "supermarket": "Globus",
+      "expiryDate": 1791324000000
+    },
+    {
+      "id": "10489a81-09c7-4fab-a79d-1e9e3a021a9d",
+      "name": "Apfel-rotkohl",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Vorratskammer",
+      "price": 2.49,
+      "supermarket": "Globus",
+      "expiryDate": 1822687200000
+    },
+    {
+      "id": "095e7740-9bb9-42e8-843f-02f2a3a053d4",
+      "name": "Biokat´s Katzentoile",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 3.29,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "6f643fb7-dd00-4dab-bba4-9b4a0b389ac0",
+      "name": "Cherry-rispentomaten",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Vorratskammer",
+      "price": 2.22,
+      "supermarket": "Globus",
+      "expiryDate": 1822687200000
+    },
+    {
+      "id": "57bd45f0-33c5-4956-ba75-62e374cb4ba8",
+      "name": "Paprika Rot Lose",
+      "quantity": 1,
+      "unit": "kg",
+      "storageLocation": "Kühlschrank",
+      "price": 1.12,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "2f48a86d-cb02-40dc-9bc4-497e430c7d50",
+      "name": "Grünländer Scheiben",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 3.38,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "e4958353-db70-4d61-bfb7-372b5635ba32",
+      "name": "Lucky Lou Knutschmat",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 4.99,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "bb1e18a7-c2a7-4ae4-9660-ac81a35f8758",
+      "name": "Gg Ente/spinat",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Gefrierfach",
+      "price": 0.49,
+      "supermarket": "Globus",
+      "expiryDate": 1806703200000
+    },
+    {
+      "id": "4c420484-c0db-422a-9170-f06f894ef590",
+      "name": "Gour.pastete Thunf",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.98,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "c27e4157-acca-4ca7-84e0-c1a400da57c8",
+      "name": "Gour.pastete M.truth",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.98,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "29eca2d8-fd1f-419e-9b25-5b1c18432356",
+      "name": "Gg Lamm/bohn",
+      "quantity": 7,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 3.43,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "b1659fcc-9510-4b0e-a49e-ff18bdc1e8ee",
+      "name": "Gg Past Seel./karott",
+      "quantity": 3,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.47,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "b0c5075a-51f9-46af-ae9a-ed48bea7e5cd",
+      "name": "Rügener Badejunge",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 1.99,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "4b0825f0-7156-428c-9e00-3f9e800cc80a",
+      "name": "Brotaufstrich Tomate-mozzarella",
+      "quantity": 2,
+      "unit": "Becher",
+      "storageLocation": "Kühlschrank",
+      "price": 1.98,
+      "supermarket": "Globus",
+      "expiryDate": 1792360800000
+    },
+    {
+      "id": "d19a9084-1a56-4ba3-8b2a-6052f9cd7f14",
+      "name": "Gour.past.rind+huhn",
+      "quantity": 2,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.98,
+      "supermarket": "Globus",
+      "expiryDate": 1791756000000
+    },
+    {
+      "id": "262b5d80-827b-4ba0-8eda-58863f0efb82",
+      "name": "Gourmet Gold",
+      "quantity": 3,
+      "unit": "Stk.",
+      "storageLocation": "Vorratskammer",
+      "price": 1.47,
+      "supermarket": "Globus",
+      "expiryDate": 1822687200000
+    },
+    {
+      "id": "fd62e371-b18c-473f-9961-f1ff938d8c40",
+      "name": "Gg Past Forelle/tom",
+      "quantity": 1,
+      "unit": "Stk.",
+      "storageLocation": "Kühlschrank",
+      "price": 0.49,
+      "supermarket": "Globus",
+      "expiryDate": 1791583200000
+    }
+  ],
+  "shopping": [
+    {
+      "id": "f12970c5-a962-480e-a1c3-5a1c7f676a76",
+      "name": "Mineralwasser Classic",
+      "quantity": 1,
+      "unit": "Kiste",
+      "isChecked": false
+    },
+    {
+      "id": "30054990-9740-4b07-8929-4ca709883078",
+      "name": "Bananen",
+      "quantity": 1,
+      "unit": "Bund",
+      "isChecked": false
+    }
+  ],
+  "history": [
+    {
+      "id": "d16b43e6-fb2a-4018-bbff-a9efad2b35fa",
+      "itemName": "Bio Vollmilch 3.8%",
+      "quantity": 2,
+      "unit": "l",
+      "price": 2.98,
+      "date": 1790967374215
+    },
+    {
+      "id": "84c5f92b-6f49-4c76-bff7-dbe78adced76",
+      "itemName": "Rinderhackfleisch 500g",
+      "quantity": 1,
+      "unit": "Packung",
+      "price": 4.99,
+      "date": 1791053774215
+    }
+  ]
+}
