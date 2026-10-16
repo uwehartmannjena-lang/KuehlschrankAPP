@@ -1,7 +1,5 @@
 package com.example.myapplication.ui
 
-import com.example.myapplication.MarketDictionaryHelper
-
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -9,14 +7,18 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.speech.RecognizerIntent
+import android.view.ViewConfiguration
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -25,10 +27,12 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -38,64 +42,57 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
-import kotlinx.coroutines.launch
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import coil.compose.SubcomposeAsyncImage
 import com.example.myapplication.FridgeViewModel
-import com.example.myapplication.ui.help.AppHelpManager
-import com.example.myapplication.ui.help.HelpDialog
-import com.example.myapplication.ui.help.OnboardingOverlay
 import com.example.myapplication.KassenzettelScannerActivity
-import com.example.myapplication.KassenzettelParser
+import com.example.myapplication.MarketDictionaryHelper
 import com.example.myapplication.ScannerActivity
-import com.example.myapplication.data.FridgeItem
-import com.example.myapplication.data.MealPlan
-import com.example.myapplication.data.ShoppingItem
-import com.example.myapplication.data.BudgetConfig
-import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.ChefkochHelper
 import com.example.myapplication.data.ConsumedItem
 import com.example.myapplication.data.FoodCategory
+import com.example.myapplication.data.FridgeItem
+import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.Product
 import com.example.myapplication.data.SeasonHelper
-import com.example.myapplication.data.WastedItem
+import com.example.myapplication.data.ShoppingItem
 import com.example.myapplication.data.StatisticsHelper
 import com.example.myapplication.data.StatisticsTimeFrame
+import com.example.myapplication.data.WastedItem
+import com.example.myapplication.ui.help.HelpDialog
+import com.example.myapplication.ui.help.OnboardingOverlay
 import com.example.myapplication.web.WebCompanionServer
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -313,8 +310,38 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                 )
             },
             bottomBar = {
+                val viewConfig = remember { ViewConfiguration.get(context) }
+                val touchSlop = remember { viewConfig.scaledTouchSlop.toFloat() }
+                val minFlingVelocity = remember { viewConfig.scaledMinimumFlingVelocity.toFloat() }
+
                 NavigationBar(
-                    modifier = Modifier.onGloballyPositioned { tutorialTargets["nav_bar"] = Rect(it.positionInRoot(), it.size.toSize()) },
+                    modifier = Modifier
+                        .onGloballyPositioned { tutorialTargets["nav_bar"] = Rect(it.positionInRoot(), it.size.toSize()) }
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val velocityTracker = VelocityTracker()
+                                velocityTracker.addPosition(down.uptimeMillis, down.position)
+                                var totalDragY = 0f
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    val deltaY = change.position.y - change.previousPosition.y
+                                    totalDragY += deltaY
+                                    velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                                    if (change.changedToUp()) {
+                                        val velocity = velocityTracker.calculateVelocity()
+                                        val vy = velocity.y
+                                        if (totalDragY < -touchSlop && (vy < -minFlingVelocity || abs(totalDragY) > touchSlop * 1.5f)) {
+                                            showFabSheet = true
+                                        }
+                                        break
+                                    }
+                                }
+                            }
+                        },
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 8.dp
                 ) {
@@ -364,9 +391,47 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                 ) { tab ->
                     when (tab) {
                     0 -> {
+                        val listState = rememberLazyListState()
+                        val viewConfig = remember { ViewConfiguration.get(context) }
+                        val touchSlop = remember { viewConfig.scaledTouchSlop.toFloat() }
+                        val minFlingVelocity = remember { viewConfig.scaledMinimumFlingVelocity.toFloat() }
+                        var accumulatedUpDrag by remember { mutableFloatStateOf(0f) }
+
+                        val listSwipeUpConnection = remember(listState) {
+                            object : NestedScrollConnection {
+                                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                                    if (available.y > 0) {
+                                        accumulatedUpDrag = 0f
+                                    }
+                                    return Offset.Zero
+                                }
+
+                                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                                    if (!listState.canScrollForward && available.y < 0) {
+                                        accumulatedUpDrag += -available.y
+                                        if (accumulatedUpDrag > touchSlop * 3.5f) {
+                                            accumulatedUpDrag = 0f
+                                            showFabSheet = true
+                                        }
+                                    }
+                                    return Offset.Zero
+                                }
+
+                                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                                    if (!listState.canScrollForward && available.y < -minFlingVelocity) {
+                                        showFabSheet = true
+                                    }
+                                    accumulatedUpDrag = 0f
+                                    return super.onPostFling(consumed, available)
+                                }
+                            }
+                        }
+
                         Column(modifier = Modifier.fillMaxSize()) {
                             Surface(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onGloballyPositioned { tutorialTargets["storage_tiles"] = Rect(it.positionInRoot(), it.size.toSize()) },
                                 tonalElevation = 1.dp,
                                 color = MaterialTheme.colorScheme.surface
                             ) {
@@ -391,7 +456,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                                     onLongClick = { itemForInfoDialog = item }
                                                 )
                                             }
-                                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { Spacer(Modifier.height(80.dp)) }
+                                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { Spacer(Modifier.height(96.dp)) }
                                         }
                                     }
                                     "gallery" -> {
@@ -410,7 +475,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                                     onLongClick = { itemForInfoDialog = item }
                                                 )
                                             }
-                                            item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(80.dp)) }
+                                            item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(96.dp)) }
                                         }
                                     }
                                     "kanban" -> {
@@ -455,10 +520,25 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                     }
                                     // Default: "list"
                                     else -> {
-                                        LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        LazyColumn(
+                                            state = listState,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 8.dp)
+                                                .nestedScroll(listSwipeUpConnection),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
                                             item { Spacer(Modifier.height(4.dp)) }
                                             items(displayedItems, key = { it.id }) { item ->
-                                                Box(modifier = Modifier.animateItem()) {
+                                                val isFirst = (displayedItems.firstOrNull()?.id == item.id)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .animateItem()
+                                                        .then(
+                                                            if (isFirst) Modifier.onGloballyPositioned { tutorialTargets["item_card"] = Rect(it.positionInRoot(), it.size.toSize()) }
+                                                            else Modifier
+                                                        )
+                                                ) {
                                                     ModernFridgeItemCard(
                                                         item = item,
                                                         viewModel = fridgeViewModel,
@@ -468,10 +548,18 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                                     )
                                                 }
                                             }
-                                            item { Spacer(Modifier.height(80.dp)) }
+                                            item { Spacer(Modifier.height(96.dp)) }
                                         }
                                     }
                                 }
+
+                                QuickActionDragHandle(
+                                    onSwipeUp = { showFabSheet = true },
+                                    onClick = { showFabSheet = true },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(start = 16.dp, end = 88.dp, bottom = 8.dp)
+                                )
                             }
                         }
                     }
@@ -486,22 +574,128 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
         if (showOfferAlert && currentOffers.isNotEmpty()) {
             AlertDialog(
                 onDismissRequest = { fridgeViewModel.showOfferAlert.value = false },
-                title = { Text("Angebote für deine Favoriten", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.LocalOffer,
+                            contentDescription = null,
+                            tint = fridgeViewModel.themeColor.value,
+                            modifier = Modifier.size(26.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Angebots-Radar: Favoriten im Angebot!",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+                },
                 text = {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)
+                    ) {
                         items(currentOffers) { offer ->
-                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(offer.retailer, color = fridgeViewModel.themeColor.value, fontWeight = FontWeight.Bold)
-                                        Text(offer.title, style = MaterialTheme.typography.bodyLarge)
-                                        Text(String.format(Locale.GERMANY, "%.2f €", offer.price), color = Color.Red, fontWeight = FontWeight.Bold)
+                            ElevatedCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(offer.getBrochureUrl()))
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Konnte Prospekt nicht öffnen: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.elevatedCardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(
+                                            text = "${offer.title} ist aktuell bei ${offer.retailer} für ${String.format(Locale.GERMANY, "%.2f €", offer.price)} im Angebot!",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        FilledTonalButton(
+                                            onClick = {
+                                                try {
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(offer.getBrochureUrl()))
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "Konnte Prospekt nicht öffnen", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.padding(start = 6.dp)
+                                        ) {
+                                            Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(13.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Prospekt", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        }
                                     }
-                                    IconButton(onClick = {
-                                        fridgeViewModel.addToShoppingList(ShoppingItem(name = offer.title, priceEstimate = offer.price, store = offer.retailer))
-                                        Toast.makeText(context, "${offer.title} zur Liste hinzugefügt", Toast.LENGTH_SHORT).show()
-                                    }) {
-                                        Icon(Icons.Default.AddShoppingCart, "Auf die Liste")
+                                    Spacer(Modifier.height(8.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = when (offer.retailer.lowercase()) {
+                                                        "kaufland" -> Color(0xFFD32F2F)
+                                                        "lidl" -> Color(0xFF1976D2)
+                                                        "rewe" -> Color(0xFFC62828)
+                                                        "edeka" -> Color(0xFFFBC02D)
+                                                        "netto" -> Color(0xFFFF8F00)
+                                                        else -> fridgeViewModel.themeColor.value
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = offer.retailer,
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    text = String.format(Locale.GERMANY, "%.2f €", offer.price),
+                                                    color = Color(0xFF2E7D32),
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    style = MaterialTheme.typography.titleMedium
+                                                )
+                                            }
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                text = "📅 Gültig: ${offer.validityPeriod} • Prospekt öffnen ↗",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            fridgeViewModel.addToShoppingList(ShoppingItem(name = offer.title, priceEstimate = offer.price, store = offer.retailer))
+                                            Toast.makeText(context, "${offer.title} zur Einkaufsliste hinzugefügt", Toast.LENGTH_SHORT).show()
+                                        }) {
+                                            Icon(
+                                                Icons.Default.AddShoppingCart,
+                                                contentDescription = "Auf die Liste",
+                                                tint = fridgeViewModel.themeColor.value
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -509,7 +703,12 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { fridgeViewModel.showOfferAlert.value = false }) { Text("Schließen") }
+                    Button(
+                        onClick = { fridgeViewModel.showOfferAlert.value = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = fridgeViewModel.themeColor.value)
+                    ) {
+                        Text("Verstanden", color = Color.White)
+                    }
                 }
             )
         }
@@ -648,6 +847,22 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
     }
 }
 
+fun getCategoryVectorIcon(itemName: String, category: String): ImageVector {
+    val lower = itemName.lowercase()
+    val catLower = category.lowercase()
+    return when {
+        catLower.contains("tier") || lower.contains("katze") || lower.contains("hund") || lower.contains("perle") || lower.contains("tiernahrung") || lower.contains("whiskas") || lower.contains("felix") -> Icons.Outlined.Pets
+        catLower.contains("fleisch") || catLower.contains("wurst") || lower.contains("schinken") || lower.contains("salami") || lower.contains("wurst") || lower.contains("fleisch") || lower.contains("hack") || lower.contains("steak") -> Icons.Outlined.SetMeal
+        catLower.contains("milch") || catLower.contains("käse") || catLower.contains("kaese") || catLower.contains("molkerei") || lower.contains("käse") || lower.contains("joghurt") || lower.contains("butter") || lower.contains("quark") || lower.contains("schmand") || lower.contains("milch") -> Icons.Outlined.Egg
+        catLower.contains("feinkost") || lower.contains("salat") || lower.contains("dip") || lower.contains("aufstrich") || lower.contains("antipasti") || lower.contains("hummus") || lower.contains("tsatsiki") -> Icons.Outlined.Eco
+        catLower.contains("konserv") || catLower.contains("vorrat") || lower.contains("dose") || lower.contains("nudeln") || lower.contains("reis") || lower.contains("konserve") || lower.contains("bohnen") || lower.contains("mais") -> Icons.Outlined.Inventory2
+        catLower.contains("obst") || catLower.contains("gemüse") || lower.contains("apfel") || lower.contains("banane") || lower.contains("tomate") || lower.contains("gurke") || lower.contains("beeren") -> Icons.Outlined.Eco
+        catLower.contains("getränk") || lower.contains("wasser") || lower.contains("bier") || lower.contains("cola") || lower.contains("saft") || lower.contains("wein") -> Icons.Outlined.LocalDrink
+        catLower.contains("brot") || catLower.contains("back") || lower.contains("brot") || lower.contains("brötchen") || lower.contains("toast") -> Icons.Outlined.BakeryDining
+        else -> Icons.Outlined.ShoppingBag
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CorrectArticleDialog(
@@ -759,10 +974,10 @@ fun CorrectArticleDialog(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Default.Fastfood,
+                            imageVector = getCategoryVectorIcon(searchQuery, item.category),
                             contentDescription = searchQuery,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(36.dp)
                         )
                     }
                 }
@@ -831,7 +1046,41 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
             Button(onClick = { viewModel.confirmAndImport() }) { Text("Speichern") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Abbrechen") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = {
+                        val reportText = buildString {
+                            appendLine("🧾 Erkannte Artikel (${SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date())}):")
+                            appendLine("─────────────────")
+                            candidates.forEach {
+                                val unitPrice = if (it.quantity > 0) it.price / it.quantity else it.price
+                                val diffStr = if (it.lastPrice > 0.0) {
+                                    val d = unitPrice - it.lastPrice
+                                    if (d > 0.005) " [▲ +${String.format(Locale.GERMANY, "%.2f €", d)}]"
+                                    else if (d < -0.005) " [▼ ${String.format(Locale.GERMANY, "%.2f €", d)}]"
+                                    else ""
+                                } else ""
+                                appendLine("• ${it.quantity}x ${it.name} (${String.format(Locale.GERMANY, "%.2f €", it.price)})$diffStr")
+                            }
+                            appendLine("─────────────────")
+                            val total = candidates.sumOf { it.price * it.quantity }
+                            appendLine("Gesamt: ${String.format(Locale.GERMANY, "%.2f €", total)}")
+                        }
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, reportText)
+                            type = "text/plain"
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Einkauf teilen"))
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Einkauf teilen", fontSize = 12.sp)
+                }
+                TextButton(onClick = onDismiss) { Text("Abbrechen") }
+            }
         },
         text = {
             Column {
@@ -927,7 +1176,24 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
                                             }
                                         }
                                     }
-                                    Text("${candidate.quantity}x • ${String.format(Locale.GERMANY, "%.2f €", candidate.price)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${candidate.quantity}x • ${String.format(Locale.GERMANY, "%.2f €", candidate.price)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        if (candidate.lastPrice > 0.0) {
+                                            val currentUnit = if (candidate.quantity > 0) candidate.price / candidate.quantity else candidate.price
+                                            val diff = currentUnit - candidate.lastPrice
+                                            if (kotlin.math.abs(diff) >= 0.01) {
+                                                Spacer(Modifier.width(4.dp))
+                                                val isHigher = diff > 0
+                                                val diffText = if (isHigher) "▲ +${String.format(Locale.GERMANY, "%.2f €", diff)}" else "▼ ${String.format(Locale.GERMANY, "%.2f €", diff)}"
+                                                Text(
+                                                    text = diffText,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isHigher) Color(0xFFD32F2F) else Color(0xFF388E3C)
+                                                )
+                                            }
+                                        }
+                                    }
                                     val pDateStr = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(candidate.purchaseDate ?: System.currentTimeMillis()))
                                     Text("Kaufdatum: $pDateStr", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                     
@@ -1145,21 +1411,21 @@ fun TopBarWithSearch(
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Kitchen,
+                        imageVector = Icons.Default.Sensors,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(end = 6.dp)
                     )
                     Column {
                         Text(
-                            text = "Kühlschrank Profi 🍏",
+                            text = "FrischeRadar",
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "MHD & Vorrat",
+                            text = "Frische & Vorrat Tracker",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -1174,7 +1440,16 @@ fun TopBarWithSearch(
                 IconButton(onClick = { isSearchActive = true }) {
                     Icon(Icons.Default.Search, "Suchen")
                 }
-                IconButton(onClick = { showWatchlistDialog = true }) {
+                IconButton(
+                    onClick = onScanReceipt,
+                    modifier = Modifier.onGloballyPositioned { onPositioned("scan_btn", Rect(it.positionInRoot(), it.size.toSize())) }
+                ) {
+                    Icon(Icons.Default.ReceiptLong, "Kassenbon scannen")
+                }
+                IconButton(
+                    onClick = { showWatchlistDialog = true },
+                    modifier = Modifier.onGloballyPositioned { onPositioned("watchlist_btn", Rect(it.positionInRoot(), it.size.toSize())) }
+                ) {
                     Icon(Icons.Default.Favorite, "Watchlist")
                 }
                 IconButton(
@@ -1429,8 +1704,8 @@ fun ProductThumbnail(
     storageLocation: String,
     modifier: Modifier = Modifier
 ) {
-    val initial = remember(itemName) {
-        itemName.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?"
+    val vectorIcon = remember(itemName, category) {
+        getCategoryVectorIcon(itemName, category)
     }
 
     Surface(
@@ -1449,20 +1724,20 @@ fun ProductThumbnail(
                         CircularProgressIndicator(modifier = Modifier.padding(8.dp).size(16.dp), strokeWidth = 2.dp)
                     },
                     error = {
-                        Text(
-                            text = initial,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                        Icon(
+                            imageVector = vectorIcon,
+                            contentDescription = itemName,
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Default.Fastfood,
+                    imageVector = vectorIcon,
                     contentDescription = itemName,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(4.dp).fillMaxSize()
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
@@ -1492,17 +1767,16 @@ fun ModernFridgeItemCard(
     }
 
     var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
 
     val rightAction = viewModel.swipeRightAction.value
     val leftAction = viewModel.swipeLeftAction.value
-    val upAction = viewModel.swipeUpAction.value
-    val downAction = viewModel.swipeDownAction.value
 
     val (rightIcon, rightColor) = remember(rightAction) { getActionIconAndColor(rightAction) }
     val (leftIcon, leftColor) = remember(leftAction) { getActionIconAndColor(leftAction) }
-    val (upIcon, upColor) = remember(upAction) { getActionIconAndColor(upAction) }
-    val (downIcon, downColor) = remember(downAction) { getActionIconAndColor(downAction) }
+
+    val draggableState = rememberDraggableState { delta ->
+        offsetX += delta
+    }
 
     Box(
         modifier = Modifier
@@ -1510,43 +1784,18 @@ fun ModernFridgeItemCard(
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(viewModel.cardCornerRadius.intValue.dp))
     ) {
-        // Swipe Hintergrund & Symbol-Anzeige
-        if (offsetX != 0f || offsetY != 0f) {
-            val isHorizontal = abs(offsetX) > abs(offsetY)
-            
-            val isSwipingRight = isHorizontal && offsetX > 0f
-            val isSwipingLeft = isHorizontal && offsetX < 0f
-            val isSwipingDown = !isHorizontal && offsetY > 0f
-            val isSwipingUp = !isHorizontal && offsetY < 0f
+        // Swipe Hintergrund & Symbol-Anzeige (Horizontal für Karten-Aktionen)
+        if (offsetX != 0f) {
+            val isSwipingRight = offsetX > 0f
+            val isSwipingLeft = offsetX < 0f
 
-            val currentAction = when {
-                isSwipingRight -> rightAction
-                isSwipingLeft -> leftAction
-                isSwipingDown -> downAction
-                else -> upAction
-            }
-            val currentIcon = when {
-                isSwipingRight -> rightIcon
-                isSwipingLeft -> leftIcon
-                isSwipingDown -> downIcon
-                else -> upIcon
-            }
-            val currentColor = when {
-                isSwipingRight -> rightColor
-                isSwipingLeft -> leftColor
-                isSwipingDown -> downColor
-                else -> upColor
-            }
-            
-            val alignment = when {
-                isSwipingRight -> Alignment.CenterStart
-                isSwipingLeft -> Alignment.CenterEnd
-                isSwipingDown -> Alignment.TopCenter
-                else -> Alignment.BottomCenter
-            }
+            val currentAction = if (isSwipingRight) rightAction else leftAction
+            val currentIcon = if (isSwipingRight) rightIcon else leftIcon
+            val currentColor = if (isSwipingRight) rightColor else leftColor
+            val alignment = if (isSwipingRight) Alignment.CenterStart else Alignment.CenterEnd
 
-            val thresholdReached = if (isHorizontal) abs(offsetX) > 100f else abs(offsetY) > 100f
-            val alphaVal = (if (isHorizontal) abs(offsetX) else abs(offsetY) / 100f).coerceIn(0.3f, 1f)
+            val thresholdReached = abs(offsetX) > 100f
+            val alphaVal = (abs(offsetX) / 100f).coerceIn(0.3f, 1f)
 
             Box(
                 modifier = Modifier
@@ -1555,69 +1804,35 @@ fun ModernFridgeItemCard(
                     .padding(20.dp),
                 contentAlignment = alignment
             ) {
-                if (isHorizontal) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isSwipingLeft) {
-                            Text(
-                                text = currentAction,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.alpha(alphaVal)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Icon(
-                            imageVector = currentIcon,
-                            contentDescription = currentAction,
-                            tint = Color.White,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .scale(if (thresholdReached) 1.25f else 1.0f)
-                                .alpha(alphaVal)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isSwipingLeft) {
+                        Text(
+                            text = currentAction,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.alpha(alphaVal)
                         )
-                        if (isSwipingRight) {
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = currentAction,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.alpha(alphaVal)
-                            )
-                        }
+                        Spacer(Modifier.width(8.dp))
                     }
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (isSwipingUp) {
-                            Text(
-                                text = currentAction,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.alpha(alphaVal)
-                            )
-                            Spacer(Modifier.height(4.dp))
-                        }
-                        Icon(
-                            imageVector = currentIcon,
-                            contentDescription = currentAction,
-                            tint = Color.White,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .scale(if (thresholdReached) 1.25f else 1.0f)
-                                .alpha(alphaVal)
+                    Icon(
+                        imageVector = currentIcon,
+                        contentDescription = currentAction,
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .scale(if (thresholdReached) 1.25f else 1.0f)
+                            .alpha(alphaVal)
+                    )
+                    if (isSwipingRight) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = currentAction,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.alpha(alphaVal)
                         )
-                        if (isSwipingDown) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = currentAction,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.alpha(alphaVal)
-                            )
-                        }
                     }
                 }
             }
@@ -1628,34 +1843,19 @@ fun ModernFridgeItemCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize()
-                .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (abs(offsetX) > abs(offsetY)) {
-                                if (offsetX > 100f) {
-                                    executeCardAction(rightAction, item, viewModel, onEdit)
-                                } else if (offsetX < -100f) {
-                                    executeCardAction(leftAction, item, viewModel, onEdit)
-                                }
-                            } else {
-                                if (offsetY > 100f) {
-                                    executeCardAction(downAction, item, viewModel, onEdit)
-                                } else if (offsetY < -100f) {
-                                    executeCardAction(upAction, item, viewModel, onEdit)
-                                }
-                            }
-                            offsetX = 0f
-                            offsetY = 0f
-                        },
-                        onDragCancel = { offsetX = 0f; offsetY = 0f },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            offsetX += dragAmount
-                            offsetY += change.positionChange().y
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .draggable(
+                    state = draggableState,
+                    orientation = Orientation.Horizontal,
+                    onDragStopped = {
+                        if (offsetX > 100f) {
+                            executeCardAction(rightAction, item, viewModel, onEdit)
+                        } else if (offsetX < -100f) {
+                            executeCardAction(leftAction, item, viewModel, onEdit)
                         }
-                    )
-                }
+                        offsetX = 0f
+                    }
+                )
                 .combinedClickable(onClick = onEdit, onLongClick = onLongClick),
             shape = RoundedCornerShape(viewModel.cardCornerRadius.intValue.dp),
             colors = CardDefaults.elevatedCardColors(
@@ -1794,26 +1994,134 @@ fun ModernFridgeItemCard(
                         )
                         Spacer(Modifier.width(4.dp))
                     }
-                    if (item.isFavorite) {
+                    IconButton(
+                        onClick = { viewModel.toggleFavorite(item) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
                         Icon(
                             imageVector = getFavoriteIconVector(viewModel.favoriteIconName.value),
-                            contentDescription = "Favorit",
-                            tint = viewModel.favoriteIconColor.value,
+                            contentDescription = if (item.isFavorite) "Favorit entfernen" else "Als Favorit markieren",
+                            tint = if (item.isFavorite) viewModel.favoriteIconColor.value else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(Modifier.width(4.dp))
                     }
+                    Spacer(Modifier.width(4.dp))
                     Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                         Text(text = "${item.quantity} ${item.unit}", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (item.price > 0.0) {
-                    Text(text = String.format(Locale.GERMANY, "%.2f €", item.price), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = String.format(Locale.GERMANY, "%.2f €", item.price), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        if (item.lastPrice > 0.0) {
+                            val currentUnit = if (item.quantity > 0) item.price / item.quantity else item.price
+                            val diff = currentUnit - item.lastPrice
+                            if (kotlin.math.abs(diff) >= 0.01) {
+                                Spacer(modifier = Modifier.width(3.dp))
+                                val isHigher = diff > 0
+                                Text(
+                                    text = if (isHigher) "▲+${String.format(Locale.GERMANY, "%.2f", diff)}" else "▼${String.format(Locale.GERMANY, "%.2f", diff)}",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isHigher) Color(0xFFD32F2F) else Color(0xFF388E3C)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
+}
+
+@Composable
+fun QuickActionDragHandle(
+    onSwipeUp: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val viewConfig = remember { ViewConfiguration.get(context) }
+    val touchSlop = remember { viewConfig.scaledTouchSlop.toFloat() }
+    val minFlingVelocity = remember { viewConfig.scaledMinimumFlingVelocity.toFloat() }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val velocityTracker = VelocityTracker()
+                    velocityTracker.addPosition(down.uptimeMillis, down.position)
+                    var totalDragY = 0f
+                    var isDrag = false
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        val deltaY = change.position.y - change.previousPosition.y
+                        totalDragY += deltaY
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                        if (!isDrag && abs(totalDragY) > touchSlop) {
+                            isDrag = true
+                        }
+
+                        if (change.changedToUp()) {
+                            val velocity = velocityTracker.calculateVelocity()
+                            val vy = velocity.y
+                            if (totalDragY < -touchSlop && (vy < -minFlingVelocity || abs(totalDragY) > touchSlop * 1.5f)) {
+                                onSwipeUp()
+                            } else if (!isDrag && abs(totalDragY) < touchSlop) {
+                                onClick()
+                            }
+                            break
+                        }
+                    }
+                }
+            },
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shadowElevation = 4.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(36.dp)
+                    .height(4.dp)
+                    .background(
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        CircleShape
+                    )
+            )
+            Spacer(Modifier.height(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "Schnellmenü ▲",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1849,7 +2157,6 @@ fun FabActionBottomSheet(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ItemModalBottomSheet(
     item: FridgeItem?,
@@ -1857,91 +2164,29 @@ fun ItemModalBottomSheet(
     onDismiss: () -> Unit,
     onConfirm: (FridgeItem) -> Unit
 ) {
-    var name by remember { mutableStateOf(item?.name ?: "") }
-    var quantity by remember { mutableIntStateOf(item?.quantity ?: 1) }
-    var unit by remember { mutableStateOf(item?.unit ?: "Stk.") }
-    var location by remember { mutableStateOf(item?.storageLocation ?: "Kühlschrank") }
-    var drawer by remember { mutableIntStateOf(item?.freezerDrawer ?: 0) }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(if (item == null) "Neuer Artikel" else "Artikel bearbeiten", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                ProductThumbnail(
-                    imageUrl = item?.imageUrl,
-                    category = item?.category ?: "SONSTIGES",
-                    itemName = name.ifBlank { "Artikel" },
-                    storageLocation = location,
-                    modifier = Modifier.size(90.dp)
-                )
+    val context = androidx.compose.ui.platform.LocalContext.current
+    DisposableEffect(item) {
+        val activity = context as? androidx.fragment.app.FragmentActivity
+        val dialog = EditItemBottomSheetDialogFragment(
+            item = item,
+            viewModel = viewModel,
+            onDismissCallback = onDismiss,
+            onConfirmCallback = onConfirm
+        )
+        if (activity != null) {
+            val existing = activity.supportFragmentManager.findFragmentByTag(EditItemBottomSheetDialogFragment.TAG)
+            if (existing == null) {
+                dialog.show(activity.supportFragmentManager, EditItemBottomSheetDialogFragment.TAG)
             }
-            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                QuantityStepper(quantity) { quantity = it }
-                UnitSelector(unit) { unit = it }
+        }
+        onDispose {
+            if (dialog.isAdded) {
+                dialog.dismissAllowingStateLoss()
             }
-            LocationTileSelector(location) { location = it }
-            if (location == "Gefrierfach") {
-                Text("Gefrierfach", fontWeight = FontWeight.SemiBold)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(listOf(1 to "Fach 1", 2 to "Fach 2", 3 to "Fach 3", 4 to "Fach 4")) { (idx, title) ->
-                        FilterChip(
-                            selected = (drawer == idx),
-                            onClick = { drawer = idx },
-                            label = { Text(title) },
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-                }
-            }
-            if (item != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { viewModel.consumeItem(item); onDismiss() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("Verbraucht") }
-                    Button(onClick = { viewModel.markAsOpened(item); onDismiss() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57C00))) { Text("Offen") }
-                    Button(onClick = { viewModel.wasteItem(item); onDismiss() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) { Text("Müll") }
-                    IconButton(onClick = { viewModel.removeItem(item); onDismiss() }, modifier = Modifier.background(MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(8.dp))) {
-                        Icon(Icons.Default.DeleteForever, "Komplett löschen", tint = MaterialTheme.colorScheme.onErrorContainer)
-                    }
-                }
-                OutlinedButton(
-                    onClick = { viewModel.enrichItemManually(item); onDismiss() },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Bilder & Infos online suchen")
-                }
-            }
-            Button(
-                onClick = {
-                    val updatedItem = (item ?: FridgeItem(name = name)).copy(
-                        name = name,
-                        quantity = quantity,
-                        unit = unit,
-                        storageLocation = location,
-                        freezerDrawer = if (location == "Gefrierfach") drawer else 0
-                    )
-                    if (item != null) {
-                        viewModel.teachItemCorrection(item, newName = name, newLocation = location, newUnit = unit)
-                    }
-                    onConfirm(updatedItem)
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) { Text("Speichern") }
         }
     }
 }
+
 
 @Composable
 fun QuantityStepper(value: Int, onValueChange: (Int) -> Unit) {
@@ -1989,10 +2234,19 @@ fun LocationTile(label: String, icon: ImageVector, isSelected: Boolean, modifier
         shape = RoundedCornerShape(12.dp),
         color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     ) {
-        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Icon(icon, null, tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
-            Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                softWrap = false
+            )
         }
     }
 }
@@ -2588,6 +2842,13 @@ fun SettingsDialog(
     var tempSwipeRight by remember { mutableStateOf(viewModel.swipeRightAction.value) }
     var tempSwipeUp by remember { mutableStateOf(viewModel.swipeUpAction.value) }
     var tempSwipeDown by remember { mutableStateOf(viewModel.swipeDownAction.value) }
+    var tempShareCorrections by remember { mutableStateOf(viewModel.shareCorrectionsEnabled.value) }
+    var tempUseGeminiNano by remember { mutableStateOf(viewModel.useGeminiNano.value) }
+    val isGeminiNanoSupported by viewModel.isGeminiNanoSupported.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.updatePendingCorrectionsCount()
+    }
 
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.restoreBackup(context, it) }
@@ -2627,9 +2888,9 @@ fun SettingsDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Settings, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Einstellungen", fontWeight = FontWeight.Bold)
+                Icon(Icons.Outlined.Settings, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Einstellungen", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
             }
         },
         confirmButton = {
@@ -2647,6 +2908,8 @@ fun SettingsDialog(
                 viewModel.setSwipeRightAction(tempSwipeRight)
                 viewModel.setSwipeUpAction(tempSwipeUp)
                 viewModel.setSwipeDownAction(tempSwipeDown)
+                viewModel.setShareCorrectionsEnabled(tempShareCorrections)
+                viewModel.setUseGeminiNano(tempUseGeminiNano)
                 onDismiss()
             }) { Text("Speichern") }
         },
@@ -2655,14 +2918,19 @@ fun SettingsDialog(
         },
         text = {
             LazyColumn(
-                modifier = Modifier.heightIn(max = 420.dp),
+                modifier = Modifier.heightIn(max = 480.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Section 1: Design & Farben
+                // Sektion 1: Erscheinungsbild
                 item {
-                    Text("Design & Akzentfarben", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Hauptfarbe wählen:", style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Palette, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("1. Erscheinungsbild", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    Text("Akzentfarbe:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
                         themeColorPalette.forEach { color ->
                             Box(
@@ -2679,25 +2947,23 @@ fun SettingsDialog(
                             )
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text("Karten Abrundung: ${tempCornerRadius}dp", style = MaterialTheme.typography.bodySmall)
+
+                    Spacer(Modifier.height(8.dp))
+                    Text("Karten-Abrundung: ${tempCornerRadius} dp", style = MaterialTheme.typography.bodySmall)
                     Slider(
                         value = tempCornerRadius.toFloat(),
                         onValueChange = { tempCornerRadius = it.toInt() },
                         valueRange = 4f..24f
                     )
+
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("Kompaktmodus aktivieren", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                         Switch(checked = tempCompactMode, onCheckedChange = { tempCompactMode = it })
                     }
-                }
 
-                // Section 2: Dynamische Favoriten-Symbole (15 Icons)
-                item {
-                    HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Text("Favoriten-Symbol (15 Optionen)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(6.dp))
+                    Text("Favoriten-Symbol (15 Optionen):", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(fifteenIcons) { (iconKey, vector) ->
                             val isSelected = (tempFavoriteIconName == iconKey)
@@ -2717,8 +2983,9 @@ fun SettingsDialog(
                             }
                         }
                     }
+
                     Spacer(Modifier.height(6.dp))
-                    Text("Symbolfarbe wählen:", style = MaterialTheme.typography.bodySmall)
+                    Text("Symbolfarbe:", style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
                         favoriteIconPalette.forEach { color ->
                             Box(
@@ -2735,14 +3002,10 @@ fun SettingsDialog(
                             )
                         }
                     }
-                }
 
-                // Section: App-Icon Wahl (20 verschiedene Themes & Icons)
-                item {
-                    HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Text("App-Icon (20 Varianten)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(6.dp))
+                    Text("App-Icon Design (20 Varianten):", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
 
                     val iconTints = listOf(
                         Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFFE53935), Color(0xFF9C27B0),
@@ -2751,7 +3014,6 @@ fun SettingsDialog(
                         Color(0xFFFF5722), Color(0xFF795548), Color(0xFF607D8B), Color(0xFF00E676),
                         Color(0xFFFF1744), Color(0xFF651FFF), Color(0xFF00E5FF), Color(0xFFFFC400)
                     )
-
                     val iconNames = listOf(
                         "Classic", "Ocean Blue", "Ruby Red", "Neon Purple",
                         "Sunset Gold", "Emerald", "Amber", "Pink Blossom",
@@ -2784,9 +3046,7 @@ fun SettingsDialog(
                                         color = tintColor,
                                         shape = RoundedCornerShape(12.dp)
                                     )
-                                    .clickable {
-                                        tempAppIconIndex = index
-                                    }
+                                    .clickable { tempAppIconIndex = index }
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -2795,21 +3055,21 @@ fun SettingsDialog(
                                     Box(
                                         contentAlignment = Alignment.Center,
                                         modifier = Modifier
-                                            .size(44.dp)
+                                            .size(40.dp)
                                             .clip(CircleShape)
                                     ) {
                                         if (resId != 0) {
                                             Image(
                                                 painter = painterResource(id = resId),
                                                 contentDescription = iconName,
-                                                modifier = Modifier.size(36.dp)
+                                                modifier = Modifier.size(32.dp)
                                             )
                                         } else {
                                             Icon(
                                                 imageVector = Icons.Default.Kitchen,
                                                 contentDescription = iconName,
                                                 tint = tintColor,
-                                                modifier = Modifier.size(28.dp)
+                                                modifier = Modifier.size(26.dp)
                                             )
                                         }
                                     }
@@ -2826,12 +3086,151 @@ fun SettingsDialog(
                     }
                 }
 
-                // Section 3: Wischgesten & Aktionen
+                // Sektion 2: Kassenbon & Community
                 item {
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Text("Wischgesten & Aktionen", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.DocumentScanner, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("2. Kassenbon & Community", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Lokale On-Device-KI (Gemini Nano)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isGeminiNanoSupported) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    )
+                                    if (!isGeminiNanoSupported) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            "Auf diesem Gerät nicht verfügbar (erfordert Android 14+ mit AICore-Unterstützung, z. B. Pixel 8+, Galaxy S24+)",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = if (isGeminiNanoSupported) tempUseGeminiNano else false,
+                                    onCheckedChange = { tempUseGeminiNano = it },
+                                    enabled = isGeminiNanoSupported
+                                )
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Erkennung automatisch verbessern",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        "Anonyme Belegkorrekturen teilen, um das Beleg-Lernen dauerhaft zu verbessern",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = tempShareCorrections,
+                                    onCheckedChange = { tempShareCorrections = it }
+                                )
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CloudDone, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Synchronisiert: ${viewModel.syncedCorrectionsCount.intValue}", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Schedule, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Warteschlange: ${viewModel.pendingCorrectionsCount.intValue}", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.syncPendingCorrections() },
+                                    enabled = !viewModel.isSyncingCorrections.value,
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    if (viewModel.isSyncingCorrections.value) {
+                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Sync...", fontSize = 11.sp)
+                                    } else {
+                                        Icon(Icons.Outlined.Sync, null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Sofort-Sync", fontSize = 11.sp, maxLines = 1)
+                                    }
+                                }
+
+                                OutlinedButton(
+                                    onClick = { viewModel.exportCorrectionsJson(context) },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Outlined.FileDownload, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Export (.json)", fontSize = 11.sp, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Sektion 3: Benachrichtigungen & Haushalt
+                item {
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Notifications, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("3. Benachrichtigungen & Haushalt", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    Text("MHD-Vorwarnung: ab $tempExpiryDays Tage vor Ablauf", style = MaterialTheme.typography.bodySmall)
+                    Slider(
+                        value = tempExpiryDays.toFloat(),
+                        onValueChange = { tempExpiryDays = it.toInt() },
+                        valueRange = 1f..14f
+                    )
+
+                    Text("Haushaltsgröße: $tempHouseholdSize Personen", style = MaterialTheme.typography.bodySmall)
+                    Slider(
+                        value = tempHouseholdSize.toFloat(),
+                        onValueChange = { tempHouseholdSize = it.toInt() },
+                        valueRange = 1f..10f
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+                    Text("Wischgesten & Aktionen:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(4.dp))
+
                     var expLeft by remember { mutableStateOf(false) }
                     var expRight by remember { mutableStateOf(false) }
                     var expUp by remember { mutableStateOf(false) }
@@ -2839,7 +3238,7 @@ fun SettingsDialog(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Wischen Links ⬅️", style = MaterialTheme.typography.bodySmall)
+                            Text("Wischen Links", style = MaterialTheme.typography.bodySmall)
                             Box {
                                 OutlinedButton(onClick = { expLeft = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(tempSwipeLeft, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2852,7 +3251,7 @@ fun SettingsDialog(
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Wischen nach rechts", style = MaterialTheme.typography.bodySmall)
+                            Text("Wischen Rechts", style = MaterialTheme.typography.bodySmall)
                             Box {
                                 OutlinedButton(onClick = { expRight = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(tempSwipeRight, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2865,10 +3264,10 @@ fun SettingsDialog(
                             }
                         }
                     }
-                    
+
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Wischen nach oben", style = MaterialTheme.typography.bodySmall)
+                            Text("Wischen Oben", style = MaterialTheme.typography.bodySmall)
                             Box {
                                 OutlinedButton(onClick = { expUp = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(tempSwipeUp, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2881,7 +3280,7 @@ fun SettingsDialog(
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Wischen nach unten", style = MaterialTheme.typography.bodySmall)
+                            Text("Wischen Unten", style = MaterialTheme.typography.bodySmall)
                             Box {
                                 OutlinedButton(onClick = { expDown = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(tempSwipeDown, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2896,93 +3295,42 @@ fun SettingsDialog(
                     }
                 }
 
-                // Section 4: Warnung & Profil
+                // Sektion 4: Daten, Support & System
                 item {
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Text("Warnungen & Haushalt", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    Text("MHD-Warnung ab $tempExpiryDays Tage vor Ablauf", style = MaterialTheme.typography.bodySmall)
-                    Slider(
-                        value = tempExpiryDays.toFloat(),
-                        onValueChange = { tempExpiryDays = it.toInt() },
-                        valueRange = 1f..14f
-                    )
-                    Text("Haushaltsgröße: $tempHouseholdSize Personen", style = MaterialTheme.typography.bodySmall)
-                    Slider(
-                        value = tempHouseholdSize.toFloat(),
-                        onValueChange = { tempHouseholdSize = it.toInt() },
-                        valueRange = 1f..10f
-                    )
-                }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Storage, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("4. Daten, Support & Export", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    }
+                    Spacer(Modifier.height(8.dp))
 
-                    // Section 5: Daten-Backup & Verwaltung
-                item {
-                    HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
-                    Text("Daten-Backup & PC-Modus", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(8.dp))
-                    
                     var showWebCompanion by remember { mutableStateOf(false) }
                     if (showWebCompanion) {
                         WebCompanionDialog(viewModel = viewModel, onDismiss = { showWebCompanion = false })
                     }
 
-                    Button(
+                    OutlinedButton(
                         onClick = { showWebCompanion = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Computer, null)
+                        Icon(Icons.Default.Computer, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Mit PC verbinden (WLAN-Modus)", fontWeight = FontWeight.Bold)
+                        Text("Mit PC verbinden (WLAN-Modus)", fontWeight = FontWeight.SemiBold)
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.exportBackup(context) }, modifier = Modifier.weight(1f)) { Text("Backup erstellen") }
-                        Button(onClick = { restoreLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) { Text("Backup laden") }
+                        Button(onClick = { viewModel.exportBackup(context) }, modifier = Modifier.weight(1f)) {
+                            Text("Backup sichern", fontSize = 12.sp, maxLines = 1)
+                        }
+                        OutlinedButton(onClick = { restoreLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
+                            Text("Backup laden", fontSize = 12.sp, maxLines = 1)
+                        }
                     }
 
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { viewModel.clearInventory() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.fillMaxWidth()
-                    ) { 
-                        Text("Alle Artikel löschen (Temp)", fontWeight = FontWeight.Bold) 
-                    }
-                }
-
-                // Section 6: Rechtliches & Richtlinien
-                item {
-                    HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
-                    Text("Rechtliches & Richtlinien", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com/privacy-policy"))
-                        context.startActivity(intent)
-                    }) {
-                        Icon(Icons.Default.Lock, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Datenschutzerklärung (Privacy Policy)")
-                    }
-                    TextButton(onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com/terms"))
-                        context.startActivity(intent)
-                    }) {
-                        Icon(Icons.Default.Gavel, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Nutzungsbedingungen (Terms of Use)")
-                    }
-                }
-
-                // Section 7: Hilfe & Support
-                item {
-                    HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
-                    Text("Hilfe & Support", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = {
@@ -3006,6 +3354,34 @@ fun SettingsDialog(
                             Spacer(Modifier.width(4.dp))
                             Text("Tour starten", fontSize = 11.sp, maxLines = 1)
                         }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        TextButton(onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com/privacy-policy"))
+                            context.startActivity(intent)
+                        }) {
+                            Text("Datenschutz", fontSize = 11.sp)
+                        }
+                        TextButton(onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com/terms"))
+                            context.startActivity(intent)
+                        }) {
+                            Text("Nutzungsbedingungen", fontSize = 11.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    Button(
+                        onClick = { viewModel.clearInventory() },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Alle Artikel löschen", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 }
             }
@@ -3052,7 +3428,10 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
         onDismissRequest = onDismiss,
         title = { Text(item.name, fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     ProductThumbnail(
                         imageUrl = item.imageUrl,
@@ -3100,31 +3479,34 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
                     Button(
                         onClick = { viewModel.consumeItem(item); onDismiss() },
                         modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                     ) {
                         Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Verbraucht", fontSize = 11.sp)
+                        Spacer(Modifier.width(2.dp))
+                        Text("Verbraucht", fontSize = 11.sp, maxLines = 1, softWrap = false)
                     }
 
                     Button(
                         onClick = { viewModel.markAsOpened(item); onDismiss() },
                         modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57C00))
                     ) {
                         Icon(Icons.Default.Schedule, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Offen", fontSize = 11.sp)
+                        Spacer(Modifier.width(2.dp))
+                        Text("Offen", fontSize = 11.sp, maxLines = 1, softWrap = false)
                     }
 
                     Button(
                         onClick = { viewModel.wasteItem(item); onDismiss() },
                         modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
                     ) {
                         Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Müll", fontSize = 11.sp)
+                        Spacer(Modifier.width(2.dp))
+                        Text("Müll", fontSize = 11.sp, maxLines = 1, softWrap = false)
                     }
                 }
                 
@@ -3152,8 +3534,9 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
                         modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
                     ) {
                         purchaseHistory.take(5).forEach { entry ->
+                            val displayStore = if (entry.storeName.isBlank() || entry.storeName == "Supermarkt") "Kaufland" else entry.storeName
                             Text(
-                                text = "• ${entry.purchaseDate} – ${entry.storeName} – ${String.format(Locale.GERMANY, "%.2f €", entry.price)}",
+                                text = "• ${entry.purchaseDate} – $displayStore – ${String.format(Locale.GERMANY, "%.2f €", entry.price)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

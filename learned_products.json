@@ -1,0 +1,14 @@
+[
+  {
+    "id": "3eb0967f-626c-4407-bdc3-e537a6e0e284",
+    "rawName": "GUT BIO MILCH",
+    "name": "Bio Vollmilch",
+    "unit": "L",
+    "category": "Milchprodukte",
+    "storageLocation": "Kühlschrank",
+    "supermarket": "ALDI",
+    "createdAt": "2026-10-12T17:32:04.531913",
+    "updatedAt": "2026-10-12T17:32:04.531913",
+    "count": 1
+  }
+]

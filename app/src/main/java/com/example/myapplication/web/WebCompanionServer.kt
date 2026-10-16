@@ -12,15 +12,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.InetAddress
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Random
@@ -241,8 +238,8 @@ object WebCompanionServer {
                 method == "GET" && path == "/manifest.json" -> {
                     val manifest = """
                         {
-                          "name": "Kühlschrank Profi 🍏 PC-Begleiter",
-                          "short_name": "Kühlschrank Profi",
+                          "name": "FrischeRadar PC-Begleiter",
+                          "short_name": "FrischeRadar",
                           "start_url": "/",
                           "display": "standalone",
                           "background_color": "#2e7d32",
@@ -463,7 +460,7 @@ object WebCompanionServer {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <link rel="manifest" href="/manifest.json">
-                <title>Kühlschrank Profi 🍏 PC-Begleiter</title>
+                <title>FrischeRadar PC-Begleiter</title>
                 <style>
                     :root { --primary: #2e7d32; --bg: #f5f5f5; --card: #ffffff; --text: #212121; }
                     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: var(--bg); color: var(--text); }
@@ -499,7 +496,7 @@ object WebCompanionServer {
             <body>
                 <header>
                     <div>
-                        <h1>🍏 Kühlschrank Profi PC-Begleiter</h1>
+                        <h1>FrischeRadar PC-Begleiter</h1>
                         <span id="connection-status" style="font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px;">🟡 Verbindung wird hergestellt...</span>
                     </div>
                     <nav>

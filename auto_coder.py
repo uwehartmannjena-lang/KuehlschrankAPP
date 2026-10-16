@@ -16,7 +16,9 @@ except Exception:
 # ==========================================
 # 1. EINSTELLUNGEN & API-KEY
 # ==========================================
-API_KEY = "AQ.Ab8RN6JMrG58SZYH26xAGyDq1-F7WnZdvc5JszAuG5d0OxEwVA"
+from dotenv import load_dotenv
+load_dotenv()
+API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 def projekt_pfad(*teile):

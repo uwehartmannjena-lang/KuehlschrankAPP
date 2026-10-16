@@ -1,0 +1,29 @@
+{
+  "netto_02.10.2026_18:20_3.78": {
+    "receiptKey": "netto_02.10.2026_18:20_3.78",
+    "supermarket": "Netto",
+    "purchaseDate": "02.10.2026",
+    "purchaseTime": "18:20",
+    "receiptTotal": 3.78,
+    "itemCount": 1,
+    "qualityScore": 15.0,
+    "itemIds": [
+      "test-1",
+      "test-2"
+    ],
+    "timestamp": "2026-10-09T22:00:00"
+  },
+  "rewe_09.10.2026": {
+    "receiptKey": "rewe_09.10.2026",
+    "supermarket": "Rewe",
+    "purchaseDate": "09.10.2026",
+    "purchaseTime": "",
+    "receiptTotal": null,
+    "itemCount": 1,
+    "qualityScore": 29.0,
+    "itemIds": [
+      "e648b0e4-aa5a-45df-8743-e16af29d9cdb"
+    ],
+    "timestamp": "2026-10-09T22:15:48.433762"
+  }
+}

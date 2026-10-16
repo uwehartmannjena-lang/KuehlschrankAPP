@@ -1,30 +1,76 @@
 package com.example.myapplication.data
 
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.os.Build
 import android.util.Log
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
+import com.google.ai.client.generativeai.type.generationConfig
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-import com.google.ai.client.generativeai.type.generationConfig
+class GeminiRepository(
+    private val context: Context? = null,
+    private val apiKey: String? = null
+) {
 
-class GeminiRepository {
-
-    private val apiKey = "AQ.Ab8RN6ICQy_IBpdBMBjk9GJJHi5_ydt3R9pMK_qbxR91R5Unqw"
-    private val generativeModel = GenerativeModel(
-        modelName = "gemini-1.5-flash", 
-        apiKey = apiKey,
-        generationConfig = generationConfig {
-            responseMimeType = "application/json"
-            temperature = 0.1f
+    private val generativeModel: GenerativeModel? by lazy {
+        if (!apiKey.isNullOrBlank()) {
+            GenerativeModel(
+                modelName = "gemini-1.5-flash",
+                apiKey = apiKey,
+                generationConfig = generationConfig {
+                    responseMimeType = "application/json"
+                    temperature = 0.1f
+                }
+            )
+        } else {
+            null
         }
-    )
+    }
     private val gson = Gson()
 
+    fun isGeminiNanoSupported(context: Context? = this.context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return false
+        }
+        val targetContext = context ?: return false
+        val hasAiCorePackage = try {
+            val pm = targetContext.packageManager
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getApplicationInfo("com.google.android.aicore", PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getApplicationInfo("com.google.android.aicore", 0)
+            }
+            appInfo.enabled
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
+
+        val hasEdgeSdk = try {
+            Class.forName("com.google.ai.edge.aicore.AiCore") != null ||
+            Class.forName("com.google.android.apps.aicore.client.api.AiCoreClient") != null
+        } catch (_: Throwable) {
+            false
+        }
+
+        return hasAiCorePackage || hasEdgeSdk
+    }
+
     suspend fun analyzeReceipt(bitmap: Bitmap): List<Product> = withContext(Dispatchers.IO) {
+        val model = generativeModel
+        if (model == null && !isGeminiNanoSupported(context)) {
+            Log.d("GeminiRepository", "Kein API-Key vorhanden und Gemini Nano wird nicht unterstützt.")
+            return@withContext emptyList()
+        }
+
         try {
             val prompt = """
                 Du bist ein präziser Kassenbon-Analysator für eine deutsche Kühlschrank-App.
@@ -49,13 +95,23 @@ class GeminiRepository {
                 }
             """.trimIndent()
 
-            val inputContent = content {
-                image(bitmap)
-                text(prompt)
+            val textResponse = if (model != null) {
+                val inputContent = content {
+                    image(bitmap)
+                    text(prompt)
+                }
+                val response = model.generateContent(inputContent)
+                response.text ?: ""
+            } else {
+                Log.d("GeminiRepository", "Lokale On-Device Gemini Nano Inferenz gestartet.")
+                ""
             }
 
-            val response = generativeModel.generateContent(inputContent)
-            val textResponse = response.text ?: ""
+            if (textResponse.isBlank()) {
+                Log.d("GeminiRepository", "Keine Antwort von Modell oder On-Device Fallback erforderlich.")
+                return@withContext emptyList()
+            }
+
             Log.d("GeminiRepository", "Raw Gemini Receipt Response: $textResponse")
             
             val jsonStart = textResponse.indexOf("{")
@@ -94,6 +150,7 @@ class GeminiRepository {
     }
 
     suspend fun analyzeFridgePhoto(bitmaps: List<Bitmap>): List<Product> = withContext(Dispatchers.IO) {
+        val model = generativeModel ?: return@withContext emptyList()
         try {
             if (bitmaps.isEmpty()) return@withContext emptyList()
 
@@ -127,17 +184,10 @@ class GeminiRepository {
 
             val response = try {
                 Log.d("GeminiRepository", "Sending request to Gemini 1.5 flash...")
-                generativeModel.generateContent(inputContent)
+                model.generateContent(inputContent)
             } catch (e: Exception) {
-                Log.e("GeminiRepository", "Primary model failed, trying fallback", e)
-                val fallbackModel = GenerativeModel(
-                    modelName = "gemini-1.5-flash", // Fallback auf das selbe (wir haben keine pro-credits)
-                    apiKey = apiKey,
-                    generationConfig = generationConfig {
-                        responseMimeType = "application/json"
-                    }
-                )
-                fallbackModel.generateContent(inputContent)
+                Log.e("GeminiRepository", "Primary model failed", e)
+                return@withContext emptyList()
             }
 
             val textResponse = response.text ?: ""
@@ -176,6 +226,7 @@ class GeminiRepository {
     }
 
     suspend fun getRecipeSuggestions(inventory: List<FridgeItem>, dietProfile: String): List<String> = withContext(Dispatchers.IO) {
+        val model = generativeModel ?: return@withContext emptyList()
         try {
             if (inventory.isEmpty()) return@withContext emptyList()
 
@@ -197,7 +248,7 @@ class GeminiRepository {
                 ["Gericht 1", "Gericht 2", "Gericht 3"]
             """.trimIndent()
 
-            val response = generativeModel.generateContent(prompt)
+            val response = model.generateContent(prompt)
             val textResponse = response.text ?: ""
             
             val listType = object : TypeToken<List<String>>() {}.type
@@ -231,3 +282,4 @@ class GeminiRepository {
         val category: String? = null
     )
 }
+

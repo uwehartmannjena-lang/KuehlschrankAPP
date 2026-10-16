@@ -1,0 +1,112 @@
+[
+  {
+    "id": "5ea5c161-b3a0-4730-88e7-452eb58a0054",
+    "name": "DENTAGARD ZAHNCREME",
+    "rawName": "DENTAGARD ZAHNCREME       0,99 A",
+    "price": 0.99,
+    "quantity": 1,
+    "purchaseDate": "04.10.2026",
+    "supermarket": "Edeka",
+    "category": "Drogerie & Hygiene",
+    "archivedAt": "2026-10-11T09:13:27.098714"
+  },
+  {
+    "id": "d5fa395f-dadb-4fcd-93e0-b8e2799fa6ba",
+    "name": "FIT GSM SPÜLMITTEL",
+    "rawName": "FIT GSM SPÜLMITTEL        1,29 A",
+    "price": 1.29,
+    "quantity": 1,
+    "purchaseDate": "04.10.2026",
+    "supermarket": "Edeka",
+    "category": "Drogerie & Hygiene",
+    "archivedAt": "2026-10-11T09:13:27.103717"
+  },
+  {
+    "id": "4356d1ea-7037-4555-b528-8c710fa313c9",
+    "name": "KUSCHELWEICH WEICHSP",
+    "rawName": "KUSCHELWEICH WEICHSP.     1,79 A",
+    "price": 1.79,
+    "quantity": 1,
+    "purchaseDate": "04.10.2026",
+    "supermarket": "Edeka",
+    "category": "Non-Food",
+    "archivedAt": "2026-10-11T09:13:27.106717"
+  },
+  {
+    "id": "3ae5bc00-b765-4c06-9f8a-2f113e5ee0dd",
+    "name": "MEXX RETROSHORTS ER",
+    "rawName": "MEXX RETROSHORTS 2ER     14,99 A",
+    "price": 14.99,
+    "quantity": 1,
+    "purchaseDate": "04.10.2026",
+    "supermarket": "Edeka",
+    "category": "Non-Food",
+    "archivedAt": "2026-10-11T09:13:27.110715"
+  },
+  {
+    "id": "2157ab3b-4330-46fd-93a5-914597ed3b55",
+    "name": "GL Creme Fraiche Natur g",
+    "rawName": "GL Creme Fraiche Natur 200g 0,89",
+    "price": 0.89,
+    "quantity": 1,
+    "purchaseDate": "16.08.2025",
+    "supermarket": "Netto",
+    "category": "Drogerie & Hygiene",
+    "archivedAt": "2026-10-11T09:14:30.534229"
+  },
+  {
+    "id": "acb27e94-1d74-437d-b820-e5be8cd8847b",
+    "name": "Mexx Retroshorts sortST",
+    "rawName": "Mexx Retroshorts sort.3ST 12,99",
+    "price": 12.99,
+    "quantity": 1,
+    "purchaseDate": "16.08.2025",
+    "supermarket": "Netto",
+    "category": "Non-Food",
+    "archivedAt": "2026-10-11T09:14:30.551766"
+  },
+  {
+    "id": "1d80eaa8-fec4-4d26-900d-0ad27cc1c530",
+    "name": "TEFAL BRATPFANNE CM",
+    "rawName": "TEFAL BRATPFANNE 28CM       19,99 A",
+    "price": 19.99,
+    "quantity": 1,
+    "purchaseDate": "10.10.2026",
+    "supermarket": "Kaufland",
+    "category": "Küchenartikel",
+    "archivedAt": "2026-10-11T09:22:06.107492"
+  },
+  {
+    "id": "ad039940-0409-447e-9d8c-54d5e045bdfd",
+    "name": "PHILIPS TOASTER W",
+    "rawName": "PHILIPS TOASTER 800W        24,99 A",
+    "price": 24.99,
+    "quantity": 1,
+    "purchaseDate": "10.10.2026",
+    "supermarket": "Kaufland",
+    "category": "Elektronik & Garantie",
+    "archivedAt": "2026-10-11T09:22:06.118503"
+  },
+  {
+    "id": "f9aaad19-45e9-4472-ae9e-be652b63d146",
+    "name": "COLGATE ZAHNPAST",
+    "rawName": "COLGATE ZAHNPASTA            1,49 A",
+    "price": 1.49,
+    "quantity": 1,
+    "purchaseDate": "10.10.2026",
+    "supermarket": "Kaufland",
+    "category": "Drogerie & Hygiene",
+    "archivedAt": "2026-10-11T09:22:06.121501"
+  },
+  {
+    "id": "e24ecf42-c8be-4162-b3b7-4584636aa4b0",
+    "name": "COLGATE ZAHNPASTA",
+    "rawName": "COLGATE ZAHNPASTA            1,49 A",
+    "price": 1.49,
+    "quantity": 1,
+    "purchaseDate": "10.10.2026",
+    "supermarket": "Kaufland",
+    "category": "Drogerie & Hygiene",
+    "archivedAt": "2026-10-11T09:23:50.378741"
+  }
+]

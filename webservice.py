@@ -22,7 +22,25 @@ from kassenzettel_parser import (
     sanitize_ocr_text,
     add_receipt_correction,
     load_receipt_corrections,
-    is_pet_food
+    is_pet_food,
+    load_receipt_history,
+    save_receipt_history,
+    generate_receipt_key,
+    calculate_recognition_quality,
+    load_learned_products,
+    save_learned_products,
+    learn_product,
+    find_learned_product,
+    load_receipt_archive,
+    save_receipt_archive,
+    archive_non_food_item,
+    classify_deposit,
+    extract_deposit_lines,
+    load_price_history,
+    save_price_history,
+    check_price_radar,
+    record_price_radar_purchase,
+    generate_instant_recipe_ideas
 )
 
 
@@ -149,14 +167,21 @@ def get_initial_data():
                 "price": 4.99,
                 "date": int((now - timedelta(days=1)).timestamp() * 1000)
             }
-        ]
+        ],
+        "depositAccount": {
+            "balance": 0.0,
+            "transactions": []
+        }
     }
 
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                d = json.load(f)
+                if "depositAccount" not in d:
+                    d["depositAccount"] = {"balance": 0.0, "transactions": []}
+                return d
         except Exception:
             pass
     data = get_initial_data()
@@ -392,11 +417,15 @@ HTML_CONTENT = """<!DOCTYPE html>
     <header>
         <div>
             <h1>🍏 Kühlschrank Profi PC-Begleiter</h1>
-            <span id="connection-status" style="font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px;">🟡 Verbindung wird hergestellt...</span>
+            <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 4px; flex-wrap: wrap;">
+                <span id="connection-status" style="font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px;">🟡 Verbindung wird hergestellt...</span>
+                <span id="pfand-badge" style="font-size: 0.8rem; background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 10px; font-weight: bold;" title="Aktuelles Pfandkonto">🪙 Pfandkonto: <span id="pfand-balance-display">0,00 €</span></span>
+            </div>
         </div>
         <nav>
             <button id="tab-inv" class="active" onclick="showTab('inv')">📦 Vorrat</button>
             <button id="tab-receipt" onclick="showTab('receipt')">🧾 Kassenbon-Import</button>
+            <button id="tab-learned" onclick="showTab('learned')">🧠 Lerndatenbank</button>
             <button id="tab-shop" onclick="showTab('shop')">🛒 Einkaufsliste</button>
             <button id="tab-recipes" onclick="showTab('recipes')">🍳 Rezepte</button>
             <button id="tab-hist" onclick="showTab('hist')">📈 Historie</button>
@@ -470,6 +499,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <th>Artikel</th>
                                 <th>Menge</th>
                                 <th>Lagerort</th>
+                                <th>Kaufdatum</th>
                                 <th>Ablaufdatum (MHD)</th>
                                 <th>Aktionen</th>
                             </tr>
@@ -507,6 +537,102 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
                 <div id="receipt-results" style="margin-top: 1rem;"></div>
                 <div id="receipt-preview-container"></div>
+            </div>
+        </section>
+
+        <section id="section-learned" style="display: none;">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                    <div>
+                        <h2>🧠 Selbstlernende Lebensmittel-Datenbank</h2>
+                        <p style="color: #666; margin: 0; font-size: 0.95rem;">
+                            Artikel werden beim Kassenbon-Import automatisch gelernt und zukünftig 1:1 ohne KI-Kosten fehlerfrei erkannt.
+                        </p>
+                    </div>
+                    <span id="learned-count-badge" class="badge badge-green" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">0 Einträge</span>
+                </div>
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="learned-search-input" placeholder="🔍 Bon-Rohbezeichnung, Klarname oder Markt filtern..." class="preview-input" oninput="filterLearnedTable()">
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('learned-search-input').value=''; filterLearnedTable();">✕</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>➕ Neuen Artikel anlernen / bearbeiten</h3>
+                <div style="display: grid; grid-template-columns: 2fr 2fr 1fr 1.2fr 1.2fr 1.2fr auto; gap: 0.5rem; align-items: end;">
+                    <div class="form-group" style="margin: 0;">
+                        <label>Bon-Rohbezeichnung</label>
+                        <input type="text" id="learn-raw" placeholder="z. B. H BRUSTFILET">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Klarname (Ziel)</label>
+                        <input type="text" id="learn-name" placeholder="z. B. Hähnchenbrustfilet">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Einheit</label>
+                        <select id="learn-unit">
+                            <option value="Stk.">Stk.</option>
+                            <option value="Packung">Packung</option>
+                            <option value="Becher">Becher</option>
+                            <option value="Flasche">Flasche</option>
+                            <option value="Dose">Dose</option>
+                            <option value="Glas">Glas</option>
+                            <option value="kg">kg</option>
+                            <option value="g">g</option>
+                            <option value="l">l</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Kategorie</label>
+                        <select id="learn-cat">
+                            <option value="Milchprodukte">Milchprodukte</option>
+                            <option value="Fleisch & Fisch">Fleisch & Fisch</option>
+                            <option value="Käse">Käse</option>
+                            <option value="Wurst">Wurst</option>
+                            <option value="Obst & Gemüse">Obst & Gemüse</option>
+                            <option value="Brot & Backwaren">Brot & Backwaren</option>
+                            <option value="Tiefkühl">Tiefkühl</option>
+                            <option value="Getränke">Getränke</option>
+                            <option value="Vorrat">Vorrat</option>
+                            <option value="Süßwaren & Snacks">Süßwaren & Snacks</option>
+                            <option value="Tiernahrung">Tiernahrung</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Lagerort</label>
+                        <select id="learn-loc">
+                            <option value="Kühlschrank">❄️ Kühlschrank</option>
+                            <option value="Gefrierfach">🧊 Gefrierfach</option>
+                            <option value="Vorratskammer">🥫 Vorratskammer</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Markt</label>
+                        <input type="text" id="learn-market" placeholder="z. B. Kaufland / Alle">
+                    </div>
+                    <button class="btn" onclick="saveLearnedProductForm()">Speichern</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📋 Gelernte Beleg-Zuordnungen</h3>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Bon-Rohbezeichnung</th>
+                                <th>Bereinigter Klarname</th>
+                                <th>Einheit</th>
+                                <th>Kategorie</th>
+                                <th>Lagerort</th>
+                                <th>Markt</th>
+                                <th>Häufigkeit</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="learned-table"></tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
@@ -702,20 +828,127 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         function showTab(tab) {
-            ['inv', 'receipt', 'shop', 'recipes', 'hist'].forEach(t => {
-                document.getElementById('section-' + t).style.display = t === tab ? 'block' : 'none';
-                document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+            ['inv', 'receipt', 'learned', 'shop', 'recipes', 'hist'].forEach(t => {
+                const el = document.getElementById('section-' + t);
+                if (el) el.style.display = t === tab ? 'block' : 'none';
+                const tabBtn = document.getElementById('tab-' + t);
+                if (tabBtn) tabBtn.classList.toggle('active', t === tab);
             });
             if (tab === 'inv') loadInventory();
+            if (tab === 'learned') loadLearnedProducts();
             if (tab === 'shop') loadShopping();
             if (tab === 'recipes') loadRecipes();
             if (tab === 'hist') loadHistory();
+        }
+
+        let rawLearnedProducts = [];
+
+        async function loadLearnedProducts() {
+            try {
+                const res = await fetch('/api/learned-products');
+                const data = await res.json();
+                rawLearnedProducts = data.items || [];
+                const badge = document.getElementById('learned-count-badge');
+                if (badge) badge.innerText = `${rawLearnedProducts.length} Einträge`;
+                filterLearnedTable();
+            } catch (e) {
+                console.error("Fehler beim Laden der Lerndatenbank:", e);
+            }
+        }
+
+        function filterLearnedTable() {
+            const query = (document.getElementById('learned-search-input')?.value || '').toLowerCase().trim();
+            const filtered = rawLearnedProducts.filter(p => {
+                const raw = (p.rawName || '').toLowerCase();
+                const name = (p.name || '').toLowerCase();
+                const market = (p.supermarket || '').toLowerCase();
+                const cat = (p.category || '').toLowerCase();
+                return !query || raw.includes(query) || name.includes(query) || market.includes(query) || cat.includes(query);
+            });
+            renderLearnedProductsTable(filtered);
+        }
+
+        function renderLearnedProductsTable(items) {
+            const tbody = document.getElementById('learned-table');
+            if (!tbody) return;
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #757575; padding: 1.5rem;">Keine Einträge in der Lerndatenbank gefunden.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map(p => `
+                <tr>
+                    <td><code>${escapeHtml(p.rawName || '-')}</code></td>
+                    <td><strong>${escapeHtml(p.name)}</strong></td>
+                    <td>${escapeHtml(p.unit || 'Stk.')}</td>
+                    <td><span class="badge badge-gray">${escapeHtml(p.category || 'Vorrat')}</span></td>
+                    <td>${escapeHtml(p.storageLocation || 'Kühlschrank')}</td>
+                    <td>${escapeHtml(p.supermarket || 'Alle')}</td>
+                    <td style="text-align: center;">${p.count || 1}×</td>
+                    <td style="white-space: nowrap;">
+                        <button class="btn btn-sm btn-secondary" onclick="fillLearnedForm('${escapeHtml(p.rawName || '')}', '${escapeHtml(p.name)}', '${escapeHtml(p.unit || 'Stk.')}', '${escapeHtml(p.category || 'Vorrat')}', '${escapeHtml(p.storageLocation || 'Kühlschrank')}', '${escapeHtml(p.supermarket || 'Alle')}')">✏️</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteLearnedProduct('${p.id || ''}', '${escapeHtml(p.rawName || '')}')">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function fillLearnedForm(raw, name, unit, cat, loc, market) {
+            document.getElementById('learn-raw').value = raw;
+            document.getElementById('learn-name').value = name;
+            document.getElementById('learn-unit').value = unit;
+            document.getElementById('learn-cat').value = cat;
+            document.getElementById('learn-loc').value = loc;
+            document.getElementById('learn-market').value = market;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function saveLearnedProductForm() {
+            const raw = document.getElementById('learn-raw').value.trim();
+            const name = document.getElementById('learn-name').value.trim();
+            if (!name) {
+                alert('Bitte gib mindestens einen Klarnamen ein.');
+                return;
+            }
+            const unit = document.getElementById('learn-unit').value;
+            const cat = document.getElementById('learn-cat').value;
+            const loc = document.getElementById('learn-loc').value;
+            const market = document.getElementById('learn-market').value.trim() || 'Alle';
+
+            await fetch('/api/learned-products/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rawName: raw || name,
+                    name: name,
+                    unit: unit,
+                    category: cat,
+                    storageLocation: loc,
+                    supermarket: market
+                })
+            });
+
+            document.getElementById('learn-raw').value = '';
+            document.getElementById('learn-name').value = '';
+            showToast('✅ Artikel erfolgreich in Lerndatenbank gespeichert!');
+            loadLearnedProducts();
+        }
+
+        async function deleteLearnedProduct(id, rawName) {
+            if (!confirm(`Diesen gelernten Eintrag wirklich löschen?`)) return;
+            await fetch('/api/learned-products/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, rawName: rawName })
+            });
+            showToast('🗑️ Eintrag gelöscht.');
+            loadLearnedProducts();
         }
 
         async function loadInventory() {
             const res = await fetch('/api/inventory');
             rawInventory = await res.json();
             renderInventory(rawInventory);
+            loadDepositAccount();
         }
 
         function filterLocation(loc) {
@@ -758,12 +991,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                     }
                 }
 
+                const purchaseDisplay = item.purchaseDate ? `${escapeHtml(item.purchaseDate)}${item.purchaseTime ? ' ' + escapeHtml(item.purchaseTime) : ''}` : '-';
+
                 return `
                     <tr>
                         <td><span class="badge ${badgeClass}">${badgeText}</span></td>
-                        <td><strong>${item.name}</strong></td>
+                        <td><strong>${escapeHtml(item.name)}</strong></td>
                         <td>${item.quantity} ${item.unit || 'Stk.'}</td>
                         <td>${item.storageLocation || 'Kühlschrank'}</td>
+                        <td style="font-size: 0.9rem; color: #555;">${purchaseDisplay}</td>
                         <td>
                             <input type="date" value="${dateVal}" onchange="updateMhd('${item.id}', this.value)">
                         </td>
@@ -1117,16 +1353,26 @@ HTML_CONTENT = """<!DOCTYPE html>
                     supermarket: data.supermarket || it.supermarket || 'Import',
                     expiryDate: it.expiryDate,
                     expiryDateStr: it.expiryDateStr || (it.expiryDate ? new Date(it.expiryDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+                    purchaseDate: it.purchaseDate || data.purchaseDate || '',
+                    purchaseTime: it.purchaseTime || data.purchaseTime || '',
                     selected: true,
                     isPetFood: isPet,
                     duplicateOf: dup ? { id: dup.id, name: dup.name, quantity: dup.quantity, unit: dup.unit } : null,
-                    restockExisting: dup ? true : false
+                    restockExisting: dup ? true : false,
+                    category: it.category || 'Vorrat',
+                    isLearned: !!it.isLearned
                 };
             });
             currentReceiptMetadata = {
                 supermarket: data.supermarket || 'Import',
                 purchaseDate: data.purchaseDate || '',
-                receiptTotal: typeof data.receiptTotal === 'number' ? data.receiptTotal : null
+                purchaseTime: data.purchaseTime || '',
+                receiptTotal: typeof data.receiptTotal === 'number' ? data.receiptTotal : null,
+                receiptKey: data.receiptKey || '',
+                qualityScore: typeof data.qualityScore === 'number' ? data.qualityScore : 0,
+                duplicateStatus: data.duplicateStatus || 'new',
+                duplicateMessage: data.duplicateMessage || '',
+                canReplace: data.canReplace !== false
             };
 
             const container = document.getElementById('receipt-preview-container');
@@ -1140,11 +1386,34 @@ HTML_CONTENT = """<!DOCTYPE html>
                 `;
             }
 
+            let duplicateAlertHtml = '';
+            if (data.duplicateStatus === 'duplicate_rejected') {
+                duplicateAlertHtml = `
+                    <div style="background: #ffebee; border: 2px solid #d32f2f; color: #b71c1c; border-radius: 6px; padding: 0.85rem 1.15rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.85rem;">
+                        <span style="font-size: 1.6rem;">⚠️</span>
+                        <div>
+                            <strong>Beleg bereits vorhanden (Import abgewiesen):</strong><br>
+                            <span>${escapeHtml(data.duplicateMessage || 'Dieser Beleg wurde bereits mit gleichem oder besserem Ergebnis importiert.')}</span>
+                        </div>
+                    </div>
+                `;
+            } else if (data.duplicateStatus === 'duplicate_better') {
+                duplicateAlertHtml = `
+                    <div style="background: #e3f2fd; border: 2px solid #1976d2; color: #0d47a1; border-radius: 6px; padding: 0.85rem 1.15rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.85rem;">
+                        <span style="font-size: 1.6rem;">🔄</span>
+                        <div>
+                            <strong>Bessere Erkennungsqualität gefunden:</strong><br>
+                            <span>${escapeHtml(data.duplicateMessage || 'Neue Erkennung liefert vollständigere Artikel. Bisherige Einträge werden aktualisiert.')}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
             let docViewerHtml = '';
             if (currentReceiptMedia) {
                 if (currentReceiptMedia.dataUrl && (currentReceiptMedia.type === 'application/pdf' || (currentReceiptMedia.name && currentReceiptMedia.name.toLowerCase().endsWith('.pdf')))) {
                     docViewerHtml = `<iframe src="${currentReceiptMedia.dataUrl}#toolbar=0&navpanes=0" style="width: 100%; height: 100%; min-height: 600px; border: none; border-radius: 4px; background: #ffffff;"></iframe>`;
-                } else if (currentReceiptMedia.dataUrl && (currentReceiptMedia.type.startsWith('image/') || (currentReceiptMedia.name && /\.(jpe?g|png|webp|bmp|gif)$/i.test(currentReceiptMedia.name)))) {
+                } else if (currentReceiptMedia.dataUrl && (currentReceiptMedia.type.startsWith('image/') || (currentReceiptMedia.name && /[.](jpe?g|png|webp|bmp|gif)$/i.test(currentReceiptMedia.name)))) {
                     docViewerHtml = `<img src="${currentReceiptMedia.dataUrl}" alt="Kassenbon Vorschau" style="max-width: 100%; height: auto; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.35);">`;
                 } else if (currentReceiptMedia.text) {
                     docViewerHtml = `<pre style="white-space: pre-wrap; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.85rem; color: #eceff1; background: #263238; padding: 1rem; border-radius: 4px; width: 100%; box-sizing: border-box; margin: 0; max-height: 600px; overflow-y: auto;">${escapeHtml(currentReceiptMedia.text)}</pre>`;
@@ -1177,7 +1446,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                     <h3 style="margin: 0; color: #2e7d32;">📋 Kassenbon-Vorschau prüfen</h3>
                                     <div class="preview-meta" style="margin-top: 0.35rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                                         <span>🏪 <strong>${escapeHtml(currentReceiptMetadata.supermarket)}</strong></span>
-                                        ${currentReceiptMetadata.purchaseDate ? `<span>📅 Kaufdatum: <strong>${escapeHtml(currentReceiptMetadata.purchaseDate)}</strong></span>` : ''}
+                                        ${currentReceiptMetadata.purchaseDate ? `<span>📅 Kaufdatum: <strong>${escapeHtml(currentReceiptMetadata.purchaseDate)}${currentReceiptMetadata.purchaseTime ? ' ' + escapeHtml(currentReceiptMetadata.purchaseTime) : ''}</strong></span>` : ''}
                                         ${currentReceiptMedia ? `
                                             <button type="button" id="toggle-splitscreen-btn" class="btn btn-sm btn-secondary" onclick="toggleSplitScreen()" style="padding: 0.25rem 0.6rem; font-size: 0.8rem; cursor: pointer;">
                                                 📄 ${splitScreenVisible ? 'Beleg verbergen' : 'Beleg anzeigen (Split-Screen)'}
@@ -1195,6 +1464,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 </div>
                             </div>
 
+                            ${duplicateAlertHtml}
+
                             ${currentReceiptMetadata.receiptTotal != null ? `
                                 <div id="receipt-total-comparison" style="margin-bottom: 0.85rem; font-size: 0.95rem; background: #f1f8e9; border: 1.5px solid #a5d6a7; border-radius: 6px; padding: 0.6rem 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                                     <!-- Live Summenabgleich -->
@@ -1202,6 +1473,13 @@ HTML_CONTENT = """<!DOCTYPE html>
                             ` : ''}
 
                             ${nonFoodHtml}
+
+                            ${currentReceiptMetadata.depositSummary && currentReceiptMetadata.depositSummary.total ? `
+                                <div style="margin-bottom: 0.85rem; padding: 0.6rem 0.85rem; background: #e3f2fd; border: 1.5px solid #90caf9; border-radius: 6px; font-size: 0.88rem; color: #0d47a1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                    <span>🪙 <strong>Pfand-Verwaltung:</strong> ${(currentReceiptMetadata.depositSummary.total).toFixed(2).replace('.', ',')} € (${(currentReceiptMetadata.depositSummary.items || []).map(d => `${d.type}: ${d.amount > 0 ? '+' : ''}${d.amount.toFixed(2).replace('.', ',')} €`).join(', ')})</span>
+                                    <span style="font-size: 0.78rem; background: #bbdefb; padding: 3px 8px; border-radius: 4px; font-weight: bold;">Wird auf Pfandkonto saldiert (nicht im Vorrat)</span>
+                                </div>
+                            ` : ''}
 
                             <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
                                 <input type="text" id="preview-search-input" placeholder="🔍 Artikel im Kassenbon suchen..." class="preview-input" value="${escapeHtml(previewFilterQuery)}" oninput="filterPreviewRows(this.value)">
@@ -1234,6 +1512,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                                 Lagerort <span id="sort-indicator-storageLocation" style="font-size: 0.8rem; margin-left: 2px;">${getSortIndicator('storageLocation')}</span>
                                             </th>
                                             <th style="width: 135px;">MHD</th>
+                                            <th style="width: 120px;">Kaufdatum</th>
                                             <th style="width: 35px; text-align: center;">✕</th>
                                         </tr>
                                     </thead>
@@ -1258,7 +1537,13 @@ HTML_CONTENT = """<!DOCTYPE html>
                                         Summe: <span id="preview-bottom-total">0,00 €</span>
                                     </span>
                                     <button class="btn btn-secondary" onclick="cancelPreview()">Abbrechen</button>
-                                    <button class="btn" id="preview-import-btn" onclick="commitPreviewImport()">✅ In den Vorrat übernehmen</button>
+                                    ${currentReceiptMetadata.duplicateStatus === 'duplicate_rejected' ? `
+                                        <button class="btn btn-secondary" id="preview-import-btn" disabled style="opacity: 0.55; cursor: not-allowed; background-color: #757575;" title="Beleg ist bereits vorhanden">⚠️ Bereits vorhanden (Abgewiesen)</button>
+                                    ` : currentReceiptMetadata.duplicateStatus === 'duplicate_better' ? `
+                                        <button class="btn" id="preview-import-btn" onclick="commitPreviewImport()" style="background-color: #1976d2;">🔄 Alten Einkauf aktualisieren & ersetzen</button>
+                                    ` : `
+                                        <button class="btn" id="preview-import-btn" onclick="commitPreviewImport()">✅ In den Vorrat übernehmen</button>
+                                    `}
                                 </div>
                             </div>
                         </div>
@@ -1301,6 +1586,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 storageLocation: 'Kühlschrank',
                 supermarket: currentReceiptMetadata.supermarket || 'Import',
                 expiryDateStr: defaultExpiry,
+                purchaseDate: currentReceiptMetadata.purchaseDate || new Date().toLocaleDateString('de-DE'),
                 selected: true,
                 duplicateOf: null,
                 restockExisting: false
@@ -1399,6 +1685,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                             <span id="preview-icon-${idx}" style="font-size: 1.25rem;" title="Warengruppe">${icon}</span>
                             <input type="text" class="preview-input" value="${escapeHtml(item.name)}" oninput="updatePreviewName(${idx}, this.value)">
                             ${isPet ? `<span id="preview-pet-badge-${idx}" class="badge" style="background-color: #6d4c41; color: #fff; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; white-space: nowrap;" title="Tiernahrung erkannt & Vorratskammer zugewiesen">🐱 Tiernahrung</span>` : `<span id="preview-pet-badge-${idx}" style="display: none;"></span>`}
+                            ${item.isLearned ? `<span class="badge" style="background-color: #7b1fa2; color: #fff; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; white-space: nowrap;" title="Bereits in Lerndatenbank gelernt">🧠 Gelernt</span>` : ''}
                         </div>
                         <div id="preview-dup-${idx}" style="margin-top: 3px; display: ${item.duplicateOf ? 'flex' : 'none'}; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
                             ${item.duplicateOf ? `
@@ -1431,6 +1718,13 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <div id="unit-price-${idx}" style="font-size: 0.75rem; color: #555; margin-top: 2px; ${isMulti ? '' : 'display: none;'}">
                             ${isMulti ? `${unitPrice} € / ${escapeHtml(item.unit || 'Stk.')}` : ''}
                         </div>
+                        ${item.priceDiff && item.priceDiff !== '0,00 €' ? `
+                            <div style="margin-top: 2px;">
+                                <span class="badge ${item.priceDiffVal > 0 ? 'badge-red' : 'badge-green'}" style="font-size: 0.72rem; padding: 1px 5px;" title="Vorheriger Einkaufspreis: ${item.previousPrice != null ? item.previousPrice.toFixed(2).replace('.', ',') + ' €' : 'unbekannt'}">
+                                    ${item.priceDiffVal > 0 ? '📈 ' : '📉 '}${escapeHtml(item.priceDiff)}
+                                </span>
+                            </div>
+                        ` : ''}
                     </td>
                     <td>
                         <select id="preview-storage-${idx}" class="preview-input storage-badge ${storageClass}" onchange="updatePreviewStorage(${idx}, this)">
@@ -1441,6 +1735,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </td>
                     <td>
                         <input type="date" class="preview-input" value="${item.expiryDateStr || ''}" onchange="updatePreviewField(${idx}, 'expiryDateStr', this.value)">
+                    </td>
+                    <td>
+                        <input type="text" class="preview-input" placeholder="DD.MM.YYYY" value="${escapeHtml(item.purchaseDate || currentReceiptMetadata.purchaseDate || '')}" onchange="updatePreviewField(${idx}, 'purchaseDate', this.value)">
                     </td>
                     <td style="text-align: center;">
                         <button class="btn btn-danger btn-sm" onclick="removePreviewRow(${idx})" title="Zeile löschen">✕</button>
@@ -1632,6 +1929,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                 return;
             }
 
+            if (currentReceiptMetadata.duplicateStatus === 'duplicate_rejected') {
+                alert('⚠️ Beleg bereits mit gleichem/besserem Ergebnis vorhanden. Import abgewiesen.');
+                return;
+            }
+
             const itemsToSend = selected.map(it => {
                 let exp = it.expiryDate;
                 if (it.expiryDateStr) {
@@ -1640,6 +1942,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
                 return {
                     name: it.name,
+                    rawName: it.rawName || it.originalName || it.name,
+                    category: it.category || 'Vorrat',
                     quantity: it.quantity,
                     unit: it.unit,
                     price: it.price,
@@ -1647,6 +1951,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                     supermarket: it.supermarket || currentReceiptMetadata.supermarket || 'Import',
                     expiryDate: exp,
                     expiryDateStr: it.expiryDateStr,
+                    purchaseDate: it.purchaseDate || currentReceiptMetadata.purchaseDate || '',
+                    purchaseTime: currentReceiptMetadata.purchaseTime || '',
+                    receiptKey: currentReceiptMetadata.receiptKey || '',
                     restockExisting: !!it.restockExisting,
                     existingId: it.duplicateOf ? it.duplicateOf.id : null
                 };
@@ -1656,8 +1963,25 @@ HTML_CONTENT = """<!DOCTYPE html>
                 const res = await fetch('/api/inventory/import-batch', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items: itemsToSend })
+                    body: JSON.stringify({
+                        items: itemsToSend,
+                        receiptKey: currentReceiptMetadata.receiptKey,
+                        duplicateStatus: currentReceiptMetadata.duplicateStatus,
+                        qualityScore: currentReceiptMetadata.qualityScore,
+                        supermarket: currentReceiptMetadata.supermarket,
+                        purchaseDate: currentReceiptMetadata.purchaseDate,
+                        purchaseTime: currentReceiptMetadata.purchaseTime,
+                        receiptTotal: currentReceiptMetadata.receiptTotal,
+                        depositSummary: currentReceiptMetadata.depositSummary
+                    })
                 });
+
+                if (res.status === 409) {
+                    const errData = await res.json();
+                    alert('⚠️ ' + (errData.message || 'Beleg bereits mit gleichem/besserem Ergebnis vorhanden.'));
+                    return;
+                }
+
                 const data = await res.json();
                 const count = data.count || selected.length;
                 
@@ -1668,16 +1992,40 @@ HTML_CONTENT = """<!DOCTYPE html>
                 lastDeletedPreviewItem = null;
                 currentPreviewItems = [];
 
+                if (data.depositBalance !== undefined) {
+                    const pfandEl = document.getElementById('pfand-balance-display');
+                    if (pfandEl) pfandEl.innerText = (data.depositBalance).toFixed(2).replace('.', ',') + ' €';
+                }
+
                 const container = document.getElementById('receipt-preview-container');
                 if (container) {
                     container.innerHTML = `
                         <div class="preview-card" style="border: 2px solid #2e7d32; background: #f1f8e9; text-align: center; padding: 2.25rem 1.5rem; box-shadow: 0 4px 12px rgba(46,125,50,0.15);">
                             <div style="font-size: 3rem; line-height: 1; margin-bottom: 0.75rem;">🎉</div>
                             <h3 style="color: #1b5e20; margin: 0 0 0.5rem 0; font-size: 1.4rem;">Import erfolgreich abgeschlossen!</h3>
-                            <p style="font-size: 1.05rem; color: #2e7d32; margin: 0 0 1.5rem 0;">
+                            <p style="font-size: 1.05rem; color: #2e7d32; margin: 0 0 1rem 0;">
                                 Es wurden <strong>${count}</strong> Artikel erfolgreich in den Vorrat übernommen.
                             </p>
-                            <div style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
+                            ${data.depositSummary && data.depositSummary.total ? `
+                                <div style="margin: 0.75rem auto 1.25rem auto; max-width: 500px; padding: 0.5rem 0.75rem; background: #e3f2fd; border: 1.5px solid #90caf9; border-radius: 6px; font-size: 0.88rem; color: #0d47a1;">
+                                    🪙 <strong>Pfandkonto saldiert:</strong> +${(data.depositSummary.total).toFixed(2).replace('.', ',')} € (Neuer Saldo: ${(data.depositBalance || 0).toFixed(2).replace('.', ',')} €)
+                                </div>
+                            ` : ''}
+                            ${data.recipeIdeas && data.recipeIdeas.length > 0 ? `
+                                <div style="margin: 1.5rem auto; max-width: 650px; text-align: left; background: #ffffff; border: 2px solid #2e7d32; border-radius: 8px; padding: 1rem 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                                    <div style="font-weight: bold; font-size: 1.1rem; color: #1b5e20; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                        🍳 Sofort-Rezeptideen für deinen Einkauf:
+                                    </div>
+                                    ${data.recipeIdeas.map((r, i) => `
+                                        <div style="background: #f9fbe7; border-left: 4px solid #7cb342; padding: 0.75rem; border-radius: 4px; margin-bottom: ${i < data.recipeIdeas.length - 1 ? '0.75rem' : '0'};">
+                                            <div style="font-weight: bold; color: #2e7d32; font-size: 0.98rem;">${escapeHtml(r.title)} <span style="font-size: 0.78rem; color: #689f38; font-weight: normal;">(${escapeHtml(r.time || '15 Min.')})</span></div>
+                                            <div style="font-size: 0.85rem; color: #555; margin: 3px 0;"><strong>Zutaten:</strong> ${escapeHtml(r.ingredients)}</div>
+                                            <div style="font-size: 0.85rem; color: #333; white-space: pre-line;">${escapeHtml(r.instructions)}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+                            <div style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
                                 <button class="btn" style="padding: 0.65rem 1.6rem; font-size: 1.05rem; font-weight: bold;" onclick="showTab('inv'); loadInventory();">
                                     👉 Direkt zum Vorrat wechseln
                                 </button>
@@ -1812,6 +2160,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                 `;
             }).join('');
         }
+
+        async function loadDepositAccount() {
+            try {
+                const res = await fetch('/api/deposit-account');
+                const data = await res.json();
+                const el = document.getElementById('pfand-balance-display');
+                if (el) el.innerText = (data.balance || 0).toFixed(2).replace('.', ',') + ' €';
+            } catch (e) {}
+        }
     </script>
 </body>
 </html>
@@ -1906,6 +2263,47 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_cors_headers(200, "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(recipes, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if clean_path == "/api/learned-products":
+            items = load_learned_products()
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "items": items}, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if clean_path == "/api/deposit-account":
+            account = db.get("depositAccount", {"balance": 0.0, "transactions": []})
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(account, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if clean_path == "/api/receipt-archive":
+            archive = load_receipt_archive()
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "items": archive}, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if clean_path == "/api/price-radar":
+            history = load_price_history()
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "history": history}, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if clean_path == "/api/sync_corrections":
+            corrections = load_receipt_corrections()
+            learned = load_learned_products()
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "receiptCorrectionsCount": len(corrections),
+                "learnedProductsCount": len(learned),
+                "receiptCorrections": corrections
+            }, ensure_ascii=False).encode("utf-8"))
             return
 
         self.send_cors_headers(404, "text/plain")
@@ -2053,6 +2451,63 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b'{"status":"not_found"}')
             return
 
+        if clean_path == "/api/sync_corrections":
+            corrections = params if isinstance(params, list) else (params.get("corrections", []) if isinstance(params, dict) else [])
+            saved_count = 0
+            for corr in corrections:
+                if not isinstance(corr, dict):
+                    continue
+                raw_name = (corr.get("rawName") or corr.get("raw") or corr.get("originalName") or corr.get("shortcut") or "").strip()
+                clean_name = (corr.get("cleanName") or corr.get("name") or "").strip()
+                unit = corr.get("unit", "Stk.")
+                category = corr.get("category", "Vorrat")
+                storage_location = corr.get("storageLocation") or corr.get("location", "Kühlschrank")
+                supermarket = corr.get("supermarket", "")
+
+                if raw_name and clean_name:
+                    add_receipt_correction(raw_name, clean_name)
+                    learn_product(raw_name, clean_name, unit, category, storage_location, supermarket)
+                    saved_count += 1
+                elif clean_name:
+                    learn_product(clean_name, clean_name, unit, category, storage_location, supermarket)
+                    saved_count += 1
+
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "syncedCount": saved_count,
+                "totalLearned": len(load_learned_products())
+            }, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if clean_path == "/api/learned-products/save":
+            raw_name = params.get("rawName") or params.get("name", "")
+            clean_name = params.get("name", "")
+            unit = params.get("unit", "Stk.")
+            category = params.get("category", "Vorrat")
+            storage_location = params.get("storageLocation", "Kühlschrank")
+            supermarket = params.get("supermarket", "")
+            learn_product(raw_name, clean_name, unit, category, storage_location, supermarket)
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "items": load_learned_products()}, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if clean_path == "/api/learned-products/delete":
+            item_id = params.get("id")
+            raw_name = params.get("rawName")
+            items = load_learned_products()
+            if item_id:
+                items = [it for it in items if it.get("id") != item_id]
+            elif raw_name:
+                items = [it for it in items if it.get("rawName") != raw_name]
+            save_learned_products(items)
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "items": items}, ensure_ascii=False).encode("utf-8"))
+            return
+
         if clean_path == "/api/parse-receipt":
             analysis = analyze_uploaded_receipt(params)
             self.send_cors_headers(200, "application/json")
@@ -2062,6 +2517,71 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if clean_path == "/api/inventory/import-batch":
             items_to_add = params.get("items", [])
+            receipt_key = params.get("receiptKey")
+            dup_status = params.get("duplicateStatus")
+            quality_score = float(params.get("qualityScore", 0.0) or 0.0)
+            supermarket = params.get("supermarket", "")
+            purchase_date = params.get("purchaseDate", "")
+            purchase_time = params.get("purchaseTime", "")
+            receipt_total = params.get("receiptTotal")
+
+            # Falls kein receipt_key vom Frontend gesendet wurde, aber supermarket / purchase_date da sind
+            if not receipt_key and supermarket and purchase_date:
+                receipt_key = generate_receipt_key(supermarket, purchase_date, purchase_time, receipt_total)
+
+            history = load_receipt_history()
+
+            if receipt_key and receipt_key in history:
+                prev_record = history[receipt_key]
+                prev_score = float(prev_record.get("qualityScore", 0.0) or 0.0)
+                prev_count = int(prev_record.get("itemCount", 0) or 0)
+                current_score = quality_score if quality_score > 0 else calculate_recognition_quality(items_to_add, receipt_total)
+
+                # Prüfen, ob neues Ergebnis besser ist
+                is_better = (current_score > prev_score or len(items_to_add) > prev_count)
+                if not is_better or dup_status == "duplicate_rejected":
+                    self.send_cors_headers(409, "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "status": "rejected",
+                        "message": "Beleg bereits mit gleichem/besserem Ergebnis vorhanden"
+                    }, ensure_ascii=False).encode("utf-8"))
+                    return
+
+                # Bei besserer Qualität: Alte Artikel dieses Belegs aus dem Vorrat entfernen
+                prev_ids = set(prev_record.get("itemIds", []))
+                db["inventory"] = [
+                    it for it in db["inventory"]
+                    if it.get("receiptKey") != receipt_key and it.get("id") not in prev_ids
+                ]
+
+            elif dup_status == "duplicate_rejected":
+                self.send_cors_headers(409, "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "rejected",
+                    "message": "Beleg bereits mit gleichem/besserem Ergebnis vorhanden"
+                }, ensure_ascii=False).encode("utf-8"))
+                return
+
+            deposit_summary = params.get("depositSummary") or {}
+            dep_items = deposit_summary.get("items", [])
+            dep_total = float(deposit_summary.get("total", 0.0) or 0.0)
+            if dep_total != 0.0 or dep_items:
+                if "depositAccount" not in db:
+                    db["depositAccount"] = {"balance": 0.0, "transactions": []}
+                db["depositAccount"]["balance"] = round(db["depositAccount"].get("balance", 0.0) + dep_total, 2)
+                for dep in dep_items:
+                    db["depositAccount"]["transactions"].append({
+                        "id": str(uuid.uuid4()),
+                        "date": purchase_date or datetime.now().strftime("%d.%m.%Y"),
+                        "supermarket": supermarket or "Supermarkt",
+                        "type": dep.get("type", "Pfand"),
+                        "amount": dep.get("amount", 0.0),
+                        "description": dep.get("description", "Pfand"),
+                        "timestamp": datetime.now().isoformat()
+                    })
+
             now = datetime.now()
             imported = []
             for p in items_to_add:
@@ -2069,6 +2589,26 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
                 if not name or is_non_food(name):
                     continue
                 qty = p.get("quantity", 1)
+
+                # Preis-Radar: Einkaufspreis protokollieren
+                record_price_radar_purchase(
+                    item_name=name,
+                    price=p.get("price", 0.0),
+                    quantity=qty,
+                    supermarket=p.get("supermarket", supermarket or ""),
+                    purchase_date=p.get("purchaseDate", purchase_date or "")
+                )
+
+                # Automatischer Lernprozess bei Bestätigung
+                raw_name = p.get("rawName") or p.get("originalName") or name
+                learn_product(
+                    raw_name=raw_name,
+                    clean_name=name,
+                    unit=p.get("unit", "Stk."),
+                    category=p.get("category", "Vorrat"),
+                    storage_location=p.get("storageLocation", "Kühlschrank"),
+                    supermarket=p.get("supermarket", supermarket or "")
+                )
 
                 if p.get("restockExisting"):
                     existing_id = p.get("existingId")
@@ -2101,17 +2641,46 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
                     "unit": p.get("unit", "Stk."),
                     "storageLocation": p.get("storageLocation", "Kühlschrank"),
                     "price": p.get("price", 0.0),
-                    "supermarket": p.get("supermarket", "Import"),
-                    "expiryDate": exp_ts
+                    "supermarket": p.get("supermarket", supermarket or "Import"),
+                    "expiryDate": exp_ts,
+                    "purchaseDate": p.get("purchaseDate", purchase_date or ""),
+                    "purchaseTime": p.get("purchaseTime", purchase_time or ""),
+                    "receiptKey": receipt_key or p.get("receiptKey", ""),
+                    "category": p.get("category", "Vorrat")
                 }
                 if p.get("barcode"):
                     item["barcode"] = p["barcode"]
                 db["inventory"].append(item)
                 imported.append(item)
+
+            if receipt_key:
+                history[receipt_key] = {
+                    "receiptKey": receipt_key,
+                    "supermarket": supermarket,
+                    "purchaseDate": purchase_date,
+                    "purchaseTime": purchase_time,
+                    "receiptTotal": receipt_total,
+                    "itemCount": len(imported),
+                    "qualityScore": quality_score if quality_score > 0 else calculate_recognition_quality(imported, receipt_total),
+                    "itemIds": [it["id"] for it in imported if "id" in it],
+                    "timestamp": datetime.now().isoformat()
+                }
+                save_receipt_history(history)
+
+            recipe_ideas = generate_instant_recipe_ideas(imported)
+
             save_data(db)
             self.send_cors_headers(200, "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "ok", "count": len(imported), "items": imported}, ensure_ascii=False).encode("utf-8"))
+            res_obj = {
+                "status": "ok",
+                "count": len(imported),
+                "items": imported,
+                "recipeIdeas": recipe_ideas,
+                "depositSummary": deposit_summary,
+                "depositBalance": db.get("depositAccount", {}).get("balance", 0.0)
+            }
+            self.wfile.write(json.dumps(res_obj, ensure_ascii=False).encode("utf-8"))
             return
 
         if clean_path == "/api/inventory/deduplicate":
@@ -2139,13 +2708,74 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if clean_path == "/api/upload-receipt":
-            products = process_uploaded_receipt(params)
+            analysis = analyze_uploaded_receipt(params)
+            dup_status = analysis.get("duplicateStatus")
+            receipt_key = analysis.get("receiptKey")
+            supermarket = analysis.get("supermarket", "Import")
+            purchase_date = analysis.get("purchaseDate", "")
+            purchase_time = analysis.get("purchaseTime", "")
+            receipt_total = analysis.get("receiptTotal")
+            quality_score = float(analysis.get("qualityScore", 0.0) or 0.0)
+
+            if dup_status == "duplicate_rejected":
+                self.send_cors_headers(409, "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "rejected",
+                    "message": analysis.get("duplicateMessage", "Beleg bereits mit gleichem/besserem Ergebnis vorhanden")
+                }, ensure_ascii=False).encode("utf-8"))
+                return
+
+            deposit_summary = analysis.get("depositSummary") or {}
+            dep_items = deposit_summary.get("items", [])
+            dep_total = float(deposit_summary.get("total", 0.0) or 0.0)
+            if dep_total != 0.0 or dep_items:
+                if "depositAccount" not in db:
+                    db["depositAccount"] = {"balance": 0.0, "transactions": []}
+                db["depositAccount"]["balance"] = round(db["depositAccount"].get("balance", 0.0) + dep_total, 2)
+                for dep in dep_items:
+                    db["depositAccount"]["transactions"].append({
+                        "id": str(uuid.uuid4()),
+                        "date": purchase_date or datetime.now().strftime("%d.%m.%Y"),
+                        "supermarket": supermarket or "Supermarkt",
+                        "type": dep.get("type", "Pfand"),
+                        "amount": dep.get("amount", 0.0),
+                        "description": dep.get("description", "Pfand"),
+                        "timestamp": datetime.now().isoformat()
+                    })
+
+            history = load_receipt_history()
+            if receipt_key and (dup_status == "duplicate_better" or receipt_key in history):
+                prev_record = history.get(receipt_key, {})
+                prev_ids = set(prev_record.get("itemIds", []))
+                db["inventory"] = [
+                    it for it in db["inventory"]
+                    if it.get("receiptKey") != receipt_key and it.get("id") not in prev_ids
+                ]
+
+            products = analysis.get("items", [])
             imported = []
 
             for p in products:
                 name = p.get("name", "").strip()
                 if not name or is_non_food(name):
                     continue
+                raw_name = p.get("rawName") or name
+                record_price_radar_purchase(
+                    item_name=name,
+                    price=p.get("price", 0.0),
+                    quantity=p.get("quantity", 1),
+                    supermarket=p.get("supermarket", supermarket or ""),
+                    purchase_date=p.get("purchaseDate", purchase_date or "")
+                )
+                learn_product(
+                    raw_name=raw_name,
+                    clean_name=name,
+                    unit=p.get("unit", "Stk."),
+                    category=p.get("category", "Vorrat"),
+                    storage_location=p.get("storageLocation", "Kühlschrank"),
+                    supermarket=p.get("supermarket", supermarket or "")
+                )
                 item = {
                     "id": str(uuid.uuid4()),
                     "name": name,
@@ -2153,8 +2783,12 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
                     "unit": p.get("unit", "Stk."),
                     "storageLocation": p.get("storageLocation", "Kühlschrank"),
                     "price": p.get("price", 0.0),
-                    "supermarket": p.get("supermarket", "Import"),
-                    "expiryDate": p.get("expiryDate", int((datetime.now() + timedelta(days=7)).timestamp() * 1000))
+                    "supermarket": p.get("supermarket", supermarket),
+                    "expiryDate": p.get("expiryDate", int((datetime.now() + timedelta(days=7)).timestamp() * 1000)),
+                    "purchaseDate": p.get("purchaseDate", purchase_date),
+                    "purchaseTime": p.get("purchaseTime", purchase_time),
+                    "receiptKey": receipt_key or "",
+                    "category": p.get("category", "Vorrat")
                 }
                 if p.get("barcode"):
                     item["barcode"] = p["barcode"]
@@ -2164,8 +2798,25 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
                     "quantity": item["quantity"],
                     "unit": item["unit"],
                     "storageLocation": item["storageLocation"],
-                    "price": item["price"]
+                    "price": item["price"],
+                    "purchaseDate": item["purchaseDate"],
+                    "category": item["category"]
                 })
+
+            if receipt_key:
+                history[receipt_key] = {
+                    "receiptKey": receipt_key,
+                    "supermarket": supermarket,
+                    "purchaseDate": purchase_date,
+                    "purchaseTime": purchase_time,
+                    "receiptTotal": receipt_total,
+                    "itemCount": len(imported),
+                    "qualityScore": quality_score,
+                    "itemIds": [it["id"] for it in db["inventory"] if it.get("receiptKey") == receipt_key],
+                    "timestamp": datetime.now().isoformat()
+                }
+                save_receipt_history(history)
+
             save_data(db)
             self.send_cors_headers(200, "application/json")
             self.end_headers()

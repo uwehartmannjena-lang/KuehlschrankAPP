@@ -1,0 +1,19 @@
+{
+  "bio vollmilch": {
+    "name": "Bio Vollmilch 3.8%",
+    "lastPrice": 1.49,
+    "lastSupermarket": "REWE",
+    "lastDate": "11.10.2026",
+    "changes": [
+      {
+        "date": "11.10.2026",
+        "supermarket": "REWE",
+        "oldPrice": 1.29,
+        "newPrice": 1.49,
+        "diff": "+0,20 €",
+        "diffVal": 0.2,
+        "timestamp": "2026-10-11T09:27:18.350812"
+      }
+    ]
+  }
+}

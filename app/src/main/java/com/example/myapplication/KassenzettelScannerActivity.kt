@@ -4,48 +4,72 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
-import com.example.myapplication.data.Product
 import com.example.myapplication.data.GeminiRepository
+import com.example.myapplication.data.Product
 import com.google.gson.Gson
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
-
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Canvas
-import android.graphics.Paint
 
 class KassenzettelScannerActivity : ComponentActivity() {
 
@@ -214,32 +238,62 @@ class KassenzettelScannerActivity : ComponentActivity() {
                     }
                 }
                 
-                Button(
-                    onClick = {
-                        val resultIntent = Intent().apply {
-                            putExtra("SCAN_RESULTS", Gson().toJson(detectedItems))
-                            // Bildpfad übergeben (temporäre Datei)
-                            bitmap?.let { bmp ->
-                                try {
-                                    val tempFile = File(cacheDir, "temp_receipt_scan.jpg")
-                                    val out = FileOutputStream(tempFile)
-                                    bmp.compress(Bitmap.CompressFormat.JPEG, 80, out)
-                                    out.flush()
-                                    out.close()
-                                    putExtra("SCAN_BITMAP_PATH", tempFile.absolutePath)
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val shareText = buildString {
+                                appendLine("🧾 Erkannte Artikel (${java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMANY).format(java.util.Date())}):")
+                                appendLine("─────────────────")
+                                detectedItems.forEach {
+                                    appendLine("• ${it.quantity}x ${it.name} (${String.format(java.util.Locale.GERMANY, "%.2f €", it.price)})")
+                                }
+                                appendLine("─────────────────")
+                                val sum = detectedItems.sumOf { it.price * it.quantity }
+                                if (sum > 0) appendLine("Gesamt: ${String.format(java.util.Locale.GERMANY, "%.2f €", sum)}")
+                            }
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, shareText)
+                            }
+                            startActivity(Intent.createChooser(shareIntent, "Einkauf teilen"))
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Teilen")
+                    }
+
+                    Button(
+                        onClick = {
+                            val resultIntent = Intent().apply {
+                                putExtra("SCAN_RESULTS", Gson().toJson(detectedItems))
+                                // Bildpfad übergeben (temporäre Datei)
+                                bitmap?.let { bmp ->
+                                    try {
+                                        val tempFile = File(cacheDir, "temp_receipt_scan.jpg")
+                                        val out = FileOutputStream(tempFile)
+                                        bmp.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                                        out.flush()
+                                        out.close()
+                                        putExtra("SCAN_BITMAP_PATH", tempFile.absolutePath)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
                                 }
                             }
-                        }
-                        setResult(RESULT_OK, resultIntent)
-                        finish()
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Übernehmen")
+                            setResult(RESULT_OK, resultIntent)
+                            finish()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Übernehmen")
+                    }
                 }
             }
         }

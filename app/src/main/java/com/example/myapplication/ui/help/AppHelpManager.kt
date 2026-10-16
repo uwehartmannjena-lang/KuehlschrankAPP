@@ -1,7 +1,14 @@
 package com.example.myapplication.ui.help
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Kitchen
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Swipe
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -35,96 +42,119 @@ object AppHelpManager {
     val topics: List<HelpTopic> = listOf(
         HelpTopic(
             id = "receipt_scan",
-            title = "Kassenbon-Scan & KI-Import",
-            category = "Erfassung",
-            summary = "Gescannte Belege, PDFs oder Fotos werden automatisch ausgelesen und als Vorrat angelegt.",
+            title = "Kassenbon-Scan & KI-Lernfunktion",
+            category = "Erfassung & OCR",
+            summary = "Gescannte Belege, PDFs oder Galeriefotos werden automatisch analysiert, bereinigt und dauerhaft gelernt.",
             detailedSteps = listOf(
-                "Tippe in der oberen Leiste auf das Kassenbon-Symbol.",
-                "Wähle aus: Foto aufnehmen, PDF/Bild aus Galerie laden oder Text teilen.",
-                "Die KI erkennt Artikel, Menge und Preis. Du kannst Namen vor der Übernahme anpassen.",
-                "Tippe auf 'Speichern', um die Artikel im Inventar abzulegen."
+                "Schritt 1: Tippe in der oberen Leiste auf das Kassenbon-Symbol.",
+                "Schritt 2: Wähle Kamera-Scan, PDF-Import oder Foto aus der Galerie.",
+                "Schritt 3: Die KI extrahiert Supermarkt, Kaufdatum, Produkte, Mengen und Preise.",
+                "Schritt 4: Passe Abkürzungen bei Bedarf an – die Korrektur wird lokal und im Community-Lernmodell gespeichert.",
+                "Schritt 5: Tippe auf 'Speichern', um alle Artikel direkt in den Vorrat einzubuchen."
             ),
             faqs = listOf(
-                FAQItem("Was passiert, wenn ein Bon falsch gelesen wird?", "Du kannst den Namen im Vorschaudialog korrigieren. Die App lernt deine Korrekturen für das nächste Mal!"),
-                FAQItem("Werden Pfand und Steuerzeilen ignoriert?", "Ja, Pfand, Rabattzeilen und EC-Terminaldaten werden automatisch ausgefiltert.")
+                FAQItem("Was passiert bei unverständlichen Kassenkürzeln?", "Du kannst den Artikel im Dialog korrigieren. FrischeRadar lernt den Klarnamen und wendet ihn bei künftigen Bons sofort an."),
+                FAQItem("Werden Pfand und Rabatte berücksichtigt?", "Pfand wird automatisch auf dem virtuellen Pfandkonto verbucht, Rabatte und Pfandrückgaben werden abgezogen."),
+                FAQItem("Funktioniert das auch offline?", "Ja! Die integrierte Offline-Engine verarbeitet Belege jederzeit lokal ohne Cloud-Zwang.")
             ),
             icon = Icons.Default.ReceiptLong,
             accentColor = Color(0xFF2196F3),
             targetKey = "scan_btn"
         ),
         HelpTopic(
-            id = "mhd_tracking",
-            title = "MHD & Haltbarkeits-Tracker",
-            category = "Frische",
-            summary = "Farben signalisieren Frischestand: Grün für frisch, Gelb für kritisch, Rot für abgelaufen.",
+            id = "offers_radar",
+            title = "Angebotsradar & Online-Prospekte",
+            category = "Sparen & Angebote",
+            summary = "Gleiche Vorräte und Favoriten mit aktuellen Aktionen ab. Ein Klick öffnet den Online-Prospekt des Marktes.",
             detailedSteps = listOf(
-                "Jedes Produkt berechnet anhand seiner Kategorie automatisch das Ablaufdatum.",
-                "Auf der Startseite zeigen Indikatoren (Grün / Gelb / Rot) den Reifegrad an.",
-                "Unter Einstellungen kannst du festlegen, wie viele Tage vorher du gewarnt werden möchtest."
+                "Schritt 1: Setze Lieblingsartikel auf deine dauerhafte Watchlist (Herz-Symbol oben).",
+                "Schritt 2: FrischeRadar scannt automatisch Aktionsangebote von Kaufland, Netto, REWE, Lidl und Edeka.",
+                "Schritt 3: Erscheint ein Treffer im Angebots-Radar, tippe einfach auf die Angebotskarte.",
+                "Schritt 4: Der Browser öffnet direkt die Aktionsseite bzw. den Prospekt beim gesuchten Artikel.",
+                "Schritt 5: Mit dem Warenkorb-Symbol übernimmst du das Angebot direkt auf die Einkaufsliste."
             ),
             faqs = listOf(
-                FAQItem("Wie berechnet die App das Ablaufdatum?", "Basierend auf Warengruppe (z. B. Hackfleisch 2 Tage, Milch 10 Tage) ab Kaufdatum."),
-                FAQItem("Kann ich geöffnete Produkte markieren?", "Ja! Wische nach unten oder nutze das Kontextmenü, um ein Produkt als 'Geöffnet' zu kennzeichnen.")
+                FAQItem("Welche Supermärkte werden unterstützt?", "Aktuell Kaufland, Netto, REWE, Lidl, Edeka sowie Aldi und Penny."),
+                FAQItem("Muss ein Artikel im Vorrat sein?", "Nein, Artikel auf der Watchlist werden auch geprüft, wenn der Vorrat aktuell leer ist.")
             ),
-            icon = Icons.Default.Warning,
-            accentColor = Color(0xFFFF9800),
-            targetKey = "expiry_filter"
+            icon = Icons.Default.LocalOffer,
+            accentColor = Color(0xFFE91E63),
+            targetKey = "watchlist_btn"
         ),
         HelpTopic(
-            id = "inventory_storage",
-            title = "Vorratskammer, Kühlschrank & Gefrierfach",
+            id = "inventory_management",
+            title = "Vorratsverwaltung & Lagerorte",
             category = "Organisation",
-            summary = "Artikel werden automatisch dem passenden Lagerort und der richtigen Kategorie zugewiesen.",
+            summary = "Artikel flexibel nach Kühlschrank, Vorratskammer und Gefrierfach verwalten und filtern.",
             detailedSteps = listOf(
-                "Beim Import ordnet die App Produkte automatisch Kühlschrank, Gefrierfach oder Vorratskammer zu.",
-                "Nutze die Filterchips oben, um gezielt nur Vorräte an bestimmten Lagerorten anzuzeigen.",
-                "Sollte ein Lagerort nicht stimmen, kannst du ihn beim Bearbeiten einfach ändern."
+                "Schritt 1: Nutze die oberen Lagerort-Filter (Kühlschrank, Gefrierfach, Vorratskammer).",
+                "Schritt 2: Tippe auf einen Artikel, um die Mengenangabe per +/- anzupassen.",
+                "Schritt 3: Über das Stift-Symbol öffnet sich das native Bottom-Sheet für alle Detailfelder.",
+                "Schritt 4: Wechsle über das Ansicht-Menü zwischen Liste, Raster, Regal- und Kalender-Ansicht."
             ),
             faqs = listOf(
-                FAQItem("Kann ich nach Kategorien filtern?", "Ja! Über das Filtermenü kannst du z. B. nur Milchprodukte oder Fleisch anzeigen."),
-                FAQItem("Gibt es eine Ansicht als Baum oder Kalender?", "Ja! Über das Menü 'Ansicht' kannst du zwischen Liste, Raster, Baum und Kalender wechseln.")
+                FAQItem("Kann ich nach Kategorien filtern?", "Ja, über die Kategorie-Chips filterst du blitzschnell nach Milchprodukten, Gemüse, Fleisch oder Vorrat."),
+                FAQItem("Wie funktioniert der Vorratsschutz?", "Unterschreitet ein Artikel den Mindestbestand, schlägt FrischeRadar automatisch einen Nachkauf vor.")
             ),
             icon = Icons.Default.Kitchen,
             accentColor = Color(0xFF4CAF50),
             targetKey = "storage_tiles"
         ),
         HelpTopic(
+            id = "mhd_freshness",
+            title = "MHD-Ampel & Frische-Tracker",
+            category = "Frische & Haltbarkeit",
+            summary = "Farbindikatoren signalisieren den Zustand: Grün = frisch, Gelb = bald verbrauchen, Rot = abgelaufen.",
+            detailedSteps = listOf(
+                "Schritt 1: FrischeRadar schätzt oder übernimmt das Mindesthaltbarkeitsdatum automatisch.",
+                "Schritt 2: Der Farbstreifen links zeigt die Dringlichkeit (Grün > 3 Tage, Gelb < 3 Tage, Rot abgelaufen).",
+                "Schritt 3: Markiere angebrochene Packungen als 'Geöffnet', um die Verzehrzeit realistisch zu verkürzen.",
+                "Schritt 4: In den Einstellungen kannst du festlegen, wie viele Tage im Voraus du gewarnt werden möchtest."
+            ),
+            faqs = listOf(
+                FAQItem("Gibt es Push-Benachrichtigungen?", "Ja, der Hintergrund-Dienst erinnert dich morgens rechtzeitig an ablaufende Lebensmittel."),
+                FAQItem("Wie werden geöffnete Produkte berechnet?", "Milch und Saft erhalten z. B. automatisch 3–4 Tage Frischezeit ab Öffnungsdatum.")
+            ),
+            icon = Icons.Default.Warning,
+            accentColor = Color(0xFFFF9800),
+            targetKey = "expiry_filter"
+        ),
+        HelpTopic(
+            id = "share_and_sync",
+            title = "Teilen & Haushalts-Synchronisation",
+            category = "Vernetzung",
+            summary = "Kassenbons teilen, Haushaltsmitglieder per QR-Code koppeln und Daten mit dem PC abgleichen.",
+            detailedSteps = listOf(
+                "Schritt 1: Kassenbons und Einkaufslisten können jederzeit per WhatsApp, E-Mail oder Messenger geteilt werden.",
+                "Schritt 2: Erstelle einen Haushaltscode oder scanne den QR-Code eines Partners, um Vorräte live zu teilen.",
+                "Schritt 3: Aktiviere in den Einstellungen 'Mit PC verbinden', um Vorräte bequem am Browser im WLAN zu verwalten.",
+                "Schritt 4: Manuelle Belegkorrekturen werden geräuschlos mit dem Server synchronisiert."
+            ),
+            faqs = listOf(
+                FAQItem("Werden meine Daten ins Internet hochgeladen?", "Nein, der Sync erfolgt direkt im lokalen WLAN oder anonymisiert bei Community-Korrekturen."),
+                FAQItem("Kann ich Backups exportieren?", "Ja, in den Einstellungen findest du vollständige JSON-Backup- und Restore-Funktionen.")
+            ),
+            icon = Icons.Default.Share,
+            accentColor = Color(0xFF009688),
+            targetKey = "nav_bar"
+        ),
+        HelpTopic(
             id = "gestures_swipe",
             title = "Wischgesten (Swipe-Aktionen)",
             category = "Bedienung",
-            summary = "Verwalte Artikel blitzschnell mit Gesten in alle vier Richtungen.",
+            summary = "Verwalte Vorratskarten blitzschnell mit Gesten in alle vier Himmelsrichtungen.",
             detailedSteps = listOf(
-                "Wische nach rechts ➡️ für 'Verbraucht' (Eintrag wandert in Statistik & Wiederverbrauchs-Liste).",
-                "Wische nach links ⬅️ für 'Müll' (Eintrag landet in Abfall-Statistik).",
-                "Wische nach oben ⬆️ für 'Favorit' (fügt Produkt der Watchlist hinzu).",
-                "Wische nach unten ⬇️ für 'Geöffnet' (verkürzt die Haltbarkeit)."
+                "Wische nach rechts: Markiert den Artikel als 'Verbraucht' (Statistik wird gepflegt).",
+                "Wische nach links: Markiert den Artikel als 'Müll / Verdorbener Abfall'.",
+                "Wische nach oben: Fügt das Produkt deiner dauerhaften Favoriten-Watchlist hinzu.",
+                "Wische nach unten: Kennzeichnet den Artikel als angebrochen / geöffnet."
             ),
             faqs = listOf(
-                FAQItem("Kann ich die Wischgesten anpassen?", "Ja! In den Einstellungen kannst du alle 4 Richtungen individuell belegen."),
-                FAQItem("Wie verhindere ich versehentliches Wischen beim Scrollen?", "Beginne die Wischgeste leicht horizontal, damit die App Scrollen von Wischen unterscheidet.")
+                FAQItem("Kann ich die Aktionen umbelegen?", "Ja! In den Einstellungen unter 'Erscheinungsbild & Wischgesten' lässt sich jede Richtung frei belegen.")
             ),
             icon = Icons.Default.Swipe,
             accentColor = Color(0xFF9C27B0),
             targetKey = "item_card"
-        ),
-        HelpTopic(
-            id = "favorites_deals",
-            title = "Favoriten-Pool & Angebots-Alarm",
-            category = "Sparen",
-            summary = "Setze Lieblingsprodukte auf die Watchlist und erhalte automatische Pop-up-Angebote lokaler Händler.",
-            detailedSteps = listOf(
-                "Tippe oben auf das Herz-Symbol, um deine dauerhafte Watchlist zu öffnen.",
-                "Füge Lieblingsprodukte hinzu (z. B. 'Butter', 'Nutella', 'Kaffee').",
-                "Die App gleicht Watchlist & Einkaufsliste automatisch mit Prospekten von Kaufland, Lidl, Rewe & Edeka ab.",
-                "Sobald ein Angebot existiert, erscheint ein Pop-up mit der Direktübernahme auf deine Einkaufsliste."
-            ),
-            faqs = listOf(
-                FAQItem("Bleiben Favoriten auch ohne Vorrat auf der Liste?", "Ja, die Watchlist ist unabhängig vom aktuellen Kühlschrank-Inhalt."),
-                FAQItem("Wie oft werden Angebote geprüft?", "Automatisch im Hintergrund oder manuell per Klick in der Watchlist.")
-            ),
-            icon = Icons.Default.Favorite,
-            accentColor = Color(0xFFE91E63),
-            targetKey = "watchlist_btn"
         )
     )
 
@@ -132,34 +162,34 @@ object AppHelpManager {
         OnboardingStep(
             id = "welcome",
             title = "Willkommen beim FrischeRadar!",
-            description = "Dein intelligenter Begleiter für Kühlschrank, Vorrat, Mindesthaltbarkeit und Schnäppchen-Jagd.",
-            icon = Icons.Default.Celebration
+            description = "Dein intelligenter Begleiter für Kühlschrank, Vorrat, Mindesthaltbarkeit und Prospekt-Angebote.",
+            icon = Icons.Default.Sensors
         ),
         OnboardingStep(
             id = "scan",
-            title = "Bon- & Barcode-Scanner 🧾",
-            description = "Scanne Kassenbons oder Barcodes. Die KI erkennt Namen, Preise und Mengen vollautomatisch.",
+            title = "Kassenbon- & Barcode-Scan",
+            description = "Scanne Belege per Kamera, PDF oder Galerie. Die KI erkennt Artikel, Preise und Einheiten automatisch.",
             targetKey = "scan_btn",
-            icon = Icons.Default.QrCodeScanner
+            icon = Icons.Default.ReceiptLong
         ),
         OnboardingStep(
-            id = "watchlist",
-            title = "Angebots-Watchlist 🏷️",
-            description = "Speichere deine Lieblingsprodukte. Die App schlägt Alarm, sobald sie bei Händlern im Angebot sind.",
+            id = "deals",
+            title = "Angebots-Radar & Watchlist",
+            description = "Füge Lieblingsartikel hinzu. Sobald Kaufland, Netto, REWE, Lidl oder Edeka ein Angebot haben, führt ein Klick direkt zum Prospekt.",
             targetKey = "watchlist_btn",
-            icon = Icons.Default.Favorite
+            icon = Icons.Default.LocalOffer
         ),
         OnboardingStep(
             id = "fridge",
-            title = "Frische- & MHD-Tracker 📦",
-            description = "Farbindikatoren zeigen dir auf einen Blick, welche Vorräte bald verbraucht werden sollten.",
+            title = "Vorratsfilter & MHD-Ampel",
+            description = "Filtere nach Lagerort (Kühlschrank, Vorrat, Gefrierfach) und behalte ablaufende Lebensmittel per Farb-Ampel im Blick.",
             targetKey = "storage_tiles",
             icon = Icons.Default.Kitchen
         ),
         OnboardingStep(
             id = "gestures",
-            title = "Kompakte Wischgesten 👆",
-            description = "Wische Karten nach rechts (Verbraucht), links (Müll) oder oben (Favorit), um Vorräte blitzschnell zu verwalten.",
+            title = "Schnelle Wischgesten",
+            description = "Wische Karten nach rechts für 'Verbraucht', links für 'Müll' oder nach oben für 'Favorit'. Vollständig konfigurierbar!",
             targetKey = "item_card",
             icon = Icons.Default.Swipe
         )

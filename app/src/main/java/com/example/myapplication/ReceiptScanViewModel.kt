@@ -141,6 +141,37 @@ class ReceiptScanViewModel(application: Application) : AndroidViewModel(applicat
                 )
                 dao.insertUserLearnedCorrection(correction)
                 ReceiptImportSanitizer.addLearnedCorrection(rawReceiptText, correctedName)
+
+                val file = java.io.File(getApplication<Application>().filesDir, "pending_corrections.json")
+                val list = mutableListOf<Map<String, Any>>()
+                if (file.exists()) {
+                    try {
+                        val content = file.readText()
+                        val type = object : com.google.gson.reflect.TypeToken<List<Map<String, Any>>>() {}.type
+                        val existing: List<Map<String, Any>>? = com.google.gson.Gson().fromJson(content, type)
+                        if (existing != null) list.addAll(existing)
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
+                list.removeAll { it["rawName"]?.toString()?.equals(rawReceiptText, ignoreCase = true) == true }
+                list.add(mapOf(
+                    "rawName" to rawReceiptText.trim(),
+                    "cleanName" to correctedName.trim(),
+                    "unit" to "Stk.",
+                    "category" to "Vorrat",
+                    "storageLocation" to "Kühlschrank",
+                    "timestamp" to System.currentTimeMillis()
+                ))
+                file.writeText(com.google.gson.Gson().toJson(list))
+
+                val prefs = getApplication<Application>().getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+                if (prefs.getBoolean("share_corrections_enabled", true)) {
+                    val synced = com.example.myapplication.data.SyncManager.syncCorrections(getApplication(), list)
+                    if (synced > 0) {
+                        file.delete()
+                        val curr = prefs.getInt("synced_corrections_count", 0)
+                        prefs.edit().putInt("synced_corrections_count", curr + synced).apply()
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }

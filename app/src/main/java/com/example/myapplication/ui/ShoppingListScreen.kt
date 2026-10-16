@@ -1,12 +1,26 @@
 package com.example.myapplication.ui
 
 import android.app.Activity
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -15,11 +29,59 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircleOutline
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.RemoveCircleOutline
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,17 +98,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.FridgeViewModel
+import com.example.myapplication.R
 import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.FoodCategory
-import com.example.myapplication.data.FridgeItem
 import com.example.myapplication.data.ShoppingItem
-import android.content.Intent
-import android.speech.RecognizerIntent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import com.example.myapplication.R
-import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Locale
 
 /**
  * Modernisierte Einkaufsliste für Kühlschrank Profi 🍏
@@ -139,15 +195,28 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                     selected = !isSupermarketMode,
                     onClick = { isSupermarketMode = false },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    colors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = Color(0xFFE8F5E9),
+                        activeContentColor = Color(0xFF1B5E20)
+                    ),
                     icon = {}
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Premium3DIcon(R.drawable.ic_nav_plan, !isSupermarketMode, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Default.Checklist,
+                            contentDescription = "Einkaufsliste",
+                            tint = if (!isSupermarketMode) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(19.dp)
+                        )
                         Spacer(Modifier.width(8.dp))
-                        Text("Einkaufsliste", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "Einkaufsliste",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (!isSupermarketMode) FontWeight.Bold else FontWeight.Normal
+                        )
                     }
                 }
                 SegmentedButton(
@@ -167,9 +236,18 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Premium3DIcon(R.drawable.ic_nav_einkauf, isSupermarketMode, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Default.ShoppingCart,
+                            contentDescription = "Supermarkt-Tour",
+                            tint = if (isSupermarketMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(19.dp)
+                        )
                         Spacer(Modifier.width(8.dp))
-                        Text("Supermarkt-Tour", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Supermarkt-Tour",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -433,7 +511,8 @@ fun ShoppingListScreen(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
+                contentPadding = PaddingValues(bottom = 96.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth()
             ) {
                 // A) UNCHECKED ITEMS GROUPED BY AISLE/CATEGORY
                 var stationIndex = 1
@@ -605,10 +684,12 @@ fun LiveBudgetCard(
 
                 if (totalCost > 0) {
                     Text(
-                        String.format(Locale.GERMANY, "ca. %.2f €", totalCost),
+                        "ca.\u00A0${String.format(Locale.GERMANY, "%.2f\u00A0€", totalCost)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (isSupermarketMode) MaterialTheme.colorScheme.primary else themeColor
+                        color = if (isSupermarketMode) MaterialTheme.colorScheme.primary else themeColor,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 } else {
                     Text(
@@ -804,17 +885,31 @@ fun ModernShoppingItemCard(
 
                     if (item.priceEstimate > 0) {
                         Text(
-                            String.format(Locale.GERMANY, "ca. %.2f €", item.priceEstimate * item.quantity),
+                            "ca.\u00A0${String.format(Locale.GERMANY, "%.2f\u00A0€", item.priceEstimate * item.quantity)}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.secondary
+                            color = MaterialTheme.colorScheme.secondary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
             }
 
-            // Controls (Quantity Stepper & Edit Button in standard mode)
+            // Controls (Quantity Stepper, Edit Button & Favorite Button in standard mode)
             if (!isSupermarketMode && !item.isChecked) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { viewModel.toggleShoppingItemFavorite(item) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = getFavoriteIconVector(viewModel.favoriteIconName.value),
+                            contentDescription = if (item.isFavorite) "Favorit entfernen" else "Als Favorit markieren",
+                            tint = if (item.isFavorite) viewModel.favoriteIconColor.value else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     IconButton(
                         onClick = { viewModel.updateShoppingItemQuantity(item, item.quantity - 1) },
                         modifier = Modifier.size(32.dp)
@@ -841,14 +936,27 @@ fun ModernShoppingItemCard(
                     }
                 }
             } else if (isSupermarketMode && !item.isChecked) {
-                // Large "Gekauft" button in Supermarket mode
-                IconButton(onClick = onToggle) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        "Abhaken",
-                        tint = MaterialTheme.colorScheme.primary,
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { viewModel.toggleShoppingItemFavorite(item) },
                         modifier = Modifier.size(32.dp)
-                    )
+                    ) {
+                        Icon(
+                            imageVector = getFavoriteIconVector(viewModel.favoriteIconName.value),
+                            contentDescription = if (item.isFavorite) "Favorit entfernen" else "Als Favorit markieren",
+                            tint = if (item.isFavorite) viewModel.favoriteIconColor.value else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    // Large "Gekauft" button in Supermarket mode
+                    IconButton(onClick = onToggle) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            "Abhaken",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
             }
 

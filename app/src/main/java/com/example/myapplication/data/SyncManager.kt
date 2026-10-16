@@ -192,4 +192,48 @@ object SyncManager {
         _isSyncing.value = false
         syncSuccess
     }
+
+    suspend fun syncCorrections(context: Context, corrections: List<Map<String, Any>>): Int = withContext(Dispatchers.IO) {
+        if (corrections.isEmpty()) return@withContext 0
+        val configuredUrl = getWebserviceUrl(context)
+        val candidateUrls = listOf(
+            configuredUrl,
+            "http://192.168.0.223:8080",
+            "http://10.0.2.2:8080",
+            "http://localhost:8080"
+        ).distinct()
+
+        for (baseUrl in candidateUrls) {
+            try {
+                val url = java.net.URL("$baseUrl/api/sync_corrections")
+                val connection = (url.openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 2500
+                    readTimeout = 3000
+                    requestMethod = "POST"
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    setRequestProperty("Accept", "application/json")
+                }
+                val payload = gson.toJson(mapOf("corrections" to corrections))
+                connection.outputStream.use { os ->
+                    os.write(payload.toByteArray(Charsets.UTF_8))
+                    os.flush()
+                }
+                val code = connection.responseCode
+                if (code == 200) {
+                    val respText = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    connection.disconnect()
+                    setWebserviceUrl(context, baseUrl)
+                    val parsed = gson.fromJson(respText, Map::class.java)
+                    val count = (parsed["syncedCount"] as? Number)?.toInt() ?: corrections.size
+                    _isOnline.value = true
+                    return@withContext count
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                // Try next candidate
+            }
+        }
+        return@withContext 0
+    }
 }

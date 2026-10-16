@@ -87,7 +87,8 @@ data class ShoppingItem(
     val store: String? = null,
     val note: String? = null,
     val urgency: String = "NORMAL",
-    val category: String? = null
+    val category: String? = null,
+    val isFavorite: Boolean = false
 )
 
 @Entity(tableName = "budget_config")
@@ -101,7 +102,8 @@ data class BudgetConfig(
     indices = [
         Index(value = ["market"], name = "idx_market"),
         Index(value = ["market_id"], name = "idx_market_id"),
-        Index(value = ["receiptPattern"], name = "idx_receipt_pattern")
+        Index(value = ["receiptPattern"], name = "idx_receipt_pattern"),
+        Index(value = ["cleanName"], name = "idx_clean_name")
     ]
 )
 data class MarketProductEntry(

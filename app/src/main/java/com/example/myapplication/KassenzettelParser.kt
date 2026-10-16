@@ -5,12 +5,13 @@ import android.graphics.Bitmap
 import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.Product
-import com.google.mlkit.vision.text.Text
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognizer
 import java.io.File
-import java.util.*
+import java.util.Calendar
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.round
 
@@ -243,6 +244,14 @@ object KassenzettelParser {
         "CAROTTENKRÜSTCHEN" to "Karottenkrüstchen",
         "CATSAN" to "Catsan Katzenstreu",
         "K-CLASSIC" to "K-Classic",
+        "ALNIGHURT 5000 GLAS" to "Almjoghurt 500g Glas",
+        "ALNIGHURT" to "Almjoghurt",
+        "TSCHINKEN" to "Saftschinken 100g",
+        "MEGGL E SCHEIBEN" to "Meggle Schmelzkäsescheiben",
+        "GP POCH KALO" to "Gourmet Perle Katzenfutter",
+        "GP POCH" to "Gourmet Perle Katzenfutter",
+        "GOLR NET A L8 CARTE" to "Gourmet Perle Katzenfutter",
+        "GOR NET A LA CARTE" to "Gourmet Perle Katzenfutter",
         "GUT&G" to "Gut & Günstig",
         "G&G" to "Gut & Günstig",
         "CORNEDBEEF" to "Corned Beef",
@@ -1016,7 +1025,10 @@ object KassenzettelParser {
             cleanUpper.matches(Regex("""^BELEG.*""", RegexOption.IGNORE_CASE)) ||
             cleanUpper.matches(Regex("""^KASSE.*""", RegexOption.IGNORE_CASE)) ||
             cleanUpper.matches(Regex("""^BON\d+.*""", RegexOption.IGNORE_CASE)) ||
-            cleanUpper.matches(Regex("""^NR\.?\s*\d+.*""", RegexOption.IGNORE_CASE))) {
+            cleanUpper.matches(Regex("""^NR\.?\s*\d+.*""", RegexOption.IGNORE_CASE)) ||
+            cleanUpper.matches(Regex("""^[\d\s./*#:-]+$""")) ||
+            cleanUpper.matches(Regex("""^[A-Z]?\d{4,}(?:\s+[A-Z0-9]+)*$""")) ||
+            (clean.count { it.isDigit() } >= 3 && clean.count { it.isLetter() } <= 2)) {
             return
         }
 

@@ -8,13 +8,14 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MarketProductEntry::class, MarketProductFts::class],
-    version = 2,
+    entities = [MarketProductEntry::class, MarketProductFts::class, ProductEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class MarketProductDatabase : RoomDatabase() {
 
     abstract fun marketProductDao(): MarketProductDao
+    abstract fun productDao(): ProductDao
 
     companion object {
         @Volatile
@@ -32,6 +33,27 @@ abstract class MarketProductDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `market_products` (
+                        `id` TEXT NOT NULL PRIMARY KEY,
+                        `cleanName` TEXT NOT NULL,
+                        `receiptPattern` TEXT NOT NULL,
+                        `category` TEXT NOT NULL DEFAULT 'SONSTIGES',
+                        `defaultStorage` TEXT NOT NULL DEFAULT 'Kühlschrank',
+                        `defaultShelfLifeDays` INTEGER NOT NULL DEFAULT 7,
+                        `market` TEXT NOT NULL DEFAULT 'general',
+                        `market_id` TEXT,
+                        `purchase_count` INTEGER NOT NULL DEFAULT 0,
+                        `synonyms` TEXT
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS `idx_market_products_receipt_pattern` ON `market_products` (`receiptPattern`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `idx_market_products_clean_name` ON `market_products` (`cleanName`)")
+            }
+        }
+
         fun getInstance(context: Context): MarketProductDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -39,7 +61,8 @@ abstract class MarketProductDatabase : RoomDatabase() {
                     MarketProductDatabase::class.java,
                     "market_products.db"
                 )
-                .createFromAsset("market_products.db")
+                .createFromAsset("databases/market_products.db")
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance

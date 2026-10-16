@@ -27,6 +27,8 @@ object SeasonHelper {
     fun getStorageTip(produceName: String): String? {
         val nameLower = produceName.lowercase()
         return when {
+            nameLower.contains("fleischsalat") || nameLower.contains("feinkost") || nameLower.contains("wurstsalat") || nameLower.contains("kartoffelsalat") || nameLower.contains("nudelsalat") || nameLower.contains("eiersalat") ->
+                "Feinkostsalate: Verschlossen bei 2–7 °C lagern und nach Anbruch innerhalb von 2–3 Tagen verbrauchen."
             nameLower.contains("tomate") -> "Nicht kühlen – verliert sonst an Aroma. Am besten bei Zimmertemperatur lagern."
             nameLower.contains("banane") -> "Reift stark nach und lässt anderes Obst schneller reifen. Separat und nicht im Kühlschrank lagern."
             nameLower.contains("apfel") -> "Äpfel produzieren viel Reifegas (Ethylen). Im Kühlschrank halten sie lange, sollten aber abseits von anderem Obst liegen."

@@ -14,7 +14,6 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.work.Constraints
@@ -41,7 +41,7 @@ import java.io.FileOutputStream
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private var nfcAdapter: NfcAdapter? = null
     private val currentIntentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
 

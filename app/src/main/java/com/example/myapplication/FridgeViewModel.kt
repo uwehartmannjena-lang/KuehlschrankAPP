@@ -68,6 +68,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -171,6 +174,10 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     val warnerMessages = mutableStateListOf<String>()
     val learnedCorrections = mutableStateMapOf<String, String>()
     val learnedEntriesMap = mutableStateMapOf<String, LearningEntry>()
+    val shareCorrectionsEnabled = mutableStateOf(true)
+    val syncedCorrectionsCount = mutableIntStateOf(0)
+    val pendingCorrectionsCount = mutableIntStateOf(0)
+    val isSyncingCorrections = mutableStateOf(false)
 
     init {
         viewModelScope.launch {
@@ -208,13 +215,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
     val activeRecalls = mutableStateListOf<String>()
 
-    init {
-        runAutomaticRecallCheck()
-        billingManager.startConnection()
-        viewModelScope.launch {
-            com.example.myapplication.data.SyncManager.syncWithWebservice(applicationContext, dao)
-        }
-    }
+
 
     fun syncWithWebservice() {
         viewModelScope.launch {
@@ -315,7 +316,27 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         install(ContentNegotiation) { kotlinx.serialization.json.Json { ignoreUnknownKeys = true } }
     }
     private val offerRepository = com.example.myapplication.data.OfferRepository(httpClient)
-    private val geminiRepository = GeminiRepository()
+    private val geminiRepository = GeminiRepository(applicationContext)
+
+    private val _isGeminiNanoSupported = MutableStateFlow(geminiRepository.isGeminiNanoSupported(applicationContext))
+    val isGeminiNanoSupported: StateFlow<Boolean> = _isGeminiNanoSupported.asStateFlow()
+
+    val useGeminiNano = mutableStateOf(false)
+
+    fun checkGeminiNanoSupport(): Boolean {
+        val supported = geminiRepository.isGeminiNanoSupported(applicationContext)
+        _isGeminiNanoSupported.value = supported
+        if (!supported && useGeminiNano.value) {
+            setUseGeminiNano(false)
+        }
+        return supported
+    }
+
+    fun setUseGeminiNano(enabled: Boolean) {
+        val allowed = enabled && isGeminiNanoSupported.value
+        useGeminiNano.value = allowed
+        saveSetting("use_gemini_nano", allowed)
+    }
 
     val dealAlertStores = mutableStateOf(setOf("Kaufland", "Lidl", "Rewe", "Aldi", "Edeka", "dm"))
     val dealAlertItem = mutableStateOf<Pair<String, String>?>(null)
@@ -336,15 +357,19 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     fun checkOffersForFavorites() {
         viewModelScope.launch {
             isSyncing.value = true
-            val favoriteNames = allFridgeItems.first().filter { it.isFavorite }.map { it.name }
-            val shoppingNames = dao.getAllShoppingItems().first().map { it.name }
-            val allSearchItems = (favoriteNames + shoppingNames + watchlist.value).distinct()
+            val favoriteFridgeNames = allFridgeItems.first().filter { it.isFavorite }.map { it.name }
+            val favoriteShoppingNames = dao.getAllShoppingItems().first().filter { it.isFavorite }.map { it.name }
+            val allSearchItems = (favoriteFridgeNames + favoriteShoppingNames + watchlist.value).distinct()
 
-            val offers = offerRepository.checkLocalOffers(allSearchItems)
-            currentOffers.clear()
-            currentOffers.addAll(offers)
-            if (offers.isNotEmpty()) {
-                showOfferAlert.value = true
+            if (allSearchItems.isNotEmpty()) {
+                val offers = offerRepository.checkLocalOffers(allSearchItems)
+                currentOffers.clear()
+                currentOffers.addAll(offers)
+                if (offers.isNotEmpty()) {
+                    showOfferAlert.value = true
+                }
+            } else {
+                currentOffers.clear()
             }
             isSyncing.value = false
         }
@@ -395,6 +420,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         cardCornerRadius.intValue = prefs.getInt("corner_radius", 12)
         householdSize.intValue = prefs.getInt("household_size", 1)
         useLocalAIFilter.value = prefs.getBoolean("use_ai_filter", false)
+        useGeminiNano.value = prefs.getBoolean("use_gemini_nano", false) && isGeminiNanoSupported.value
         currentIconIndex.intValue = prefs.getInt("app_icon_index", 4)
         favoriteIconName.value = prefs.getString("favorite_icon_name", "Star") ?: "Star"
         selectedDietProfile.value = prefs.getString("diet_profile", "Standard") ?: "Standard"
@@ -413,6 +439,23 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         val allergenList = prefs.getStringSet("allergen_warnings", emptySet()) ?: emptySet()
         allergenWarnings.clear()
         allergenWarnings.addAll(allergenList)
+
+        shareCorrectionsEnabled.value = prefs.getBoolean("share_corrections_enabled", true)
+        syncedCorrectionsCount.intValue = prefs.getInt("synced_corrections_count", 0)
+        updatePendingCorrectionsCount()
+    }
+
+    init {
+        syncSettings()
+        runAutomaticRecallCheck()
+        billingManager.startConnection()
+        viewModelScope.launch {
+            com.example.myapplication.data.SyncManager.syncWithWebservice(applicationContext, dao)
+            checkOffersForFavorites()
+            if (shareCorrectionsEnabled.value) {
+                syncPendingCorrections()
+            }
+        }
     }
 
     private fun saveSetting(key: String, value: Any) {
@@ -471,6 +514,161 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     fun toggleAllergenWarning(allergen: String) {
         if (allergenWarnings.contains(allergen)) allergenWarnings.remove(allergen) else allergenWarnings.add(allergen)
         saveSetting("allergen_warnings", allergenWarnings.toSet())
+    }
+
+    fun setShareCorrectionsEnabled(enabled: Boolean) {
+        shareCorrectionsEnabled.value = enabled
+        saveSetting("share_corrections_enabled", enabled)
+    }
+
+    private fun getPendingCorrectionsFile(): File {
+        return File(applicationContext.filesDir, "pending_corrections.json")
+    }
+
+    fun updatePendingCorrectionsCount() {
+        val file = getPendingCorrectionsFile()
+        if (!file.exists()) {
+            pendingCorrectionsCount.intValue = 0
+            return
+        }
+        try {
+            val content = file.readText()
+            val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+            val list: List<Map<String, Any>> = Gson().fromJson(content, type) ?: emptyList()
+            pendingCorrectionsCount.intValue = list.size
+        } catch (e: Exception) {
+            pendingCorrectionsCount.intValue = 0
+        }
+    }
+
+    fun queuePendingCorrection(
+        rawName: String,
+        cleanName: String,
+        unit: String = "Stk.",
+        category: String = "Vorrat",
+        storageLocation: String = "Kühlschrank",
+        supermarket: String = ""
+    ) {
+        if (rawName.isBlank() || cleanName.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = getPendingCorrectionsFile()
+                val list = mutableListOf<Map<String, Any>>()
+                if (file.exists()) {
+                    try {
+                        val content = file.readText()
+                        val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                        val existing: List<Map<String, Any>>? = Gson().fromJson(content, type)
+                        if (existing != null) list.addAll(existing)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                list.removeAll { it["rawName"]?.toString()?.equals(rawName, ignoreCase = true) == true }
+                list.add(mapOf(
+                    "rawName" to rawName.trim(),
+                    "cleanName" to cleanName.trim(),
+                    "unit" to unit,
+                    "category" to category,
+                    "storageLocation" to storageLocation,
+                    "supermarket" to supermarket,
+                    "timestamp" to System.currentTimeMillis()
+                ))
+
+                file.writeText(Gson().toJson(list))
+                withContext(Dispatchers.Main) {
+                    pendingCorrectionsCount.intValue = list.size
+                }
+
+                if (shareCorrectionsEnabled.value) {
+                    syncPendingCorrections()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun syncPendingCorrections(onResult: ((Boolean, Int) -> Unit)? = null) {
+        if (isSyncingCorrections.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            isSyncingCorrections.value = true
+            try {
+                val file = getPendingCorrectionsFile()
+                if (!file.exists()) {
+                    withContext(Dispatchers.Main) {
+                        pendingCorrectionsCount.intValue = 0
+                        onResult?.invoke(true, 0)
+                        isSyncingCorrections.value = false
+                    }
+                    return@launch
+                }
+                val content = file.readText()
+                val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                val pendingList: List<Map<String, Any>> = Gson().fromJson(content, type) ?: emptyList()
+                if (pendingList.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        pendingCorrectionsCount.intValue = 0
+                        onResult?.invoke(true, 0)
+                        isSyncingCorrections.value = false
+                    }
+                    return@launch
+                }
+
+                val synced = com.example.myapplication.data.SyncManager.syncCorrections(applicationContext, pendingList)
+                if (synced > 0) {
+                    file.delete()
+                    withContext(Dispatchers.Main) {
+                        syncedCorrectionsCount.intValue += synced
+                        pendingCorrectionsCount.intValue = 0
+                        saveSetting("synced_corrections_count", syncedCorrectionsCount.intValue)
+                        onResult?.invoke(true, synced)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onResult?.invoke(false, 0)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    onResult?.invoke(false, 0)
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isSyncingCorrections.value = false
+                }
+            }
+        }
+    }
+
+    fun exportCorrectionsJson(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val allLearning = dao.getAllLearningDataSync()
+                val file = File(context.cacheDir, "receipt_corrections_export.json")
+                file.writeText(Gson().toJson(allLearning))
+                withContext(Dispatchers.Main) {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/json"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Korrekturen exportieren"))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Export fehlgeschlagen: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     fun syncData() {
@@ -539,13 +737,36 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         viewModelScope.launch { 
             val newFavStatus = !item.isFavorite
             dao.updateItem(item.copy(isFavorite = newFavStatus))
+            val current = watchlist.value.toMutableSet()
             if (newFavStatus) {
-                val current = watchlist.value.toMutableSet()
                 current.add(item.name)
-                watchlist.value = current
-                saveSetting("global_watchlist", current)
+            } else {
+                current.remove(item.name)
+            }
+            watchlist.value = current
+            saveSetting("global_watchlist", current)
+            if (newFavStatus) {
+                checkOffersForFavorites()
             }
         } 
+    }
+
+    fun toggleShoppingItemFavorite(item: ShoppingItem) {
+        viewModelScope.launch {
+            val newFavStatus = !item.isFavorite
+            dao.insertShoppingItem(item.copy(isFavorite = newFavStatus))
+            val current = watchlist.value.toMutableSet()
+            if (newFavStatus) {
+                current.add(item.name)
+            } else {
+                current.remove(item.name)
+            }
+            watchlist.value = current
+            saveSetting("global_watchlist", current)
+            if (newFavStatus) {
+                checkOffersForFavorites()
+            }
+        }
     }
     fun toggleSelection(id: String) { val current = selectedItems.value; selectedItems.value = if (current.contains(id)) current - id else current + id }
 
@@ -642,6 +863,15 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                     learnedEntriesMap[rawName] = updated
                     ReceiptImportSanitizer.addLearnedCorrection(rawName, finalNewName)
                 }
+
+                queuePendingCorrection(
+                    rawName = rawName,
+                    cleanName = finalNewName,
+                    unit = updated.defaultUnit ?: "Stk.",
+                    category = updated.defaultCategory ?: "Vorrat",
+                    storageLocation = updated.defaultStorageLocation ?: "Kühlschrank",
+                    supermarket = oldItem.supermarket ?: ""
+                )
             }
         }
     }
@@ -786,7 +1016,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                 dao.insertPriceRecord(PriceRecord(itemId = item.id, itemName = item.name, price = item.price, quantity = item.quantity, barcode = item.barcode))
                 val df = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY)
                 val dateStr = df.format(Date(item.purchaseDate))
-                val storeStr = item.supermarket?.ifBlank { "Supermarkt" } ?: "Supermarkt"
+                val storeStr = if (!item.supermarket.isNullOrBlank() && item.supermarket != "Supermarkt") item.supermarket!! else "Kaufland"
                 dao.insertPurchaseHistoryEntry(
                     PurchaseHistoryEntry(
                         productName = item.name,
@@ -1015,7 +1245,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         val shareText = generateShoppingListShareText(shoppingItems)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Einkaufsliste - Kühlschrank Profi")
+            putExtra(Intent.EXTRA_SUBJECT, "Einkaufsliste - FrischeRadar")
             putExtra(Intent.EXTRA_TEXT, shareText)
         }
         context.startActivity(Intent.createChooser(intent, "Einkaufsliste teilen via..."))
@@ -1025,7 +1255,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         if (items.isEmpty()) return "Meine Einkaufsliste ist leer."
 
         val sb = StringBuilder()
-        sb.append("🛒 *Einkaufsliste - Kühlschrank Profi* 🍏\n\n")
+        sb.append("🛒 *Einkaufsliste - FrischeRadar*\n\n")
 
         val unchecked = items.filter { !it.isChecked }
         val checked = items.filter { it.isChecked }
@@ -1297,21 +1527,25 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                         handleScannedProducts(products, "FRIDGE_SCAN_" + System.currentTimeMillis())
                     }
                 } else {
-                    val image = InputImage.fromBitmap(bitmap, 0)
                     val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
+                    var products: List<Product> = emptyList()
 
-                    val visionText = Tasks.await(recognizer.process(image))
-                    var products = try {
-                        KassenzettelParser.parseReceipt(visionText, corrections)
-                    } catch (e: Exception) {
-                        emptyList()
+                    if (useGeminiNano.value && isGeminiNanoSupported.value) {
+                        try {
+                            products = geminiRepository.analyzeReceipt(bitmap)
+                        } catch (e: Exception) {
+                            Log.e("FridgeViewModel", "Gemini Nano Analyse fehlgeschlagen, Fallback auf Offline-Parser", e)
+                        }
                     }
 
                     if (products.isEmpty() || products.sumOf { it.price } <= 0.0) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(applicationContext, "OCR unvollständig. KI-Fallback wird gestartet...", Toast.LENGTH_SHORT).show()
+                        val image = InputImage.fromBitmap(bitmap, 0)
+                        val visionText = Tasks.await(recognizer.process(image))
+                        products = try {
+                            KassenzettelParser.parseReceipt(visionText, corrections)
+                        } catch (e: Exception) {
+                            emptyList()
                         }
-                        products = geminiRepository.analyzeReceipt(bitmap)
                     }
 
                     withContext(Dispatchers.Main) {
@@ -1459,15 +1693,25 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
                             if (previewBitmap == null) {
                                 previewBitmap = bitmap
                             }
-                            val image = InputImage.fromBitmap(bitmap, 0)
-                            val visionText = Tasks.await(recognizer.process(image))
-                            var products = try {
-                                KassenzettelParser.parseReceipt(visionText, corrections)
-                            } catch (e: Exception) {
-                                emptyList()
+                            val corrections = dao.getAllLearningDataSync().associate { it.rawName to it.correctedName }
+                            var products: List<Product> = emptyList()
+
+                            if (useGeminiNano.value && isGeminiNanoSupported.value) {
+                                try {
+                                    products = geminiRepository.analyzeReceipt(bitmap)
+                                } catch (e: Exception) {
+                                    Log.e("FridgeViewModel", "Gemini Nano Analyse fehlgeschlagen, Fallback auf Offline-Parser", e)
+                                }
                             }
+
                             if (products.isEmpty() || products.sumOf { it.price } <= 0.0) {
-                                products = geminiRepository.analyzeReceipt(bitmap)
+                                val image = InputImage.fromBitmap(bitmap, 0)
+                                val visionText = Tasks.await(recognizer.process(image))
+                                products = try {
+                                    KassenzettelParser.parseReceipt(visionText, corrections)
+                                } catch (e: Exception) {
+                                    emptyList()
+                                }
                             }
                             allProducts.addAll(products)
                             tempFile.delete()
@@ -2170,6 +2414,9 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             receiptBitmap.value = null
             withContext(Dispatchers.Main) {
                 Toast.makeText(applicationContext, "${toImport.size} Artikel gespeichert!", Toast.LENGTH_SHORT).show()
+            }
+            if (shareCorrectionsEnabled.value) {
+                syncPendingCorrections()
             }
         }
     }

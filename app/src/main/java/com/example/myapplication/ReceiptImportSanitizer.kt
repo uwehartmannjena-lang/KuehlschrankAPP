@@ -306,9 +306,16 @@ object ReceiptImportSanitizer {
         "TH WQ" to "Thüringer Waldquell",
         "Gut&G." to "Gut & Günstig",
         "Meg.feinesüssrahm" to "Meggler Feine Süßrahmbutter",
-        "Meg.feinesuessrahm" to "Meggler Feine Süßrahmbutter",
         "Wm-chia-krüstchen" to "Weltmeister Chia Krüstchen",
-        "Wm-chia-kruestchen" to "Weltmeister Chia Krüstchen"
+        "Wm-chia-kruestchen" to "Weltmeister Chia Krüstchen",
+        "Alnighurt 5000 Glas" to "Almjoghurt 500g Glas",
+        "Alnighurt" to "Almjoghurt",
+        "Tschinken" to "Saftschinken 100g",
+        "Meggl E Scheiben" to "Meggle Schmelzkäsescheiben",
+        "Gp Poch Kalo" to "Gourmet Perle Katzenfutter",
+        "Golr Net A L8 Carte" to "Gourmet Perle Katzenfutter",
+        "Gor Net A La Carte" to "Gourmet Perle Katzenfutter",
+        "Gp Poch" to "Gourmet Perle Katzenfutter"
     )
 
     fun cleanReceiptText(rawText: String): String {
