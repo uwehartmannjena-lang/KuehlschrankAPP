@@ -2306,6 +2306,58 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
             }, ensure_ascii=False).encode("utf-8"))
             return
 
+        if clean_path == "/api/offers":
+            from urllib.parse import parse_qs, urlparse
+            query_components = parse_qs(urlparse(self.path).query)
+            zip_code = query_components.get("zip", ["07743"])[0]
+
+            sample_offers = [
+                {
+                    "title": "Bio Vollmilch 3.8%",
+                    "price": 1.19,
+                    "retailer": "REWE",
+                    "validityPeriod": "Aktionswoche",
+                    "zip": zip_code,
+                    "explicitBrochureUrl": f"https://shop.rewe.de/angebote?search=Bio+Vollmilch&zip={zip_code}"
+                },
+                {
+                    "title": "Gouda jung in Scheiben",
+                    "price": 1.79,
+                    "retailer": "Kaufland",
+                    "validityPeriod": "Aktionswoche",
+                    "zip": zip_code,
+                    "explicitBrochureUrl": f"https://www.kaufland.de/angebote.html?q=Gouda&zip={zip_code}"
+                },
+                {
+                    "title": "Frische Eier Freiland 10er",
+                    "price": 1.99,
+                    "retailer": "Lidl",
+                    "validityPeriod": "Aktionswoche",
+                    "zip": zip_code,
+                    "explicitBrochureUrl": f"https://www.lidl.de/c/billiger-mittwoch/a10006037?query=Eier&zip={zip_code}"
+                },
+                {
+                    "title": "Butter",
+                    "price": 1.49,
+                    "retailer": "Netto",
+                    "validityPeriod": "Aktionswoche",
+                    "zip": zip_code,
+                    "explicitBrochureUrl": f"https://www.netto-online.de/filialangebote/?search=Butter&zip={zip_code}"
+                },
+                {
+                    "title": "Bananen",
+                    "price": 1.29,
+                    "retailer": "Edeka",
+                    "validityPeriod": "Aktionswoche",
+                    "zip": zip_code,
+                    "explicitBrochureUrl": f"https://www.edeka.de/eh/angebote.jsp?query=Bananen&marketSearch={zip_code}"
+                }
+            ]
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "zip": zip_code, "offers": sample_offers}, ensure_ascii=False).encode("utf-8"))
+            return
+
         self.send_cors_headers(404, "text/plain")
         self.end_headers()
         self.wfile.write(b"Not Found")

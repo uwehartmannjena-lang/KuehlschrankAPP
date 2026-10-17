@@ -40,6 +40,7 @@ import com.example.myapplication.data.GeminiRepository
 import com.example.myapplication.data.Household
 import com.example.myapplication.data.HouseholdLog
 import com.example.myapplication.data.LearningEntry
+import com.example.myapplication.data.LocationHelper
 import com.example.myapplication.data.MealPlan
 import com.example.myapplication.data.OpenFoodFactsApi
 import com.example.myapplication.data.PriceRecord
@@ -345,6 +346,30 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     val currentOffers = mutableStateListOf<StoreOffer>()
     val showOfferAlert = mutableStateOf(false)
     val watchlist = mutableStateOf(setOf<String>())
+    val userZipCode = mutableStateOf("07743")
+    val userCity = mutableStateOf("Jena")
+    val isGpsActive = mutableStateOf(false)
+
+    fun updateLocation(zip: String, city: String = "") {
+        userZipCode.value = zip
+        if (city.isNotBlank()) userCity.value = city
+        isGpsActive.value = false
+        saveSetting("user_zip_code", zip)
+        if (city.isNotBlank()) saveSetting("user_city", city)
+        checkOffersForFavorites()
+    }
+
+    fun refreshLocationFromGps(context: Context) {
+        viewModelScope.launch {
+            val result = LocationHelper.detectLocation(context)
+            userZipCode.value = result.zip
+            userCity.value = result.city
+            isGpsActive.value = result.isGps
+            saveSetting("user_zip_code", result.zip)
+            saveSetting("user_city", result.city)
+            checkOffersForFavorites()
+        }
+    }
 
     fun toggleWatchlist(name: String) {
         val current = watchlist.value.toMutableSet()
@@ -362,7 +387,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             val allSearchItems = (favoriteFridgeNames + favoriteShoppingNames + watchlist.value).distinct()
 
             if (allSearchItems.isNotEmpty()) {
-                val offers = offerRepository.checkLocalOffers(allSearchItems)
+                val offers = offerRepository.checkLocalOffers(allSearchItems, userZipCode.value)
                 currentOffers.clear()
                 currentOffers.addAll(offers)
                 if (offers.isNotEmpty()) {
@@ -442,6 +467,8 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
 
         shareCorrectionsEnabled.value = prefs.getBoolean("share_corrections_enabled", true)
         syncedCorrectionsCount.intValue = prefs.getInt("synced_corrections_count", 0)
+        userZipCode.value = prefs.getString("user_zip_code", "07743") ?: "07743"
+        userCity.value = prefs.getString("user_city", "Jena") ?: "Jena"
         updatePendingCorrectionsCount()
     }
 

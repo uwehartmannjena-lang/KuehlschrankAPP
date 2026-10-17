@@ -9,25 +9,34 @@ data class StoreOffer(
     val price: Double,
     val retailer: String,
     val validityPeriod: String = "12.10. – 17.10.2026",
-    val explicitBrochureUrl: String = ""
+    val explicitBrochureUrl: String = "",
+    val zip: String = ""
 ) {
-    fun getBrochureUrl(): String {
+    fun getBrochureUrl(customZip: String = ""): String {
         if (explicitBrochureUrl.isNotBlank()) return explicitBrochureUrl
+        val activeZip = if (customZip.isNotBlank()) customZip else zip
         val encodedTitle = try {
             java.net.URLEncoder.encode(title, "UTF-8")
         } catch (e: Exception) {
             title
         }
+        val encodedZip = if (activeZip.isNotBlank()) {
+            try { java.net.URLEncoder.encode(activeZip, "UTF-8") } catch (e: Exception) { activeZip }
+        } else ""
+
         return when (retailer.lowercase().trim()) {
-            "kaufland" -> "https://www.kaufland.de/angebote.html?q=$encodedTitle"
-            "netto" -> "https://www.netto-online.de/angebote?search=$encodedTitle"
-            "rewe" -> "https://shop.rewe.de/angebote?search=$encodedTitle"
-            "lidl" -> "https://www.lidl.de/c/billiger-mittwoch/a10006037?query=$encodedTitle"
-            "edeka" -> "https://www.edeka.de/eh/angebote.jsp?query=$encodedTitle"
+            "kaufland" -> if (encodedZip.isNotBlank()) "https://www.kaufland.de/angebote.html?q=$encodedTitle&zip=$encodedZip" else "https://www.kaufland.de/angebote.html?q=$encodedTitle"
+            "netto" -> if (encodedZip.isNotBlank()) "https://www.netto-online.de/filialangebote/?search=$encodedTitle&zip=$encodedZip" else "https://www.netto-online.de/angebote?search=$encodedTitle"
+            "rewe" -> if (encodedZip.isNotBlank()) "https://shop.rewe.de/angebote?search=$encodedTitle&zip=$encodedZip" else "https://shop.rewe.de/angebote?search=$encodedTitle"
+            "lidl" -> if (encodedZip.isNotBlank()) "https://www.lidl.de/c/billiger-mittwoch/a10006037?query=$encodedTitle&zip=$encodedZip" else "https://www.lidl.de/c/billiger-mittwoch/a10006037?query=$encodedTitle"
+            "edeka" -> if (encodedZip.isNotBlank()) "https://www.edeka.de/eh/angebote.jsp?query=$encodedTitle&marketSearch=$encodedZip" else "https://www.edeka.de/eh/angebote.jsp?query=$encodedTitle"
             "aldi", "aldi süd", "aldi sued" -> "https://www.aldi-sued.de/de/angebote.html?query=$encodedTitle"
             "aldi nord" -> "https://www.aldi-nord.de/angebote.html?query=$encodedTitle"
             "penny" -> "https://www.penny.de/angebote?search=$encodedTitle"
-            else -> "https://www.google.com/search?q=${try { java.net.URLEncoder.encode("$retailer $title Angebot Prospekt", "UTF-8") } catch (e: Exception) { title }}"
+            else -> {
+                val q = "$retailer $title Angebot Prospekt $activeZip".trim()
+                "https://www.google.com/search?q=${try { java.net.URLEncoder.encode(q, "UTF-8") } catch (e: Exception) { q }}"
+            }
         }
     }
 }
@@ -41,9 +50,10 @@ data class OnlineProductData(
 
 class OfferRepository(private val httpClient: HttpClient) {
 
-    suspend fun checkLocalOffers(itemNames: List<String>): List<StoreOffer> {
+    suspend fun checkLocalOffers(itemNames: List<String>, zip: String = ""): List<StoreOffer> {
         val allOffers = mutableListOf<StoreOffer>()
         val knownRetailers = listOf("Kaufland", "Netto", "REWE", "Lidl", "Edeka")
+        val effectiveZip = if (zip.isNotBlank()) zip else "07743"
         
         for (name in itemNames) {
             try {
@@ -76,7 +86,7 @@ class OfferRepository(private val httpClient: HttpClient) {
                     val basePrice = 0.99 + ((hash % 250) / 100.0)
                     dealPrice = Math.round((basePrice * 0.75) * 100.0) / 100.0
                 }
-                allOffers.add(StoreOffer(cleanName, dealPrice, foundRetailer, validityPeriod = validity))
+                allOffers.add(StoreOffer(cleanName, dealPrice, foundRetailer, validityPeriod = validity, zip = effectiveZip))
             } catch (e: Exception) { e.printStackTrace() }
         }
         return allOffers

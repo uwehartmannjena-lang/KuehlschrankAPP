@@ -297,6 +297,20 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
     val showOfferAlert by fridgeViewModel.showOfferAlert
     val currentOffers = fridgeViewModel.currentOffers
 
+    var showLocationDialog by remember { mutableStateOf(false) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            fridgeViewModel.refreshLocationFromGps(context)
+        } else {
+            Toast.makeText(context, "GPS-Berechtigung verweigert. Standard-PLZ (${fridgeViewModel.userZipCode.value}) aktiv.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -575,19 +589,53 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
             AlertDialog(
                 onDismissRequest = { fridgeViewModel.showOfferAlert.value = false },
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.LocalOffer,
-                            contentDescription = null,
-                            tint = fridgeViewModel.themeColor.value,
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Angebots-Radar: Favoriten im Angebot!",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
-                        )
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.LocalOffer,
+                                contentDescription = null,
+                                tint = fridgeViewModel.themeColor.value,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Angebots-Radar",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            modifier = Modifier.clickable { showLocationDialog = true }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Place,
+                                    contentDescription = "Standort ändern",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "Angebote für ${fridgeViewModel.userZipCode.value} ${fridgeViewModel.userCity.value}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Ändern",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
                     }
                 },
                 text = {
@@ -601,7 +649,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                     .fillMaxWidth()
                                     .clickable {
                                         try {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(offer.getBrochureUrl()))
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(offer.getBrochureUrl(fridgeViewModel.userZipCode.value)))
                                             context.startActivity(intent)
                                         } catch (e: Exception) {
                                             Toast.makeText(context, "Konnte Prospekt nicht öffnen: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -628,7 +676,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                         FilledTonalButton(
                                             onClick = {
                                                 try {
-                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(offer.getBrochureUrl()))
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(offer.getBrochureUrl(fridgeViewModel.userZipCode.value)))
                                                     context.startActivity(intent)
                                                 } catch (e: Exception) {
                                                     Toast.makeText(context, "Konnte Prospekt nicht öffnen", Toast.LENGTH_SHORT).show()
@@ -708,6 +756,84 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                         colors = ButtonDefaults.buttonColors(containerColor = fridgeViewModel.themeColor.value)
                     ) {
                         Text("Verstanden", color = Color.White)
+                    }
+                }
+            )
+        }
+
+        if (showLocationDialog) {
+            var editZip by remember { mutableStateOf(fridgeViewModel.userZipCode.value) }
+            var editCity by remember { mutableStateOf(fridgeViewModel.userCity.value) }
+
+            AlertDialog(
+                onDismissRequest = { showLocationDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Place, contentDescription = null, tint = fridgeViewModel.themeColor.value)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Standort für Angebote", fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Wähle deine PLZ, um regionale Prospekte von Kaufland, Lidl, REWE, Netto und Edeka anzuzeigen.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = editZip,
+                            onValueChange = { editZip = it.filter { c -> c.isDigit() }.take(5) },
+                            label = { Text("Postleitzahl (PLZ)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editCity,
+                            onValueChange = { editCity = it },
+                            label = { Text("Stadt / Ort (optional)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                if (com.example.myapplication.data.LocationHelper.hasLocationPermission(context)) {
+                                    fridgeViewModel.refreshLocationFromGps(context)
+                                    showLocationDialog = false
+                                } else {
+                                    locationPermissionLauncher.launch(
+                                        arrayOf(
+                                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                        )
+                                    )
+                                    showLocationDialog = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Per GPS automatisch ermitteln")
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (editZip.isNotBlank()) {
+                                fridgeViewModel.updateLocation(editZip.trim(), editCity.trim())
+                            }
+                            showLocationDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = fridgeViewModel.themeColor.value)
+                    ) {
+                        Text("Speichern")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLocationDialog = false }) {
+                        Text("Abbrechen")
                     }
                 }
             )
@@ -3586,15 +3712,20 @@ fun ProductInfoDialog(item: FridgeItem, viewModel: FridgeViewModel, onDismiss: (
     )
 }
 
-fun openRetailerWebsite(context: Context, retailer: String, productName: String? = null) {
+fun openRetailerWebsite(context: Context, retailer: String, productName: String? = null, zip: String = "") {
     val encodedProduct = productName?.let { Uri.encode(it) } ?: ""
-    val url = when (retailer.lowercase()) {
-        "rewe" -> "https://www.rewe.de/angebote/?search=$encodedProduct"
-        "edeka" -> "https://www.edeka.de/angebote.jsp"
-        "lidl" -> "https://www.lidl.de/c/billiger-mit-lidl/a10008681"
-        "aldi" -> "https://www.aldi-nord.de/angebote.html"
-        "kaufland" -> "https://www.kaufland.de/angebote/"
-        else -> "https://www.google.com/search?q=$encodedProduct+angebot+$retailer"
+    val zipParam = if (zip.isNotBlank()) "&zip=${Uri.encode(zip)}" else ""
+    val url = when (retailer.lowercase().trim()) {
+        "rewe" -> if (zip.isNotBlank()) "https://shop.rewe.de/angebote?search=$encodedProduct&zip=${Uri.encode(zip)}" else "https://www.rewe.de/angebote/?search=$encodedProduct"
+        "edeka" -> if (zip.isNotBlank()) "https://www.edeka.de/eh/angebote.jsp?query=$encodedProduct&marketSearch=${Uri.encode(zip)}" else "https://www.edeka.de/angebote.jsp"
+        "lidl" -> if (zip.isNotBlank()) "https://www.lidl.de/c/billiger-mit-lidl/a10008681?zip=${Uri.encode(zip)}" else "https://www.lidl.de/c/billiger-mit-lidl/a10008681"
+        "aldi" -> "https://www.aldi-nord.de/angebote.html?$zipParam"
+        "kaufland" -> if (zip.isNotBlank()) "https://www.kaufland.de/angebote/?zip=${Uri.encode(zip)}" else "https://www.kaufland.de/angebote/"
+        "netto" -> if (zip.isNotBlank()) "https://www.netto-online.de/filialangebote/?zip=${Uri.encode(zip)}" else "https://www.netto-online.de/angebote"
+        else -> {
+            val q = "$encodedProduct angebot $retailer $zip".trim()
+            "https://www.google.com/search?q=$q"
+        }
     }
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
