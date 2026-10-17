@@ -16,6 +16,8 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -35,6 +37,9 @@ import com.example.myapplication.data.ExpiryWorker
 import com.example.myapplication.data.SyncManager
 import com.example.myapplication.ui.RefrigeratorApp
 import com.example.myapplication.ui.openRetailerWebsite
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import java.io.File
 import java.io.FileOutputStream
@@ -44,6 +49,44 @@ import java.util.concurrent.TimeUnit
 class MainActivity : FragmentActivity() {
     private var nfcAdapter: NfcAdapter? = null
     private val currentIntentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
+
+    private val scannerOptions = GmsDocumentScannerOptions.Builder()
+        .setGalleryImportAllowed(true)
+        .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+        .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+        .build()
+
+    private val documentScannerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val scanningResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            val pages = scanningResult?.pages ?: emptyList()
+            if (pages.isNotEmpty()) {
+                val uris = pages.map { it.imageUri }
+                val database = AppDatabase.getDatabase(this)
+                val factory = FridgeViewModelFactory(database.fridgeItemDao(), this)
+                val vm = ViewModelProvider(this, factory)[FridgeViewModel::class.java]
+                if (uris.size == 1) {
+                    vm.importFromImage(this, uris.first())
+                } else {
+                    vm.importMultipleFiles(this, uris)
+                }
+            }
+        }
+    }
+
+    fun startDocumentScan() {
+        val scanner = GmsDocumentScanning.getClient(scannerOptions)
+        scanner.getStartScanIntent(this)
+            .addOnSuccessListener { intentSender ->
+                documentScannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener { e ->
+                Log.e("ReceiptDebug", "Fehler beim Starten des Document Scanners", e)
+                Toast.makeText(this, "Fehler beim Starten des Scanners: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +136,10 @@ class MainActivity : FragmentActivity() {
                     intent.removeExtra("OPEN_OFFER_RETAILER")
                     intent.removeExtra("OPEN_OFFER_PRODUCT")
                 }
+                if (intent?.getBooleanExtra("START_RECEIPT_SCAN", false) == true) {
+                    startDocumentScan()
+                    intent.removeExtra("START_RECEIPT_SCAN")
+                }
             }
         }
     }
@@ -113,6 +160,10 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         currentIntentState.value = intent
+        if (intent.getBooleanExtra("START_RECEIPT_SCAN", false)) {
+            startDocumentScan()
+            intent.removeExtra("START_RECEIPT_SCAN")
+        }
         if (NfcAdapter.ACTION_NDEF_DISCOVERED == intent.action || NfcAdapter.ACTION_TAG_DISCOVERED == intent.action) {
             val tag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
