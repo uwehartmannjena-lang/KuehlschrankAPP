@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Modern 3D Style Fridge Icon -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M30,15h48c2.2,0 4,1.8 4,4v74c0,2.2 -1.8,4 -4,4h-48c-2.2,0 -4,-1.8 -4,-4v-74c0,-2.2 1.8,-4 4,-4z" />
+    <path
+        android:fillColor="#FAFAFA"
+        android:pathData="M32,17h44v32h-44z" />
+    <path
+        android:fillColor="#FAFAFA"
+        android:pathData="M32,53h44v34h-44z" />
+    <path
+        android:fillColor="#BDBDBD"
+        android:pathData="M40,30h4v8h-4v-8zM40,65h4v12h-4v-12z" />
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M54,5c0,0 2,10 -10,10" />
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M54,5c0,0 -2,10 10,10" />
+</vector>
