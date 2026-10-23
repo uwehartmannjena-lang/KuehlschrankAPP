@@ -109,63 +109,113 @@ object MarketDictionaryHelper {
     }
 
     fun getSuggestions(query: String, context: Context, limit: Int = 5): List<String> {
-        val q = query.lowercase().trim()
+        val q = query.trim()
         if (q.isBlank()) return emptyList()
+        val qLower = q.lowercase()
 
         val results = mutableListOf<String>()
 
-        marketDictionary.values.forEach { entry ->
-            if (entry.clean_name.lowercase().contains(q) || entry.receipt_pattern.lowercase().contains(q)) {
-                results.add(entry.clean_name)
+        // 1. UserLearnedCorrections prüfen (Höchste Priorität)
+        try {
+            val learnedMap: Map<String, String> = ReceiptImportSanitizer.getLearnedCorrections()
+            for ((raw, corrected) in learnedMap) {
+                if (raw.contains(qLower) || corrected.lowercase().contains(qLower)) {
+                    results.add(corrected)
+                }
             }
-        }
-        generalDictionary.values.forEach { entry ->
-            if (entry.clean_name.lowercase().contains(q) || entry.receipt_pattern.lowercase().contains(q)) {
-                results.add(entry.clean_name)
+            // Fuzzy Check auf UserLearnedCorrections
+            if (results.isEmpty()) {
+                for ((raw, corrected) in learnedMap) {
+                    val distRaw = ReceiptImportSanitizer.calculateLevenshteinDistance(qLower, raw)
+                    val distCorrected = ReceiptImportSanitizer.calculateLevenshteinDistance(qLower, corrected.lowercase())
+                    if (minOf(distRaw, distCorrected) <= 2) {
+                        results.add(corrected)
+                    }
+                }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
 
+        // 2. FTS-Suche in market_products.db (Verzögerungsfrei bei 270k+ Artikeln)
         if (results.size < limit) {
             try {
                 runBlocking(Dispatchers.IO) {
                     val dbDao = MarketProductDatabase.getInstance(context).marketProductDao()
-                    val dbEntries = dbDao.searchMarketProductsLike(q)
-                    dbEntries.forEach { entry ->
-                        results.add(entry.cleanName)
+                    val ftsToken = q.replace(Regex("""[^a-zA-Z0-9äöüÄÖÜß]"""), " ").trim()
+                    if (ftsToken.isNotBlank()) {
+                        try {
+                            val ftsEntries = dbDao.searchMarketProductsFts("$ftsToken*")
+                            ftsEntries.forEach { entry ->
+                                results.add(entry.cleanName)
+                            }
+                        } catch (e: Exception) {
+                            val firstWord = ftsToken.split(Regex("""\s+""")).firstOrNull { it.length >= 2 }
+                            if (firstWord != null) {
+                                val fallbackFts = dbDao.searchMarketProductsFts("$firstWord*")
+                                fallbackFts.forEach { entry -> results.add(entry.cleanName) }
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
-        
-        // Fuzzy Fallback falls nichts gefunden
+
+        // 3. In-Memory Dictionaries (Gecachte Einträge)
+        if (results.size < limit) {
+            marketDictionary.values.forEach { entry ->
+                if (entry.clean_name.lowercase().contains(qLower) || entry.receipt_pattern.lowercase().contains(qLower)) {
+                    results.add(entry.clean_name)
+                }
+            }
+            generalDictionary.values.forEach { entry ->
+                if (entry.clean_name.lowercase().contains(qLower) || entry.receipt_pattern.lowercase().contains(qLower)) {
+                    results.add(entry.clean_name)
+                }
+            }
+        }
+
+        // 4. Levenshtein-Fuzzy-Fallback
+        if (results.size < limit) {
+            val candidates = (marketDictionary.values + generalDictionary.values)
+            for (entry in candidates) {
+                val candidateLower = entry.clean_name.lowercase()
+                val dist = ReceiptImportSanitizer.calculateLevenshteinDistance(qLower, candidateLower)
+                val maxDist = when {
+                    candidateLower.length <= 4 -> 1
+                    candidateLower.length <= 8 -> 2
+                    else -> 3
+                }
+                if (dist <= maxDist) {
+                    results.add(entry.clean_name)
+                    if (results.size >= limit * 2) break
+                }
+            }
+        }
+
+        // 5. Schnelle DB-Fallback-Suche (LIKE mit LIMIT 5) falls FTS keine Treffer lieferte
         if (results.isEmpty()) {
-            val tokens = q.split(Regex("""\s+""")).filter { it.length >= 2 }
-            if (tokens.isNotEmpty()) {
-                val bestToken = tokens.maxByOrNull { it.length } ?: tokens.first()
-                marketDictionary.values.forEach { entry ->
-                    if (entry.clean_name.lowercase().contains(bestToken)) results.add(entry.clean_name)
+            try {
+                runBlocking(Dispatchers.IO) {
+                    val dbDao = MarketProductDatabase.getInstance(context).marketProductDao()
+                    val likeEntries = dbDao.searchTop5MarketProductsLike(qLower)
+                    likeEntries.forEach { entry -> results.add(entry.cleanName) }
                 }
-                generalDictionary.values.forEach { entry ->
-                    if (entry.clean_name.lowercase().contains(bestToken)) results.add(entry.clean_name)
-                }
-                try {
-                    runBlocking(Dispatchers.IO) {
-                        val dbDao = MarketProductDatabase.getInstance(context).marketProductDao()
-                        val dbEntries = dbDao.searchMarketProductsLike(bestToken)
-                        dbEntries.forEach { entry -> results.add(entry.cleanName) }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 
         return results
             .filter { it.isNotBlank() }
             .distinct()
-            .sortedByDescending { it.lowercase().startsWith(q) }
+            .sortedWith(
+                compareByDescending<String> { it.equals(q, ignoreCase = true) }
+                    .thenByDescending { it.lowercase().startsWith(qLower) }
+                    .thenByDescending { it.lowercase().contains(qLower) }
+            )
             .take(limit)
     }
 
@@ -173,8 +223,9 @@ object MarketDictionaryHelper {
      * 11. Lern-Vorrang -> Smart Guessing (Tokens) -> DB LIKE %:word% -> Levenshtein-Fallback -> Beautifier.
      */
     fun findBestMatch(rawLine: String, context: Context? = null): MarketDictionaryEntry? {
+        val separated = ReceiptImportSanitizer.separateBrandPrefixes(rawLine)
         // 11. Lern-Vorrang: ZUERST UserLearnedCorrections prüfen
-        val learned = ReceiptImportSanitizer.getLearnedCorrection(rawLine)
+        val learned = ReceiptImportSanitizer.getLearnedCorrection(rawLine) ?: ReceiptImportSanitizer.getLearnedCorrection(separated)
         if (learned != null) {
             return MarketDictionaryEntry(
                 receipt_pattern = rawLine,
@@ -186,7 +237,7 @@ object MarketDictionaryHelper {
         }
 
         // 1, 2, 3, 13. Pre-Sanitization & Abfangen von kurzen/leeren Zeilen (< 3 Zeichen)
-        val cleaned = ReceiptImportSanitizer.cleanReceiptText(rawLine).lowercase().trim()
+        val cleaned = ReceiptImportSanitizer.cleanReceiptText(separated).lowercase().trim()
         if (cleaned.length < 3) return null
 
         // Exakter Match im In-Memory Speicher

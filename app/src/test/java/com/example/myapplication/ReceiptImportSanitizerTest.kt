@@ -84,6 +84,11 @@ class ReceiptImportSanitizerTest {
         assertEquals("Hähnchen-Brustfilet", ReceiptImportSanitizer.cleanReceiptText("H Brustfilet"))
         assertEquals("Wagner Steinofen Pizza", ReceiptImportSanitizer.cleanReceiptText("Wagner St Pizza"))
         assertEquals("Quäse", ReceiptImportSanitizer.cleanReceiptText("Ouäse"))
+        assertEquals("Vollkorn-Kumpel", ReceiptImportSanitizer.cleanReceiptText("VOLLKORN KUMPEL"))
+        assertEquals("Rosenbrötchen Mohn", ReceiptImportSanitizer.cleanReceiptText("ROSENBROE.MOHN"))
+        assertEquals("Karottenkrüstchen", ReceiptImportSanitizer.cleanReceiptText("KAROTTENKRUEST."))
+        assertEquals("Roggen-Ecke", ReceiptImportSanitizer.cleanReceiptText("ROGGEN X"))
+        assertEquals("Vollkorn Brot", ReceiptImportSanitizer.cleanReceiptText("Vollkorn Brot Brot"))
     }
 
     @Test

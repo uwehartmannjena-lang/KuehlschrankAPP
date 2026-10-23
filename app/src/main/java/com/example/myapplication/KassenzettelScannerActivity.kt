@@ -10,6 +10,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -126,6 +128,7 @@ class KassenzettelScannerActivity : ComponentActivity() {
         var bitmap by remember { mutableStateOf<Bitmap?>(null) }
         var isAnalyzing by remember { mutableStateOf(false) }
         var detectedItems by remember { mutableStateOf<List<Product>>(emptyList()) }
+        var unrecognizedBoxes by remember { mutableStateOf<List<android.graphics.Rect>>(emptyList()) }
         val scope = rememberCoroutineScope()
         
         val scannerLauncher = rememberLauncherForActivityResult(
@@ -148,22 +151,29 @@ class KassenzettelScannerActivity : ComponentActivity() {
                                 bitmap = bitmaps.first()
                                 
                                 val isFridgeMode = intent.getBooleanExtra("IS_FRIDGE_SCAN", false)
+                                val (offlineItems, boxes) = analyzeReceiptOffline(bitmaps.first())
+                                unrecognizedBoxes = boxes
                                 
                                 val items = if (isFridgeMode) {
                                     geminiRepository.analyzeFridgePhoto(bitmaps)
                                 } else {
-                                    // Für Kassenbons (Receipt) nutzen wir das erste Bild oder kombinieren?
-                                    // Gemini 1.5 kann auch mehrere Bilder für einen Bon analysieren
                                     geminiRepository.analyzeReceipt(bitmaps.first())
                                 }
                                 
                                 if (items.isEmpty() && !isFridgeMode) {
-                                    detectedItems = analyzeReceiptOffline(bitmaps.first())
+                                    detectedItems = offlineItems
                                     if (detectedItems.isEmpty()) {
                                         Toast.makeText(context, "Fehler bei der Analyse. Bitte Bild wiederholen.", Toast.LENGTH_LONG).show()
                                     }
                                 } else {
-                                    detectedItems = items
+                                    detectedItems = if (items.isNotEmpty()) {
+                                        items.map { gItem ->
+                                            val matchedBox = offlineItems.find { it.name.equals(gItem.name, true) || it.rawText?.contains(gItem.name, true) == true }?.boundingBox
+                                            if (matchedBox != null) gItem.copy(boundingBox = matchedBox) else gItem
+                                        }
+                                    } else {
+                                        offlineItems
+                                    }
                                     if (detectedItems.isEmpty()) {
                                         Toast.makeText(context, "KI konnte keine Artikel erkennen.", Toast.LENGTH_LONG).show()
                                     }
@@ -172,6 +182,46 @@ class KassenzettelScannerActivity : ComponentActivity() {
                         } finally {
                             isAnalyzing = false
                         }
+                    }
+                }
+            }
+        }
+
+        val galleryLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent()
+        ) { uri: Uri? ->
+            if (uri != null) {
+                isAnalyzing = true
+                scope.launch {
+                    try {
+                        val isFridgeMode = intent.getBooleanExtra("IS_FRIDGE_SCAN", false)
+                        val scaledBmp = processAndScaleImage(context, uri, isFridgeMode = isFridgeMode)
+                        if (scaledBmp != null) {
+                            bitmap = scaledBmp
+                            val (offlineItems, boxes) = analyzeReceiptOffline(scaledBmp)
+                            unrecognizedBoxes = boxes
+                            val items = if (isFridgeMode) {
+                                geminiRepository.analyzeFridgePhoto(listOf(scaledBmp))
+                            } else {
+                                geminiRepository.analyzeReceipt(scaledBmp)
+                            }
+                            detectedItems = if (items.isNotEmpty()) {
+                                items.map { gItem ->
+                                    val matchedBox = offlineItems.find { it.name.equals(gItem.name, true) || it.rawText?.contains(gItem.name, true) == true }?.boundingBox
+                                    if (matchedBox != null) gItem.copy(boundingBox = matchedBox) else gItem
+                                }
+                            } else {
+                                offlineItems
+                            }
+                            if (detectedItems.isEmpty()) {
+                                Toast.makeText(context, "Keine Artikel erkannt.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ScannerScreen", "Fehler bei Galerie-Import", e)
+                        Toast.makeText(context, "Fehler beim Laden des Bildes.", Toast.LENGTH_SHORT).show()
+                    } finally {
+                        isAnalyzing = false
                     }
                 }
             }
@@ -193,11 +243,50 @@ class KassenzettelScannerActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(16.dp))
 
             if (bitmap != null) {
-                Image(
-                    bitmap = bitmap!!.asImageBitmap(),
-                    contentDescription = "Bon Foto",
-                    modifier = Modifier.height(250.dp).fillMaxWidth()
-                )
+                Box(
+                    modifier = Modifier
+                        .height(280.dp)
+                        .fillMaxWidth()
+                ) {
+                    val bmp = bitmap!!
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Bon Foto",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                    )
+                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                        val scale = minOf(size.width / bmp.width, size.height / bmp.height)
+                        val offsetX = (size.width - bmp.width * scale) / 2f
+                        val offsetY = (size.height - bmp.height * scale) / 2f
+
+                        // 1. Unerkannte Zeilen ROT umranden
+                        unrecognizedBoxes.forEach { rect ->
+                            drawRect(
+                                color = androidx.compose.ui.graphics.Color.Red.copy(alpha = 0.85f),
+                                topLeft = androidx.compose.ui.geometry.Offset(offsetX + rect.left * scale, offsetY + rect.top * scale),
+                                size = androidx.compose.ui.geometry.Size(rect.width() * scale, rect.height() * scale),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                            )
+                        }
+
+                        // 2. Erkannte Artikel GRÜN umranden
+                        detectedItems.forEach { product ->
+                            product.boundingBox?.let { boxStr ->
+                                val parts = boxStr.split(",").mapNotNull { it.toIntOrNull() }
+                                if (parts.size == 4) {
+                                    val (l, t, r, b) = parts
+                                    drawRect(
+                                        color = androidx.compose.ui.graphics.Color(0xFF00C853),
+                                        topLeft = androidx.compose.ui.geometry.Offset(offsetX + l * scale, offsetY + t * scale),
+                                        size = androidx.compose.ui.geometry.Size((r - l) * scale, (b - t) * scale),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 Box(
                     modifier = Modifier.height(250.dp).fillMaxWidth(),
@@ -209,15 +298,34 @@ class KassenzettelScannerActivity : ComponentActivity() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Button(onClick = { 
-                scanner.getStartScanIntent(this@KassenzettelScannerActivity)
-                    .addOnSuccessListener { intentSender ->
-                        scannerLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(intentSender).build())
-                    }
-            }, enabled = !isAnalyzing) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (isFridgeMode) "Foto machen" else "Bon scannen")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { 
+                        scanner.getStartScanIntent(this@KassenzettelScannerActivity)
+                            .addOnSuccessListener { intentSender ->
+                                scannerLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(intentSender).build())
+                            }
+                    },
+                    enabled = !isAnalyzing,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (isFridgeMode) "Foto" else "Kamera")
+                }
+
+                OutlinedButton(
+                    onClick = { galleryLauncher.launch("image/*") },
+                    enabled = !isAnalyzing,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Galerie")
+                }
             }
 
             if (isAnalyzing) {
@@ -299,7 +407,7 @@ class KassenzettelScannerActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun analyzeReceiptOffline(bitmap: Bitmap): List<Product> = withContext(Dispatchers.IO) {
+    private suspend fun analyzeReceiptOffline(bitmap: Bitmap): Pair<List<Product>, List<android.graphics.Rect>> = withContext(Dispatchers.IO) {
         try {
             ReceiptImportSanitizer.loadDictionaryFromAssets(applicationContext)
             val image = com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0)
@@ -314,11 +422,31 @@ class KassenzettelScannerActivity : ComponentActivity() {
                 it.rawName to it.correctedName 
             }
 
-            // Mit Lerndaten parsen!
-            KassenzettelParser.parseReceipt(visionText, corrections)
+            // Mit Lerndaten und Bounding-Boxes parsen!
+            val parseResult = KassenzettelParser.parseReceiptWithBoxes(visionText, corrections)
+            val rawProducts = parseResult.products
+
+            // Automatischer OCR-Abgleich gegen Room-Datenbank (market_products.db)
+            val productDao = com.example.myapplication.data.MarketProductDatabase.getInstance(applicationContext).productDao()
+            val matchedProducts = rawProducts.map { prod ->
+                val queryStr = prod.rawText ?: prod.name
+                val match = productDao.matchOcrText(queryStr)
+                    ?: productDao.findByReceiptPattern(queryStr)
+                    ?: productDao.findByCleanName(queryStr)
+                if (match != null) {
+                    prod.copy(
+                        name = match.cleanName,
+                        category = match.category,
+                        defaultStorage = match.defaultStorage
+                    )
+                } else {
+                    prod
+                }
+            }
+            Pair(matchedProducts, parseResult.unrecognizedBoxes)
         } catch (e: Exception) {
             e.printStackTrace()
-            emptyList()
+            Pair(emptyList(), emptyList())
         }
     }
 

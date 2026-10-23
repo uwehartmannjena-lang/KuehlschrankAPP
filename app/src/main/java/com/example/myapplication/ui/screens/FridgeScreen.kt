@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,16 +11,58 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.FridgeViewModel
-import com.example.myapplication.ui.components.FridgeItemCard
-import com.example.myapplication.FilterAndSortSection
 import com.example.myapplication.QrLabelActivity
-import android.content.Intent
+import com.example.myapplication.ui.FilterAndSortSection
+import com.example.myapplication.ui.components.FridgeItemCard
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun FridgeScreen(viewModel: FridgeViewModel) {
     val context = LocalContext.current
-    val displayedItems by viewModel.displayedItems.collectAsState(initial = emptyList())
+    val allItems by viewModel.allFridgeItems.collectAsState(initial = emptyList())
     val favoriteIconName by viewModel.favoriteIconName
+
+    val displayedItems = remember(
+        allItems, 
+        viewModel.currentHouseholdId.value,
+        viewModel.searchInput.value,
+        viewModel.filterExpiryDays.intValue,
+        viewModel.filterCategory.value,
+        viewModel.filterLocation.value,
+        viewModel.sortOrder.value
+    ) {
+        allItems.filter { item ->
+            val matchesHousehold = item.householdId == viewModel.currentHouseholdId.value || viewModel.currentHouseholdId.value == "default"
+            val matchesSearch = viewModel.searchInput.value.isBlank() || item.name.contains(viewModel.searchInput.value, ignoreCase = true)
+            val matchesExpiry = when (viewModel.filterExpiryDays.intValue) {
+                0 -> true
+                -1 -> item.expiryDate != null && item.expiryDate!! < System.currentTimeMillis()
+                else -> item.expiryDate != null && (item.expiryDate!! - System.currentTimeMillis()) < TimeUnit.DAYS.toMillis(viewModel.filterExpiryDays.intValue.toLong())
+            }
+            val matchesCategoryFilter = when (viewModel.filterCategory.value) {
+                null, "Alle Kategorien" -> true
+                "Protein" -> item.protein >= 10.0
+                "LowCarb" -> item.sugar in 0.0..5.0
+                "Vegan" -> item.isVegan
+                else -> item.category.equals(viewModel.filterCategory.value, ignoreCase = true)
+            }
+            val locFilter = viewModel.filterLocation.value
+            val matchesLocation = if (locFilter == "BALD_ABLAUFEND") {
+                item.expiryDate != null && (item.expiryDate!! - System.currentTimeMillis()) < TimeUnit.DAYS.toMillis(3)
+            } else {
+                locFilter == null || item.storageLocation.equals(locFilter, ignoreCase = true)
+            }
+            matchesHousehold && matchesSearch && matchesExpiry && matchesCategoryFilter && matchesLocation
+        }.let { filtered ->
+            when (viewModel.sortOrder.value) {
+                "name" -> filtered.sortedBy { it.name.lowercase() }
+                "price" -> filtered.sortedByDescending { it.price }
+                "category" -> filtered.sortedBy { it.category }
+                "protein" -> filtered.sortedByDescending { it.protein }
+                else -> filtered.sortedBy { it.expiryDate ?: Long.MAX_VALUE }
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         FilterAndSortSection(viewModel)

@@ -1137,6 +1137,20 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         }
     }
 
+    fun freezeItem(item: FridgeItem) {
+        viewModelScope.launch {
+            dao.updateItem(item.copy(isFrozen = true, storageLocation = "Gefrierfach"))
+            logAction("Eingefroren", item.name)
+        }
+    }
+
+    fun defrostItem(item: FridgeItem) {
+        viewModelScope.launch {
+            dao.updateItem(item.copy(isFrozen = false, storageLocation = "Kühlschrank"))
+            logAction("Aufgetaut", item.name)
+        }
+    }
+
     // --- 7 ADVANCED FEATURES IMPLEMENTATION ---
 
     // Feature 1: Echtzeit-MHD-Erkennung per ML-Kit
@@ -1915,10 +1929,13 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             Regex("""\bmoenchshof\s*zwick\b""", RegexOption.IGNORE_CASE) to "Mönchshof Zwickl",
             Regex("""\bkochschinken\s*o\.?\b""", RegexOption.IGNORE_CASE) to "Kochschinken ohne Fettrand",
             Regex("""\brosenbroe\.?\s*dkl\.?\b""", RegexOption.IGNORE_CASE) to "Rosenbrötchen dunkel",
+            Regex("""\brosenbroe\.?\s*mohn\b""", RegexOption.IGNORE_CASE) to "Rosenbrötchen Mohn",
+            Regex("""\brosenbroe\.?\b""", RegexOption.IGNORE_CASE) to "Rosenbrötchen",
             Regex("""\bkarottenkruest\.?\b""", RegexOption.IGNORE_CASE) to "Karottenkrüstchen",
             Regex("""\bdinkelbroetchen\b""", RegexOption.IGNORE_CASE) to "Dinkelbrötchen",
             Regex("""\bkfav\.?\s*v[- ]?f\.?\s*brötchen\b""", RegexOption.IGNORE_CASE) to "K-Favourites Vollkorn-Fit-Brötchen",
-            Regex("""\bvollkorn\s*kumpel\b""", RegexOption.IGNORE_CASE) to "Vollkorn Kumpel Brot",
+            Regex("""\bvollkorn\s*kumpel(\s*brot)?\b""", RegexOption.IGNORE_CASE) to "Vollkorn-Kumpel",
+            Regex("""\broggen\s*x\b""", RegexOption.IGNORE_CASE) to "Roggen-Ecke",
             Regex("""\b(Pres\.la\s*Briqü|Pres\.la\s*Brique|PRES\.?\s*La\s*Brique)\b""", RegexOption.IGNORE_CASE) to "Président La Brique",
             Regex("""\b(PRES\.?|Pres\.)\b""", RegexOption.IGNORE_CASE) to "Président",
             Regex("""\b(TH\.WQ\.?|Thüringer\s*Waldqüll|Waldqüll)\b""", RegexOption.IGNORE_CASE) to "Thüringer Waldquell",
@@ -1997,6 +2014,9 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
             .replace("steinofen pizza", "Steinofen Pizza", ignoreCase = true)
             .replace(Regex("""\s+"""), " ")
             .trim()
+
+        // 5. Doppelte identische Nachbarwörter (z.B. "Brot Brot" -> "Brot") deduplizieren
+        name = name.replace(Regex("""\b(\p{L}+)\s+\1\b""", RegexOption.IGNORE_CASE), "$1")
 
         return name
     }
@@ -2110,7 +2130,11 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
         } else {
             name.split(" ")
                 .filter { it.isNotBlank() }
-                .joinToString(" ") { it.lowercase().replaceFirstChar { c -> c.uppercase() } }
+                .joinToString(" ") { word ->
+                    word.split("-").joinToString("-") { part ->
+                        part.lowercase().replaceFirstChar { c -> c.uppercase() }
+                    }
+                }
                 .take(60)
         }
 
@@ -2126,7 +2150,7 @@ class FridgeViewModel(val dao: FridgeItemDao, private val applicationContext: Co
     }
 
     fun handleScannedProducts(rawProducts: List<Product>, sourceId: String = "SCAN") {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             ReceiptImportSanitizer.loadDictionaryFromAssets(applicationContext)
             
             val fullText = rawProducts.joinToString(" ") { it.rawText ?: "" }

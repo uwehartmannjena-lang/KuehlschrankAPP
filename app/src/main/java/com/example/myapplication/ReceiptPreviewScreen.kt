@@ -112,6 +112,21 @@ fun ReceiptPreviewScreen(
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                val pDate = product.purchaseDate ?: System.currentTimeMillis()
+                                val dateFormatted = java.text.SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(java.util.Date(pDate))
+                                Text(
+                                    text = "Kaufdatum: $dateFormatted",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                if (!product.receiptUri.isNullOrBlank()) {
+                                    Text(
+                                        text = "Beleg: ${product.receiptUri}",
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
                             }
                             IconButton(onClick = { editingProductIndex = index }) {
                                 Icon(
@@ -146,8 +161,8 @@ fun ReceiptPreviewScreen(
                 product = product,
                 viewModel = viewModel,
                 onDismiss = { editingProductIndex = null },
-                onSave = { newName ->
-                    viewModel.updateProductName(index, newName)
+                onSave = { newName, category, unit, pDate, rUri ->
+                    viewModel.updateProductName(index, newName, category, unit, pDate, rUri)
                     editingProductIndex = null
                 }
             )
@@ -161,15 +176,29 @@ fun ArticleCorrectionDialog(
     product: Product,
     viewModel: ReceiptScanViewModel,
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit
+    onSave: (newName: String, category: String, unit: String, purchaseDate: Long?, receiptUri: String?) -> Unit
 ) {
     val suggestions by viewModel.suggestions.collectAsState()
     val initialText = remember(product) { product.rawText ?: product.name }
     var textInput by remember { mutableStateOf(product.name) }
+    var categoryInput by remember { mutableStateOf(product.category) }
+    var unitInput by remember { mutableStateOf(product.unit) }
+    val initialDate = remember(product) {
+        val millis = product.purchaseDate ?: System.currentTimeMillis()
+        java.text.SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(java.util.Date(millis))
+    }
+    var dateInput by remember { mutableStateOf(initialDate) }
+    var receiptUriInput by remember { mutableStateOf(product.receiptUri ?: "") }
     var expanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(product) {
-        viewModel.searchSuggestions(textInput)
+        viewModel.onQueryChanged(textInput)
+    }
+
+    LaunchedEffect(suggestions) {
+        if (suggestions.isNotEmpty()) {
+            expanded = true
+        }
     }
 
     AlertDialog(
@@ -197,8 +226,8 @@ fun ArticleCorrectionDialog(
                         value = textInput,
                         onValueChange = { newText ->
                             textInput = newText
-                            expanded = suggestions.isNotEmpty()
-                            viewModel.searchSuggestions(newText)
+                            expanded = true
+                            viewModel.onQueryChanged(newText)
                         },
                         label = { Text("Artikelname") },
                         singleLine = true,
@@ -208,7 +237,7 @@ fun ArticleCorrectionDialog(
                         colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(MenuAnchorType.PrimaryEditable, true)
+                            .menuAnchor()
                     )
 
                     ExposedDropdownMenu(
@@ -218,22 +247,72 @@ fun ArticleCorrectionDialog(
                     ) {
                         suggestions.forEach { suggestion ->
                             DropdownMenuItem(
-                                text = { Text(suggestion, fontWeight = FontWeight.Medium) },
+                                text = {
+                                    Column {
+                                        Text(suggestion.cleanName, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            "${suggestion.category} • ${suggestion.unit}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
                                 onClick = {
-                                    textInput = suggestion
+                                    textInput = suggestion.cleanName
+                                    categoryInput = suggestion.category
+                                    unitInput = suggestion.unit
                                     expanded = false
-                                    viewModel.searchSuggestions("")
                                 },
                                 contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
                             )
                         }
                     }
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = categoryInput,
+                        onValueChange = { categoryInput = it },
+                        label = { Text("Kategorie") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = unitInput,
+                        onValueChange = { unitInput = it },
+                        label = { Text("Einheit") },
+                        singleLine = true,
+                        modifier = Modifier.width(90.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = dateInput,
+                    onValueChange = { dateInput = it },
+                    label = { Text("Kaufdatum (dd.MM.yyyy)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
             Button(
-                onClick = { onSave(textInput) },
+                onClick = {
+                    val parsedDateMillis = try {
+                        java.text.SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).parse(dateInput.trim())?.time
+                    } catch (_: Exception) { null } ?: product.purchaseDate ?: System.currentTimeMillis()
+
+                    onSave(
+                        textInput.trim(),
+                        categoryInput.trim(),
+                        unitInput.trim(),
+                        parsedDateMillis,
+                        receiptUriInput.trim().takeIf { it.isNotBlank() }
+                    )
+                },
                 enabled = textInput.isNotBlank()
             ) {
                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))

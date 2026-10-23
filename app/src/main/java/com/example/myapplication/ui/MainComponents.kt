@@ -92,7 +92,10 @@ import com.example.myapplication.ui.help.OnboardingOverlay
 import com.example.myapplication.web.WebCompanionServer
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -534,6 +537,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                     }
                                     // Default: "list"
                                     else -> {
+                                        val firstItemId = remember(displayedItems) { displayedItems.firstOrNull()?.id }
                                         LazyColumn(
                                             state = listState,
                                             modifier = Modifier
@@ -544,7 +548,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                                         ) {
                                             item { Spacer(Modifier.height(4.dp)) }
                                             items(displayedItems, key = { it.id }) { item ->
-                                                val isFirst = (displayedItems.firstOrNull()?.id == item.id)
+                                                val isFirst = (firstItemId == item.id)
                                                 Box(
                                                     modifier = Modifier
                                                         .animateItem()
@@ -1006,8 +1010,12 @@ fun CorrectArticleDialog(
     var isSearching by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
-    val suggestions: List<String> = remember(searchQuery) {
-        MarketDictionaryHelper.getSuggestions(searchQuery, context, limit = 5)
+    // Suche mit Debounce und abseits des Main-Threads (FTS-DB + Levenshtein sind teuer).
+    val suggestions: List<String> by produceState(initialValue = emptyList<String>(), searchQuery) {
+        delay(250)
+        value = withContext(Dispatchers.Default) {
+            MarketDictionaryHelper.getSuggestions(searchQuery, context, limit = 5)
+        }
     }
     val scope = rememberCoroutineScope()
 
@@ -1145,31 +1153,37 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Vorschau (${viewModel.recognizedCount.intValue} Artikel)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                IconButton(onClick = {
-                    val reportText = buildString {
-                        appendLine("🧾 Kassenbon (${SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date())})")
-                        appendLine("─────────────────")
-                        candidates.forEach {
-                            appendLine("${it.quantity}x ${it.name} (${String.format(Locale.GERMANY, "%.2f €", it.price)})")
+                val titleText = if (viewModel.isSyncing.value) "Kassenbon wird analysiert..." else "Vorschau (${viewModel.recognizedCount.intValue} Artikel)"
+                Text(titleText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (!viewModel.isSyncing.value && candidates.isNotEmpty()) {
+                    IconButton(onClick = {
+                        val reportText = buildString {
+                            appendLine("🧾 Kassenbon (${SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date())})")
+                            appendLine("─────────────────")
+                            candidates.forEach {
+                                appendLine("${it.quantity}x ${it.name} (${String.format(Locale.GERMANY, "%.2f €", it.price)})")
+                            }
+                            appendLine("─────────────────")
+                            val total = candidates.sumOf { it.price * it.quantity }
+                            appendLine("Gesamt: ${String.format(Locale.GERMANY, "%.2f €", total)}")
                         }
-                        appendLine("─────────────────")
-                        val total = candidates.sumOf { it.price * it.quantity }
-                        appendLine("Gesamt: ${String.format(Locale.GERMANY, "%.2f €", total)}")
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, reportText)
+                            type = "text/plain"
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Kassenbon teilen"))
+                    }) {
+                        Icon(Icons.Default.Share, "Bon teilen", tint = viewModel.themeColor.value)
                     }
-                    val sendIntent = Intent().apply {
-                        action = Intent.ACTION_SEND
-                        putExtra(Intent.EXTRA_TEXT, reportText)
-                        type = "text/plain"
-                    }
-                    context.startActivity(Intent.createChooser(sendIntent, "Kassenbon teilen"))
-                }) {
-                    Icon(Icons.Default.Share, "Bon teilen", tint = viewModel.themeColor.value)
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { viewModel.confirmAndImport() }) { Text("Speichern") }
+            Button(
+                onClick = { viewModel.confirmAndImport() },
+                enabled = !viewModel.isSyncing.value && candidates.isNotEmpty()
+            ) { Text("Speichern") }
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1245,118 +1259,157 @@ fun ImportPreviewDialog(viewModel: FridgeViewModel, onDismiss: () -> Unit) {
                     }
                 }
                 
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 480.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(candidates, key = { it.id }) { candidate ->
-                        val isSelected = viewModel.selectedItems.value.contains(candidate.id)
-                        ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.elevatedCardColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                if (viewModel.isSyncing.value) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = viewModel.themeColor.value,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Texterkennung & Analyse läuft...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
+                            color = viewModel.themeColor.value
+                        )
+                    }
+                } else if (candidates.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Keine Artikel erkannt oder Beleg leer.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 480.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(candidates, key = { it.id }) { candidate ->
+                            val isSelected = viewModel.selectedItems.value.contains(candidate.id)
+                            ElevatedCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.elevatedCardColors(
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                                )
                             ) {
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = { viewModel.toggleSelection(candidate.id) },
-                                    modifier = Modifier.scale(0.85f)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                ProductThumbnail(
-                                    imageUrl = candidate.imageUrl,
-                                    category = candidate.category,
-                                    itemName = candidate.name,
-                                    storageLocation = candidate.storageLocation,
-                                    modifier = Modifier.size(34.dp).clickable {
-                                        selectedCandidateForCorrection = candidate
-                                    }
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    var editName by remember(candidate.name) { mutableStateOf(candidate.name) }
-                                    var isEditing by remember { mutableStateOf(false) }
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { viewModel.toggleSelection(candidate.id) },
+                                        modifier = Modifier.scale(0.85f)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    ProductThumbnail(
+                                        imageUrl = candidate.imageUrl,
+                                        category = candidate.category,
+                                        itemName = candidate.name,
+                                        storageLocation = candidate.storageLocation,
+                                        modifier = Modifier.size(34.dp).clickable {
+                                            selectedCandidateForCorrection = candidate
+                                        }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        var editName by remember(candidate.name) { mutableStateOf(candidate.name) }
+                                        var isEditing by remember { mutableStateOf(false) }
 
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        BasicTextField(
-                                            value = editName,
-                                            onValueChange = { editName = it; isEditing = true },
-                                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        if (isEditing && editName.isNotBlank() && editName != candidate.name) {
-                                            IconButton(
-                                                onClick = {
-                                                    viewModel.updateCandidateName(candidate.id, editName)
-                                                    viewModel.teachItemCorrection(candidate, newName = editName)
-                                                    isEditing = false
-                                                    Toast.makeText(context, "Korrektur gelernt!", Toast.LENGTH_SHORT).show()
-                                                },
-                                                modifier = Modifier.size(24.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                                            ) {
-                                                Icon(Icons.Default.Check, "Korrektur übernehmen", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp))
-                                            }
-                                        }
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("${candidate.quantity}x • ${String.format(Locale.GERMANY, "%.2f €", candidate.price)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                        if (candidate.lastPrice > 0.0) {
-                                            val currentUnit = if (candidate.quantity > 0) candidate.price / candidate.quantity else candidate.price
-                                            val diff = currentUnit - candidate.lastPrice
-                                            if (kotlin.math.abs(diff) >= 0.01) {
-                                                Spacer(Modifier.width(4.dp))
-                                                val isHigher = diff > 0
-                                                val diffText = if (isHigher) "▲ +${String.format(Locale.GERMANY, "%.2f €", diff)}" else "▼ ${String.format(Locale.GERMANY, "%.2f €", diff)}"
-                                                Text(
-                                                    text = diffText,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isHigher) Color(0xFFD32F2F) else Color(0xFF388E3C)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    val pDateStr = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(candidate.purchaseDate ?: System.currentTimeMillis()))
-                                    Text("Kaufdatum: $pDateStr", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                    
-                                    if (candidate.isDuplicate) {
-                                        Text("🔄 Bereits vorhanden (überschreibt)", color = Color(0xFFF57C00), style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-                                val receiptUri = candidate.notes.lineSequence().firstOrNull { it.startsWith("URI:") }?.substringAfter("URI:")?.trim()
-                                if (!receiptUri.isNullOrBlank()) {
-                                    IconButton(
-                                        onClick = {
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                                    data = Uri.parse(receiptUri)
-                                                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            BasicTextField(
+                                                value = editName,
+                                                onValueChange = { editName = it; isEditing = true },
+                                                textStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            if (isEditing && editName.isNotBlank() && editName != candidate.name) {
+                                                IconButton(
+                                                    onClick = {
+                                                        viewModel.updateCandidateName(candidate.id, editName)
+                                                        viewModel.teachItemCorrection(candidate, newName = editName)
+                                                        isEditing = false
+                                                        Toast.makeText(context, "Korrektur gelernt!", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.size(24.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                                                ) {
+                                                    Icon(Icons.Default.Check, "Korrektur übernehmen", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp))
                                                 }
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
                                             }
-                                        },
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${candidate.quantity}x • ${String.format(Locale.GERMANY, "%.2f €", candidate.price)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                            if (candidate.lastPrice > 0.0) {
+                                                val currentUnit = if (candidate.quantity > 0) candidate.price / candidate.quantity else candidate.price
+                                                val diff = currentUnit - candidate.lastPrice
+                                                if (kotlin.math.abs(diff) >= 0.01) {
+                                                    Spacer(Modifier.width(4.dp))
+                                                    val isHigher = diff > 0
+                                                    val diffText = if (isHigher) "▲ +${String.format(Locale.GERMANY, "%.2f €", diff)}" else "▼ ${String.format(Locale.GERMANY, "%.2f €", diff)}"
+                                                    Text(
+                                                        text = diffText,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isHigher) Color(0xFFD32F2F) else Color(0xFF388E3C)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        val pDateStr = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).format(Date(candidate.purchaseDate ?: System.currentTimeMillis()))
+                                        Text("Kaufdatum: $pDateStr", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        
+                                        if (candidate.isDuplicate) {
+                                            Text("🔄 Bereits vorhanden (überschreibt)", color = Color(0xFFF57C00), style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                    val receiptUri = candidate.notes.lineSequence().firstOrNull { it.startsWith("URI:") }?.substringAfter("URI:")?.trim()
+                                    if (!receiptUri.isNullOrBlank()) {
+                                        IconButton(
+                                            onClick = {
+                                                try {
+                                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                        data = Uri.parse(receiptUri)
+                                                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                                    }
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.AutoMirrored.Filled.List, "Beleg anzeigen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { selectedCandidateForCorrection = candidate },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(Icons.AutoMirrored.Filled.List, "Beleg anzeigen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Default.Edit, "Bearbeiten & Katalog-Suche", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                     }
-                                }
-                                IconButton(
-                                    onClick = { selectedCandidateForCorrection = candidate },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.Edit, "Bearbeiten & Katalog-Suche", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                }
-                                IconButton(
-                                    onClick = { viewModel.discardImportCandidate(candidate) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.Close, "Verwerfen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                    IconButton(
+                                        onClick = { viewModel.discardImportCandidate(candidate) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, "Verwerfen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                    }
                                 }
                             }
                         }
@@ -1904,11 +1957,14 @@ fun ModernFridgeItemCard(
         offsetX += delta
     }
 
+    val cornerRadius = viewModel.cardCornerRadius.intValue
+    val cardShape = remember(cornerRadius) { RoundedCornerShape(cornerRadius.dp) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(viewModel.cardCornerRadius.intValue.dp))
+            .clip(cardShape)
     ) {
         // Swipe Hintergrund & Symbol-Anzeige (Horizontal für Karten-Aktionen)
         if (offsetX != 0f) {
@@ -1968,7 +2024,6 @@ fun ModernFridgeItemCard(
         ElevatedCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .animateContentSize()
                 .offset { IntOffset(offsetX.roundToInt(), 0) }
                 .draggable(
                     state = draggableState,
@@ -1983,7 +2038,7 @@ fun ModernFridgeItemCard(
                     }
                 )
                 .combinedClickable(onClick = onEdit, onLongClick = onLongClick),
-            shape = RoundedCornerShape(viewModel.cardCornerRadius.intValue.dp),
+            shape = cardShape,
             colors = CardDefaults.elevatedCardColors(
                 containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
             ),

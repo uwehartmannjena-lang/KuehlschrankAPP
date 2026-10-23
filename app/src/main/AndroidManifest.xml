@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
@@ -32,7 +35,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication"
         android:usesCleartextTraffic="true"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:requestLegacyExternalStorage="true">
 
         <activity
             android:name="com.example.myapplication.MainActivity"
@@ -423,7 +427,7 @@
 
         <activity
             android:name="com.example.myapplication.KassenzettelScannerActivity"
-            android:exported="false"
+            android:exported="true"
             android:label="Kassenbon Scanner"
             android:theme="@style/Theme.MyApplication" />
 

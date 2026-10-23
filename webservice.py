@@ -2358,6 +2358,54 @@ class FridgeRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status": "ok", "zip": zip_code, "offers": sample_offers}, ensure_ascii=False).encode("utf-8"))
             return
 
+        if clean_path in ["/api/products/search", "/api/learned-products/search"]:
+            from urllib.parse import parse_qs, urlparse, quote
+            query_components = parse_qs(urlparse(self.path).query)
+            q = query_components.get("q", [""])[0].strip()
+
+            results = []
+            if q:
+                norm_q = q.lower()
+                all_learned = load_learned_products()
+                for item in all_learned:
+                    name = item.get("name", "")
+                    raw_n = item.get("rawName", "")
+                    if norm_q in name.lower() or norm_q in raw_n.lower():
+                        results.append({
+                            "cleanName": name,
+                            "rawName": raw_n,
+                            "category": item.get("category", "Vorrat"),
+                            "unit": item.get("unit", "Stk."),
+                            "source": "learned_products.db"
+                        })
+
+                # Robotoff / OpenFoodFacts Fallback, falls keine Treffer in learned_products
+                if not results and len(q) >= 2:
+                    try:
+                        import urllib.request
+                        encoded_q = quote(q)
+                        off_url = f"https://de.openfoodfacts.org/cgi/search.pl?search_terms={encoded_q}&search_simple=1&action=process&json=1&page_size=5"
+                        req = urllib.request.Request(off_url, headers={"User-Agent": "KuehlschrankProfi/1.0"})
+                        with urllib.request.urlopen(req, timeout=2.5) as resp:
+                            data = json.loads(resp.read().decode("utf-8"))
+                            for prod in data.get("products", [])[:5]:
+                                p_name = prod.get("product_name_de") or prod.get("product_name")
+                                if p_name:
+                                    results.append({
+                                        "cleanName": p_name.strip(),
+                                        "rawName": q,
+                                        "category": prod.get("categories", "Lebensmittel").split(",")[0].strip() if prod.get("categories") else "Lebensmittel",
+                                        "unit": "Stk.",
+                                        "source": "robotoff"
+                                    })
+                    except Exception:
+                        pass
+
+            self.send_cors_headers(200, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "query": q, "results": results[:10]}, ensure_ascii=False).encode("utf-8"))
+            return
+
         self.send_cors_headers(404, "text/plain")
         self.end_headers()
         self.wfile.write(b"Not Found")

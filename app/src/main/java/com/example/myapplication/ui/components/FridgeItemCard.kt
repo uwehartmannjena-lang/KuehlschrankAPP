@@ -16,10 +16,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.FridgeItem
 import com.example.myapplication.data.FoodCategory
-import com.example.myapplication.getFallbackIconForItem
-import com.example.myapplication.ExpiryLabel
+import com.example.myapplication.data.CategoryDetector
+import com.example.myapplication.ui.ExpiryLabel
 import java.util.*
 import java.util.concurrent.TimeUnit
+
+fun getFallbackIconForItem(name: String, category: String, storageLocation: String): Pair<androidx.compose.ui.graphics.vector.ImageVector, Color> {
+    val detected = CategoryDetector.detectCategory(name)
+    val color = when (detected) {
+        FoodCategory.OBST_GEMUESE -> Color(0xFF4CAF50)
+        FoodCategory.BROT_BACKWAREN -> Color(0xFFFFB300)
+        FoodCategory.MILCHPRODUKTE -> Color(0xFF29B6F6)
+        FoodCategory.FLEISCH_FISCH -> Color(0xFFE53935)
+        FoodCategory.VORRAT_KONSERVEN -> Color(0xFF8D6E63)
+        FoodCategory.GETRAENKE -> Color(0xFF7E57C2)
+        FoodCategory.DROGERIE_HYGIENE -> Color(0xFF26A69A)
+        FoodCategory.HAUSHALT -> Color(0xFF78909C)
+        FoodCategory.HAUSTIER -> Color(0xFFEC407A)
+        FoodCategory.SONSTIGES -> Color(0xFF757575)
+    }
+    return Pair(detected.icon, color)
+}
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

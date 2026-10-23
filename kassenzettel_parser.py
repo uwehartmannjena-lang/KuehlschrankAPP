@@ -642,6 +642,28 @@ EXPANSIONS = [
     (r'\bPACKUN\b', 'Packung'),
 ]
 
+def extrahiere_mengenangaben(aktuelle_zeile, vorherige_zeile):
+    daten = {
+        "menge": 1.0,
+        "einheit": "Stück",
+        "gehoert_zu_artikel": vorherige_zeile
+    }
+    
+    # Sucht nach Mustern wie "3 x 1,50" oder "0,500 kg x 2,99"
+    mengen_muster = r"(\d+([.,]\d+)?)\s*(x|kg)\s*(\d+([.,]\d+)?)"
+    treffer = re.search(mengen_muster, aktuelle_zeile.lower())
+    
+    if treffer:
+        # Extrahiert die Zahl vor dem 'x' oder 'kg'
+        daten["menge"] = float(treffer.group(1).replace(',', '.'))
+        
+        if "kg" in treffer.group(3):
+            daten["einheit"] = "kg"
+            
+        return daten
+        
+    return None
+
 PRICE_REGEX = re.compile(r'(-?\d+[,.]\d{2})')
 TAX_SUFFIX_REGEX = re.compile(r'\s+(?:[AB12*#€]\s*|\d\s*)*$')
 MULTIPLIER_REGEX = re.compile(r'^\s*(\d+(?:[,.]\d+)?)\s*(?:kg|g|l|ml|stk|stück|stueck|packun|packung|pack|btl|becher|dose|glas|fl)?\s*[*xX]\s*(\d+[,.]\d{2})', re.IGNORECASE)
@@ -1449,6 +1471,21 @@ def parse_receipt_text(text: str) -> list:
                 pending_qty = parsed_qty
                 pending_unit_price = unit_price
             continue
+
+        # Verschachtelte Mengen- und Gewichtsangaben via extrahiere_mengenangaben
+        prev_target = pending_name if pending_name else (items[-1]["name"] if items else "")
+        mengen_treffer = extrahiere_mengenangaben(line, prev_target)
+        if mengen_treffer:
+            m_qty = int(mengen_treffer["menge"]) if mengen_treffer["einheit"] != "kg" else 1
+            m_unit = mengen_treffer["einheit"]
+            if pending_name:
+                pending_qty = m_qty
+            elif items:
+                items[-1]["quantity"] = m_qty
+                if m_unit == "kg":
+                    items[-1]["unit"] = "kg"
+            else:
+                pending_qty = m_qty
 
         # Standard Zeile: "KOCHSCHINKEN O. 2,48 B" oder "MIREE DATTEL-CUR 1,19 B"
         std_match = STANDARD_LINE_REGEX.match(line)

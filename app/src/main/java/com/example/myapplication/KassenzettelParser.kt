@@ -2,6 +2,7 @@ package com.example.myapplication
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Rect
 import com.example.myapplication.data.CategoryDetector
 import com.example.myapplication.data.FoodCategory
 import com.example.myapplication.data.Product
@@ -173,6 +174,16 @@ object KassenzettelParser {
     }
 
     private val BRAND_DATABASE = mapOf(
+        "VOLLKORN KUMPEL" to "Vollkorn-Kumpel",
+        "ROSENBROE.MOHN" to "Rosenbrötchen Mohn",
+        "ROSENBROE. DKL." to "Rosenbrötchen dunkel",
+        "ROSENBROE. DKL" to "Rosenbrötchen dunkel",
+        "ROSENBROE DKL" to "Rosenbrötchen dunkel",
+        "ROSENBROE." to "Rosenbrötchen",
+        "ROSENBROE" to "Rosenbrötchen",
+        "KAROTTENKRUEST." to "Karottenkrüstchen",
+        "KAROTTENKRUEST" to "Karottenkrüstchen",
+        "ROGGEN X" to "Roggen-Ecke",
         "SCHWW SCHINKEN" to "Schwarzwälder Schinken",
         "KNORR FIX CHILI C CAR" to "Knorr Fix Chili con Carne",
         "CASH CRANB MIX" to "Cashew-Cranberry-Mix",
@@ -318,9 +329,92 @@ object KassenzettelParser {
         }
     }
 
+    data class ParseVisionResult(
+        val products: List<Product>,
+        val unrecognizedBoxes: List<Rect>,
+        val supermarket: String?,
+        val purchaseDate: Long
+    )
+
+    data class MultiplierData(
+        val quantity: Double,
+        val unit: String,
+        val unitPrice: Double? = null
+    )
+
+    fun extrahiereMengenangaben(aktuelleZeile: String): MultiplierData? {
+        val lower = aktuelleZeile.lowercase()
+        // Sucht nach Mustern wie "3 x 1,50", "3 x", "0,500 kg x 2,99", "0,500 kg"
+        val mengenMuster = Regex("""(\d+(?:[.,]\d+)?)\s*(x|kg)\s*(\d+[,.]\d{2})?""", RegexOption.IGNORE_CASE)
+        val treffer = mengenMuster.find(lower)
+        if (treffer != null) {
+            val menge = treffer.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 1.0
+            val einheit = if (treffer.groupValues[2].contains("kg")) "kg" else "Stk."
+            val priceStr = treffer.groupValues.getOrNull(3)?.replace(',', '.')
+            val price = priceStr?.toDoubleOrNull()
+            return MultiplierData(quantity = menge, unit = einheit, unitPrice = price)
+        }
+        return null
+    }
+
+    fun analyzeHeader(headerRows: List<String>): Pair<String?, Long?> {
+        val combinedHeader = headerRows.joinToString(" ")
+        val upper = combinedHeader.uppercase()
+
+        val supermarket = when {
+            upper.contains("REWE") || upper.contains("NAHKAUF") -> "Rewe"
+            upper.contains("EDEKA") || upper.contains("GUT & GÜNSTIG") || upper.contains("GUT&GÜNSTIG") -> "Edeka"
+            upper.contains("KAUFLAND") || upper.contains("K CARD") || upper.contains("K-CLASSIC") -> "Kaufland"
+            upper.contains("LIDL") -> "Lidl"
+            upper.contains("ALDI") -> "Aldi"
+            upper.contains("NETTO") -> "Netto"
+            upper.contains("PENNY") -> "Penny"
+            upper.contains("GLOBUS") -> "Globus"
+            upper.contains("DM-DROGERIE") || upper.contains(" DM ") -> "dm"
+            upper.contains("ROSSMANN") -> "Rossmann"
+            upper.contains("NORMA") -> "Norma"
+            upper.contains("TEGUT") -> "Tegut"
+            else -> null
+        }
+
+        val dateRegex = Regex("""\b(\d{2})[./](\d{2})[./](\d{2,4})\b""")
+        var purchaseDate: Long? = null
+        for (line in headerRows) {
+            val m = dateRegex.find(line)
+            if (m != null) {
+                val d = m.groupValues[1].toIntOrNull() ?: 1
+                val mo = (m.groupValues[2].toIntOrNull() ?: 1) - 1
+                var y = m.groupValues[3].toIntOrNull() ?: 2026
+                if (y < 100) y += 2000
+                if (d in 1..31 && mo in 0..11 && y in 2020..2035) {
+                    val cal = Calendar.getInstance()
+                    cal.set(Calendar.YEAR, y)
+                    cal.set(Calendar.MONTH, mo)
+                    cal.set(Calendar.DAY_OF_MONTH, d)
+                    cal.set(Calendar.HOUR_OF_DAY, 12)
+                    cal.set(Calendar.MINUTE, 0)
+                    cal.set(Calendar.SECOND, 0)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    purchaseDate = cal.timeInMillis
+                    break
+                }
+            }
+        }
+        return Pair(supermarket, purchaseDate)
+    }
+
     fun parseReceipt(visionText: Text, corrections: Map<String, String> = emptyMap()): List<Product> {
+        return parseReceiptWithBoxes(visionText, corrections).products
+    }
+
+    fun parseReceiptWithBoxes(
+        visionText: Text,
+        corrections: Map<String, String> = emptyMap()
+    ): ParseVisionResult {
         val allLines = visionText.textBlocks.flatMap { it.lines }
-        if (allLines.isEmpty()) return emptyList()
+        if (allLines.isEmpty()) {
+            return ParseVisionResult(emptyList(), emptyList(), null, System.currentTimeMillis())
+        }
 
         val sortedLines = allLines.sortedBy { it.boundingBox?.top ?: 0 }
         val rows = mutableListOf<MutableList<Text.Line>>()
@@ -334,11 +428,297 @@ object KassenzettelParser {
             if (existingRow != null) existingRow.add(line) else rows.add(mutableListOf(line))
         }
 
-        val reconstructedText = rows.joinToString("\n") { row ->
+        // Header-Analyse: Die ersten 5 erkannten Textzeilen des ML Kit Scanners nach Marktnamen & Datum durchsuchen
+        val headerRows = rows.take(5).map { row ->
             row.sortedBy { it.boundingBox?.left ?: 0 }.joinToString(" ") { it.text }
         }
+        val (headerSupermarket, headerDate) = analyzeHeader(headerRows)
 
-        return parseReceiptText(reconstructedText, corrections)
+        data class RowInfo(
+            val text: String,
+            val rect: Rect?,
+            val lines: List<Text.Line>
+        )
+
+        val rowInfos = rows.map { row ->
+            val sortedRowLines = row.sortedBy { it.boundingBox?.left ?: 0 }
+            val text = sortedRowLines.joinToString(" ") { it.text }
+            var l = Int.MAX_VALUE
+            var t = Int.MAX_VALUE
+            var r = Int.MIN_VALUE
+            var b = Int.MIN_VALUE
+            for (line in sortedRowLines) {
+                line.boundingBox?.let { box ->
+                    if (box.left < l) l = box.left
+                    if (box.top < t) t = box.top
+                    if (box.right > r) r = box.right
+                    if (box.bottom > b) b = box.bottom
+                }
+            }
+            val rect = if (l < r && t < b) Rect(l, t, r, b) else null
+            RowInfo(text, rect, sortedRowLines)
+        }
+
+        val reconstructedText = rowInfos.joinToString("\n") { it.text }
+        val fullSupermarket = headerSupermarket ?: detectSupermarket(reconstructedText)
+        val fullDate = headerDate ?: extractDate(reconstructedText)
+
+        val items = mutableListOf<Product>()
+        val consumedLines = mutableSetOf<Text.Line>()
+
+        var pendingName: String? = null
+        var pendingRect: Rect? = null
+        var pendingLines = mutableListOf<Text.Line>()
+        var pendingQty = 1
+        var pendingUnitPrice: Double? = null
+        var pendingUnit: String = "Stk."
+        var pendingDeposit = false
+        var pendingBarcode: String? = null
+
+        fun unionRect(r1: Rect?, r2: Rect?): Rect? {
+            if (r1 == null) return r2
+            if (r2 == null) return r1
+            return Rect(minOf(r1.left, r2.left), minOf(r1.top, r2.top), maxOf(r1.right, r2.right), maxOf(r1.bottom, r2.bottom))
+        }
+
+        fun rectToString(r: Rect?): String? {
+            return if (r != null) "${r.left},${r.top},${r.right},${r.bottom}" else null
+        }
+
+        for (row in rowInfos) {
+            val line = row.text.trim()
+            if (line.isBlank()) continue
+            val upper = line.uppercase()
+
+            if (items.isNotEmpty() && isStopLine(upper)) break
+
+            if (isDepositLine(upper)) {
+                pendingDeposit = true
+                pendingName = null
+                pendingRect = null
+                pendingLines.clear()
+                continue
+            }
+
+            if (isTaxLine(upper) || isPaymentLine(upper) || isDateOrTimeLine(line, upper)) {
+                pendingName = null
+                pendingRect = null
+                pendingLines.clear()
+                continue
+            }
+
+            // Rabatte / Preiskorrekturen
+            if (line.startsWith("-") || upper.contains("RABATT") || upper.contains("PREISVORTEIL") ||
+                upper.contains("AKTION") || upper.contains("SOFORT-RABATT") ||
+                upper.contains("PREISAENDERUNG") || upper.contains("PREISÄNDERUNG") ||
+                upper.contains("MENGENRABATT")) {
+                val discountMatch = PRICE_REGEX.find(line)
+                if (discountMatch != null && items.isNotEmpty()) {
+                    val discountVal = abs(discountMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0)
+                    val last = items.last()
+                    items[items.lastIndex] = last.copy(
+                        price = Math.max(0.01, Math.round((last.price - discountVal) * 100.0) / 100.0)
+                    )
+                    consumedLines.addAll(row.lines)
+                }
+                pendingName = null
+                pendingRect = null
+                pendingLines.clear()
+                pendingQty = 1
+                pendingUnitPrice = null
+                continue
+            }
+
+            // Barcode (#...)
+            val eanMatch = Regex("""^#\s*(\d{8,14})""").find(line)
+            if (eanMatch != null) {
+                pendingBarcode = eanMatch.groupValues[1]
+                consumedLines.addAll(row.lines)
+                continue
+            }
+
+            // Multiplikator / Mengenerkennung (Multi-Line Logik)
+            val multData = extrahiereMengenangaben(line)
+            val multMatch = MULTIPLIER_REGEX.find(line)
+            val weighMatch = WEIGHING_REGEX.find(line)
+
+            if (weighMatch != null) {
+                val weightVal = weighMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 1.0
+                val unitPrice = weighMatch.groupValues[3].replace(',', '.').toDoubleOrNull() ?: 0.0
+                val g4 = weighMatch.groupValues.getOrNull(4)
+                val lineTotal = if (!g4.isNullOrBlank()) abs(g4.replace(',', '.').toDoubleOrNull() ?: (weightVal * unitPrice)) else Math.round(weightVal * unitPrice * 100.0) / 100.0
+
+                if (pendingName != null) {
+                    val combinedRect = unionRect(pendingRect, row.rect)
+                    addProductSafely(pendingName, lineTotal, 1, items, corrections, fullSupermarket, pendingBarcode, rectToString(combinedRect))
+                    consumedLines.addAll(pendingLines)
+                    consumedLines.addAll(row.lines)
+                    pendingName = null
+                    pendingRect = null
+                    pendingLines.clear()
+                    pendingBarcode = null
+                } else if (items.isNotEmpty()) {
+                    val last = items.last()
+                    val combinedRect = unionRect(last.boundingBox?.let { parseBoxRect(it) }, row.rect)
+                    items[items.lastIndex] = last.copy(price = lineTotal, unit = "kg", boundingBox = rectToString(combinedRect))
+                    consumedLines.addAll(row.lines)
+                }
+                continue
+            }
+
+            if (multMatch != null || multData != null) {
+                val parsedQty = multData?.quantity?.toInt() ?: multMatch?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()?.toInt() ?: 1
+                val unitPrice = multData?.unitPrice ?: multMatch?.groupValues?.get(2)?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+                val einheit = multData?.unit ?: "Stk."
+
+                val lineNoMult = if (multMatch != null) line.substring(multMatch.range.last + 1).trim() else ""
+                val priceMatch = PRICE_REGEX.find(lineNoMult)
+                val linePrice = priceMatch?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()?.let { abs(it) } ?: 0.0
+
+                // Fall 1: Zuordnung zur VORHERIGEN Zeile
+                if (pendingName != null) {
+                    val totalToUse = if (linePrice > 0.05) linePrice else Math.round(parsedQty * unitPrice * 100.0) / 100.0
+                    val combinedRect = unionRect(pendingRect, row.rect)
+                    addProductSafely(pendingName, totalToUse, parsedQty, items, corrections, fullSupermarket, pendingBarcode, rectToString(combinedRect))
+                    consumedLines.addAll(pendingLines)
+                    consumedLines.addAll(row.lines)
+                    pendingName = null
+                    pendingRect = null
+                    pendingLines.clear()
+                    pendingQty = 1
+                    pendingUnitPrice = null
+                    pendingBarcode = null
+                } else if (items.isNotEmpty() && items.last().quantity == 1) {
+                    // Vorherige bereits hinzugefügte Artikelzeile aktualisieren
+                    val last = items.last()
+                    val expectedTotal = Math.round(parsedQty * unitPrice * 100.0) / 100.0
+                    val combinedRect = unionRect(last.boundingBox?.let { parseBoxRect(it) }, row.rect)
+                    items[items.lastIndex] = last.copy(
+                        quantity = parsedQty,
+                        unit = einheit,
+                        price = if (linePrice > 0.05) linePrice else (if (last.price < expectedTotal - 0.05) expectedTotal else last.price),
+                        boundingBox = rectToString(combinedRect)
+                    )
+                    consumedLines.addAll(row.lines)
+                    pendingQty = 1
+                    pendingUnitPrice = null
+                } else {
+                    // Fall 2: Zuordnung zur NÄCHSTEN Zeile (pending Multiplier für nächste Zeile)
+                    pendingQty = parsedQty
+                    pendingUnitPrice = unitPrice
+                    pendingUnit = einheit
+                    pendingRect = row.rect
+                    pendingLines.clear()
+                    pendingLines.addAll(row.lines)
+                }
+                continue
+            }
+
+            // Standardzeile mit Name und Preis
+            val stdMatch = STANDARD_LINE_REGEX.matchEntire(line)
+            if (stdMatch != null && !MULTIPLIER_REGEX.containsMatchIn(line)) {
+                val rawName = stdMatch.groupValues[1].trim()
+                val price = abs(stdMatch.groupValues[2].replace(',', '.').toDoubleOrNull() ?: 0.0)
+
+                if (rawName.count { it.isLetter() } >= 2) {
+                    val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && abs(price - pendingUnitPrice) < 0.05) {
+                        pendingQty * pendingUnitPrice
+                    } else price
+                    val combinedRect = unionRect(pendingRect, row.rect)
+                    val beforeCount = items.size
+                    addProductSafely(rawName, totalToUse, pendingQty, items, corrections, fullSupermarket, pendingBarcode, rectToString(combinedRect))
+                    if (items.size > beforeCount) {
+                        consumedLines.addAll(pendingLines)
+                        consumedLines.addAll(row.lines)
+                    }
+                    pendingBarcode = null
+                    pendingName = null
+                    pendingRect = null
+                    pendingLines.clear()
+                    pendingQty = 1
+                    pendingUnitPrice = null
+                    continue
+                }
+            }
+
+            // Preiszeile freistehend
+            val priceMatch = PRICE_REGEX.find(line)
+            if (priceMatch != null) {
+                val priceVal = abs(priceMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0)
+                if (pendingDeposit) {
+                    pendingDeposit = false
+                    pendingName = null
+                    pendingRect = null
+                    pendingLines.clear()
+                    continue
+                }
+
+                val lineWithoutPrice = line.replace(PRICE_REGEX, "")
+                    .replace(Regex("""^[*#\s.-]+"""), "")
+                    .replace(Regex("""[AB12*#€0-9\s]+$"""), "")
+                    .trim()
+
+                if (pendingName != null && lineWithoutPrice.isEmpty() && priceVal > 0.05) {
+                    val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && abs(priceVal - pendingUnitPrice) < 0.05) {
+                        pendingQty * pendingUnitPrice
+                    } else priceVal
+                    val combinedRect = unionRect(pendingRect, row.rect)
+                    val beforeCount = items.size
+                    addProductSafely(pendingName, totalToUse, pendingQty, items, corrections, fullSupermarket, pendingBarcode, rectToString(combinedRect))
+                    if (items.size > beforeCount) {
+                        consumedLines.addAll(pendingLines)
+                        consumedLines.addAll(row.lines)
+                    }
+                    pendingBarcode = null
+                    pendingName = null
+                    pendingRect = null
+                    pendingLines.clear()
+                    pendingQty = 1
+                    pendingUnitPrice = null
+                } else if (lineWithoutPrice.length >= 3 && !isHeaderOrNoiseLine(lineWithoutPrice, lineWithoutPrice.uppercase())) {
+                    val totalToUse = if (pendingQty > 1 && pendingUnitPrice != null && abs(priceVal - pendingUnitPrice) < 0.05) {
+                        pendingQty * pendingUnitPrice
+                    } else priceVal
+                    val combinedRect = unionRect(pendingRect, row.rect)
+                    val beforeCount = items.size
+                    addProductSafely(lineWithoutPrice, totalToUse, pendingQty, items, corrections, fullSupermarket, pendingBarcode, rectToString(combinedRect))
+                    if (items.size > beforeCount) {
+                        consumedLines.addAll(pendingLines)
+                        consumedLines.addAll(row.lines)
+                    }
+                    pendingBarcode = null
+                    pendingName = null
+                    pendingRect = null
+                    pendingLines.clear()
+                    pendingQty = 1
+                    pendingUnitPrice = null
+                }
+                continue
+            }
+
+            // Textzeile (Artikelname vor der nächsten Preiszeile)
+            if (line.length >= 2 && !isHeaderOrNoiseLine(line, upper) && !isStopLine(upper)) {
+                pendingName = line
+                pendingRect = unionRect(pendingRect, row.rect)
+                pendingLines.addAll(row.lines)
+            }
+        }
+
+        // Nicht zugeordnete Bounding Boxes ermitteln (unerkannte Textzeilen)
+        val unrecognizedBoxes = allLines.filter { it !in consumedLines }.mapNotNull { it.boundingBox }
+
+        val finalItems = items.map { it.copy(supermarket = fullSupermarket, purchaseDate = fullDate) }
+        return ParseVisionResult(
+            products = finalItems,
+            unrecognizedBoxes = unrecognizedBoxes,
+            supermarket = fullSupermarket,
+            purchaseDate = fullDate
+        )
+    }
+
+    private fun parseBoxRect(boxStr: String): Rect? {
+        val parts = boxStr.split(",").mapNotNull { it.toIntOrNull() }
+        return if (parts.size == 4) Rect(parts[0], parts[1], parts[2], parts[3]) else null
     }
 
     fun normalizeText(text: String): String {
@@ -982,7 +1362,8 @@ object KassenzettelParser {
         items: MutableList<Product>,
         corrections: Map<String, String>,
         supermarket: String? = null,
-        barcode: String? = null
+        barcode: String? = null,
+        boundingBox: String? = null
     ) {
         if (price <= 0.05 || price > 250.0) return
 
@@ -1073,6 +1454,7 @@ object KassenzettelParser {
                 unit = finalUnit,
                 barcode = barcode,
                 rawText = rawName,
+                boundingBox = boundingBox,
                 supermarket = supermarket,
                 purchaseDate = System.currentTimeMillis()
             )
@@ -1106,7 +1488,8 @@ object KassenzettelParser {
                 bundled[idx] = existing.copy(
                     quantity = existing.quantity + item.quantity,
                     price = existing.price + item.price,
-                    barcode = existing.barcode ?: item.barcode
+                    barcode = existing.barcode ?: item.barcode,
+                    boundingBox = existing.boundingBox ?: item.boundingBox
                 )
             } else {
                 bundled.add(item)

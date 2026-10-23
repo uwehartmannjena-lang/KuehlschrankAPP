@@ -26,6 +26,8 @@ object ReceiptImportSanitizer {
     private var dictionary: List<FoodDictionaryEntry> = emptyList()
     private val learnedCorrections: MutableMap<String, String> = HashMap()
 
+    fun getLearnedCorrections(): Map<String, String> = learnedCorrections.toMap()
+
     fun loadLearnedCorrections(context: Context) {
         try {
             val db = AppDatabase.getDatabase(context)
@@ -56,6 +58,16 @@ object ReceiptImportSanitizer {
     fun getLearnedCorrection(rawText: String): String? {
         if (rawText.isBlank()) return null
         return learnedCorrections[rawText.lowercase().trim()]
+    }
+
+    fun separateBrandPrefixes(input: String): String = splitBrandPrefixes(input)
+
+    fun splitBrandPrefixes(input: String): String {
+        if (input.isBlank()) return input
+        val brandPrefixPattern = Regex(
+            """(?i)\b(klc|kpur|spreewh|kfav|kbio|purland|gut&g|g&g|bautz|meggl|meg|fin|pres|dit|reb|harzb|th\.?wq)(?:\.|\.?(?=\p{L}))\s*"""
+        )
+        return input.replace(brandPrefixPattern, "$1 ")
     }
 
     private val fallbackDictionary: List<FoodDictionaryEntry> = listOf(
@@ -262,13 +274,19 @@ object ReceiptImportSanitizer {
         "rosenbroe. dkl" to "Rosenbrötchen dunkel",
         "rosenbroe. dkl." to "Rosenbrötchen dunkel",
         "rosenbroe dkl" to "Rosenbrötchen dunkel",
+        "rosenbroe.mohn" to "Rosenbrötchen Mohn",
+        "rosenbroe. mohn" to "Rosenbrötchen Mohn",
+        "rosenbroe mohn" to "Rosenbrötchen Mohn",
+        "rosenbroe." to "Rosenbrötchen",
+        "rosenbroe" to "Rosenbrötchen",
         "karottenkruest." to "Karottenkrüstchen",
         "karottenkruest" to "Karottenkrüstchen",
         "dinkelbroetchen" to "Dinkelbrötchen",
         "kfav.v-f.brötchen" to "K-Favourites Vollkorn-Fit-Brötchen",
         "kfav.v-f.broetchen" to "K-Favourites Vollkorn-Fit-Brötchen",
         "v f brötchen" to "Vollkorn-Fit-Brötchen",
-        "vollkorn kumpel" to "Vollkorn Kumpel Brot",
+        "vollkorn kumpel" to "Vollkorn-Kumpel",
+        "roggen x" to "Roggen-Ecke",
         "erdn gerös ges" to "Erdnüsse geröstet gesalzen",
         "erdn geros ges" to "Erdnüsse geröstet gesalzen",
         "h brustfilet" to "Hähnchen-Brustfilet",
@@ -322,7 +340,7 @@ object ReceiptImportSanitizer {
         val learned = getLearnedCorrection(rawText)
         if (learned != null) return learned
 
-        var text = rawText
+        var text = splitBrandPrefixes(rawText)
 
         // Zahlen direkt an Buchstaben trennen (z.B. "Lachsfilet250g" -> "Lachsfilet 250g")
         text = text.replace(Regex("""(?i)(\p{L}+)(\d+(?:[.,]\d+)?\s*(?:kg|g|ml|l|stk|st)\b)""")) {
@@ -371,6 +389,11 @@ object ReceiptImportSanitizer {
                          .replace(Regex("""(?i)geflügel\s+fleischwurst"""), "Geflügel-Fleischwurst")
                          .replace(Regex("""(?i)chia\s+skyr\s+brötchen"""), "Chia-Skyr-Brötchen")
                          .replace(Regex("""(?i)cashew\s+cranberry\s+mix"""), "Cashew-Cranberry-Mix")
+                         .replace(Regex("""(?i)vollkorn\s+kumpel"""), "Vollkorn-Kumpel")
+                         .replace(Regex("""(?i)roggen\s+ecke"""), "Roggen-Ecke")
+
+        // 12. Doppelte identische Nachbarwörter (z.B. "Brot Brot" -> "Brot") deduplizieren
+        cleaned = cleaned.replace(Regex("""\b(\p{L}+)\s+\1\b""", RegexOption.IGNORE_CASE), "$1")
 
         // 13. Leere Zeilen (< 3 Zeichen) abfangen
         if (cleaned.length < 3) return ""
@@ -460,7 +483,7 @@ object ReceiptImportSanitizer {
             var safeQty = product.quantity
             if (safeQty >= 99 || safeQty <= 0) safeQty = 1
 
-            val trimmedName = product.name.trim()
+            val trimmedName = splitBrandPrefixes(product.name.trim())
             val learned = getLearnedCorrection(trimmedName) ?: getLearnedCorrection(product.rawText ?: "")
             val marketMatch = MarketDictionaryHelper.findBestMatch(trimmedName)
             val dictionaryMatch = findBestMatch(trimmedName)

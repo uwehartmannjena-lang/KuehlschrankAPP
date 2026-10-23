@@ -72,10 +72,23 @@ object PdfReceiptHelper {
             page = renderer.openPage(pageIndex)
 
             val aspectRatio = page.width.toFloat() / page.height.toFloat()
-            val targetWidth = 1600
+            val maxWidth = 1600
+            val targetWidth = maxWidth
             val targetHeight = (targetWidth / aspectRatio).toInt().coerceAtLeast(1)
 
-            val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+            val bitmap = try {
+                Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+            } catch (oom: OutOfMemoryError) {
+                Log.e(TAG, "OutOfMemoryError beim Erstellen des Bitmaps ($targetWidth x $targetHeight), Fallback auf RGB_565", oom)
+                System.gc()
+                try {
+                    Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.RGB_565)
+                } catch (oom2: OutOfMemoryError) {
+                    val fallbackWidth = 1000
+                    val fallbackHeight = (fallbackWidth / aspectRatio).toInt().coerceAtLeast(1)
+                    Bitmap.createBitmap(fallbackWidth, fallbackHeight, Bitmap.Config.RGB_565)
+                }
+            }
             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
             bitmap
         } catch (e: OutOfMemoryError) {
@@ -121,7 +134,8 @@ object PdfReceiptHelper {
                 }
                 if (parsedProducts.isNotEmpty()) {
                     val uiPreviewBitmap = renderPageBitmap(pdfFile, 0)
-                    return Pair(parsedProducts, uiPreviewBitmap)
+                    val productsWithUri = parsedProducts.map { it.copy(receiptUri = it.receiptUri ?: pdfFile.toURI().toString()) }
+                    return Pair(productsWithUri, uiPreviewBitmap)
                 }
             }
 
@@ -143,28 +157,48 @@ object PdfReceiptHelper {
                         try {
                             page = renderer.openPage(i)
                             val aspectRatio = page.width.toFloat() / page.height.toFloat()
-                            val targetWidth = 1600
+                            val maxWidth = 1600
+                            val targetWidth = maxWidth
                             val targetHeight = (targetWidth / aspectRatio).toInt().coerceAtLeast(1)
 
-                            fullPageBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                            fullPageBitmap = try {
+                                Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                            } catch (oom: OutOfMemoryError) {
+                                Log.e(TAG, "OutOfMemoryError bei fullPageBitmap ($targetWidth x $targetHeight) auf Seite $i, versuche RGB_565", oom)
+                                System.gc()
+                                try {
+                                    Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.RGB_565)
+                                } catch (oom2: OutOfMemoryError) {
+                                    val fallbackWidth = 1000
+                                    val fallbackHeight = (fallbackWidth / aspectRatio).toInt().coerceAtLeast(1)
+                                    Bitmap.createBitmap(fallbackWidth, fallbackHeight, Bitmap.Config.RGB_565)
+                                }
+                            }
+
                             page.render(fullPageBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
 
                             // Chunking in handliche Blöcke (je 2000px Höhe)
                             val chunkHeightMax = CHUNK_MAX_HEIGHT
                             var y = 0
-                            while (y < targetHeight) {
-                                val currentChunkHeight = minOf(chunkHeightMax, targetHeight - y)
-                                val chunkBitmap = Bitmap.createBitmap(fullPageBitmap, 0, y, targetWidth, currentChunkHeight)
+                            val effectiveHeight = fullPageBitmap.height
+                            val effectiveWidth = fullPageBitmap.width
+                            while (y < effectiveHeight) {
+                                val currentChunkHeight = minOf(chunkHeightMax, effectiveHeight - y)
+                                var chunkBitmap: Bitmap? = null
                                 try {
+                                    chunkBitmap = Bitmap.createBitmap(fullPageBitmap, 0, y, effectiveWidth, currentChunkHeight)
                                     val image = InputImage.fromBitmap(chunkBitmap, 0)
                                     val visionText = Tasks.await(recognizer.process(image))
                                     if (visionText != null && visionText.text.isNotBlank()) {
                                         ocrTextChunks.add(visionText.text)
                                     }
+                                } catch (oom: OutOfMemoryError) {
+                                    Log.e(TAG, "OutOfMemoryError bei OCR-Chunk y=$y auf Seite $i", oom)
+                                    System.gc()
                                 } catch (e: Throwable) {
                                     Log.e(TAG, "Fehler bei OCR-Chunk y=$y auf Seite $i", e)
                                 } finally {
-                                    try { chunkBitmap.recycle() } catch (_: Exception) {}
+                                    try { chunkBitmap?.recycle() } catch (_: Exception) {}
                                 }
                                 y += currentChunkHeight
                             }
@@ -189,7 +223,8 @@ object PdfReceiptHelper {
             // 3. OCR-Ergebnisse der verschiedenen Chunks sauber zusammenführen, bevor der Parser startet
             val fullOcrText = ocrTextChunks.joinToString("\n")
             val ocrProducts = if (fullOcrText.isNotBlank()) {
-                KassenzettelParser.parseReceiptText(fullOcrText, corrections, effectiveFilename)
+                val parsed = KassenzettelParser.parseReceiptText(fullOcrText, corrections, effectiveFilename)
+                parsed.map { it.copy(receiptUri = it.receiptUri ?: pdfFile.toURI().toString()) }
             } else {
                 emptyList()
             }

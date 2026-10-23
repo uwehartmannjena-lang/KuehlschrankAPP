@@ -92,6 +92,11 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        try {
+            val builder = android.os.StrictMode.VmPolicy.Builder()
+            android.os.StrictMode.setVmPolicy(builder.build())
+        } catch (_: Exception) {}
+
         currentIntentState.value = intent
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
 
@@ -277,12 +282,26 @@ class MainActivity : FragmentActivity() {
                 }
 
                 if (uris.isEmpty()) {
-                    val singleUri = intent.data ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                    val streamUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        try {
+                            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                        } catch (_: Exception) {
+                            null
+                        }
                     } else {
                         @Suppress("DEPRECATION")
-                        intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                    } ?: intent.clipData?.getItemAt(0)?.uri
+                        try {
+                            intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    val stringStreamUri = try {
+                        intent.getStringExtra(Intent.EXTRA_STREAM)?.let { Uri.parse(it) }
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val singleUri = intent.data ?: streamUri ?: stringStreamUri ?: intent.clipData?.getItemAt(0)?.uri
 
                     if (singleUri != null) {
                         uris.add(singleUri)
@@ -352,12 +371,24 @@ class MainActivity : FragmentActivity() {
             }
             val openStream: () -> java.io.InputStream? = {
                 if (uri.scheme == "file" && uri.path != null) {
-                    val directFile = File(uri.path!!)
-                    if (directFile.exists() && directFile.canRead()) {
-                        java.io.FileInputStream(directFile)
-                    } else {
-                        context.contentResolver.openInputStream(uri)
+                    val p = uri.path!!
+                    val candidatePaths = listOf(
+                        p,
+                        p.replace("/sdcard/", "/storage/emulated/0/"),
+                        p.replace("/storage/emulated/0/", "/sdcard/"),
+                        File(context.getExternalFilesDir(null), File(p).name).absolutePath
+                    )
+                    var stream: java.io.InputStream? = null
+                    for (path in candidatePaths) {
+                        val f = File(path)
+                        if (f.exists() && f.length() > 0) {
+                            try {
+                                stream = java.io.FileInputStream(f)
+                                break
+                            } catch (_: Exception) {}
+                        }
                     }
+                    stream ?: try { context.contentResolver.openInputStream(uri) } catch (_: Exception) { null }
                 } else {
                     context.contentResolver.openInputStream(uri)
                 }
