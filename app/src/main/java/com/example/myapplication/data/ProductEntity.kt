@@ -26,5 +26,15 @@ data class ProductEntity(
     val marketId: String? = null,
     @ColumnInfo(name = "purchase_count")
     val purchaseCount: Int = 0,
-    val synonyms: String? = null
+    val synonyms: String? = null,
+    val nutriScore: String? = null,
+    val caloriesKcal: Double? = null,
+    val fat: Double? = null,
+    val saturatedFat: Double? = null,
+    val carbohydrates: Double? = null,
+    val sugars: Double? = null,
+    val proteins: Double? = null,
+    val salt: Double? = null,
+    val allergens: String? = null,
+    val additives_tags: String? = null
 )

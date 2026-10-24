@@ -8,9 +8,12 @@ import android.util.Log
 import com.example.myapplication.data.Product
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import android.net.Uri
 import java.io.File
 
 /**
@@ -114,7 +117,7 @@ object PdfReceiptHelper {
     fun processPdf(
         context: Context,
         pdfFile: File,
-        recognizer: TextRecognizer,
+        recognizer: TextRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS),
         corrections: Map<String, String> = emptyMap(),
         originalFileName: String? = null
     ): Pair<List<Product>, Bitmap?> {
@@ -233,6 +236,29 @@ object PdfReceiptHelper {
         } catch (e: Throwable) {
             Log.e(TAG, "Unerwarteter Fehler bei processPdf", e)
             Pair(emptyList(), null)
+        }
+    }
+
+    /**
+     * Liest eine PDF-Datei direkt anhand ihrer Content-URI ein und verarbeitet sie.
+     */
+    fun processPdfUri(
+        context: Context,
+        pdfUri: Uri,
+        corrections: Map<String, String> = emptyMap(),
+        originalFileName: String? = null
+    ): List<Product> {
+        val tempFile = DocumentHelper.copyUriToTempFile(context, pdfUri) ?: return emptyList()
+        return try {
+            val (products, _) = processPdf(
+                context = context,
+                pdfFile = tempFile,
+                corrections = corrections,
+                originalFileName = originalFileName
+            )
+            products
+        } finally {
+            try { tempFile.delete() } catch (_: Exception) {}
         }
     }
 }

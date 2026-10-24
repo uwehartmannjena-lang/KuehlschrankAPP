@@ -36,6 +36,9 @@ interface FridgeItemDao {
     @Query("SELECT * FROM fridge_items WHERE id = :id")
     suspend fun getItemById(id: String): FridgeItem?
 
+    @Query("SELECT * FROM fridge_items WHERE barcode = :barcode LIMIT 1")
+    suspend fun getItemByBarcode(barcode: String): FridgeItem?
+
     @Query("SELECT * FROM wasted_items ORDER BY wasteDate DESC")
     fun getAllWastedItems(): Flow<List<WastedItem>>
 
@@ -207,3 +210,6 @@ interface FridgeItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLog(log: HouseholdLog)
 }
+
+typealias FridgeDao = FridgeItemDao
+

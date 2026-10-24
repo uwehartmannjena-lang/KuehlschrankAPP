@@ -14,13 +14,39 @@ data class MarketDictionaryEntry(
     val clean_name: String,
     val category: String,
     val default_storage: String,
-    val default_shelf_life_days: Int
+    val default_shelf_life_days: Int,
+    val image_url: String? = null
 )
 
 object MarketDictionaryHelper {
     var currentMarket: String = "general"
     private var marketDictionary: Map<String, MarketDictionaryEntry> = emptyMap()
     private var generalDictionary: Map<String, MarketDictionaryEntry> = emptyMap()
+    private val learnedImages: MutableMap<String, String> = HashMap()
+
+    fun addLearnedCorrectionWithImage(rawText: String, cleanName: String, imageUrl: String?) {
+        val key = rawText.lowercase().trim()
+        ReceiptImportSanitizer.addLearnedCorrection(rawText, cleanName)
+        if (!imageUrl.isNullOrBlank()) {
+            learnedImages[key] = imageUrl
+        }
+    }
+
+    fun getLearnedImage(rawText: String, context: Context? = null): String? {
+        val key = rawText.lowercase().trim()
+        learnedImages[key]?.let { return it }
+        if (context != null) {
+            try {
+                return runBlocking(Dispatchers.IO) {
+                    val db = AppDatabase.getDatabase(context)
+                    val learned = db.fridgeItemDao().getAllUserLearnedCorrectionsSync()
+                        .firstOrNull { it.receiptRawText.equals(rawText, ignoreCase = true) }
+                    learned?.imageUrl ?: db.fridgeItemDao().getUserCorrection(rawText)?.imageUrl
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
 
     fun detectMarket(rawText: String) {
         val lowerText = rawText.lowercase().take(1000)
@@ -227,12 +253,14 @@ object MarketDictionaryHelper {
         // 11. Lern-Vorrang: ZUERST UserLearnedCorrections prüfen
         val learned = ReceiptImportSanitizer.getLearnedCorrection(rawLine) ?: ReceiptImportSanitizer.getLearnedCorrection(separated)
         if (learned != null) {
+            val learnedImage = getLearnedImage(rawLine, context) ?: getLearnedImage(separated, context)
             return MarketDictionaryEntry(
                 receipt_pattern = rawLine,
                 clean_name = learned,
                 category = "SONSTIGES",
                 default_storage = "Kühlschrank",
-                default_shelf_life_days = 7
+                default_shelf_life_days = 7,
+                image_url = learnedImage
             )
         }
 

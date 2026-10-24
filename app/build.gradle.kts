@@ -52,6 +52,9 @@ dependencies {
     // ML Kit Text Recognition V2 (OCR für Kassenzettel, lateinische Schrift)
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
+    // Image Cropper (CanHub / Android-Image-Cropper)
+    implementation("com.vanniktech:android-image-cropper:4.6.0")
+
     // Gson für die Intent-Übergabe der Produkt-Liste
     implementation("com.google.code.gson:gson:2.10.1")
 
@@ -99,8 +102,9 @@ dependencies {
     implementation("androidx.room:room-ktx:$room_version")
     ksp("androidx.room:room-compiler:$room_version")
 
-    // Background tasks
+    // Background tasks & Document handling
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Widgets
     implementation("androidx.glance:glance-appwidget:1.1.1")
@@ -136,7 +140,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")

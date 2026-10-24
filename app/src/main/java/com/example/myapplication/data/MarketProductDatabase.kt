@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [MarketProductEntry::class, MarketProductFts::class, ProductEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class MarketProductDatabase : RoomDatabase() {
@@ -54,6 +54,19 @@ abstract class MarketProductDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `nutriScore` TEXT")
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `caloriesKcal` REAL")
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `fat` REAL")
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `saturatedFat` REAL")
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `carbohydrates` REAL")
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `sugars` REAL")
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `proteins` REAL")
+                db.execSQL("ALTER TABLE `market_products` ADD COLUMN `salt` REAL")
+            }
+        }
+
         fun getInstance(context: Context): MarketProductDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -62,7 +75,7 @@ abstract class MarketProductDatabase : RoomDatabase() {
                     "market_products.db"
                 )
                 .createFromAsset("databases/market_products.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
@@ -71,3 +84,5 @@ abstract class MarketProductDatabase : RoomDatabase() {
         }
     }
 }
+
+typealias FridgeDatabase = MarketProductDatabase

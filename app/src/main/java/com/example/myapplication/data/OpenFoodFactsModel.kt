@@ -12,11 +12,15 @@ data class ProductData(
     @SerializedName("product_name") val productName: String? = null,
     @SerializedName("brands") val marke: String? = null,
     @SerializedName("image_url") val imageUrl: String? = null,
+    @SerializedName("image_front_url") val imageFrontUrl: String? = null,
     @SerializedName("image_front_small_url") val imageSmallUrl: String? = null,
     @SerializedName("nutriscore_grade") val nutriScore: String? = null,
     @SerializedName("ecoscore_grade") val ecoScore: String? = null,
     @SerializedName("allergens") val allergens: String? = null,
+    @SerializedName("allergens_tags") val allergensTags: List<String>? = null,
+    @SerializedName("additives_tags") val additivesTags: List<String>? = null,
     @SerializedName("categories") val categories: String? = null,
+    @SerializedName("quantity") val quantity: String? = null,
     val nutriments: NutrimentsData? = null
 )
 
@@ -31,5 +35,7 @@ data class NutrimentsData(
     @SerializedName("proteins_100g") val proteins100g: Double? = null,
     @SerializedName("sugars_100g") val sugars100g: Double? = null,
     @SerializedName("salt_100g") val salt100g: Double? = null,
-    @SerializedName("fat_100g") val fat100g: Double? = null
+    @SerializedName("fat_100g") val fat100g: Double? = null,
+    @SerializedName("saturated-fat_100g") val saturatedFat100g: Double? = null,
+    @SerializedName("carbohydrates_100g") val carbohydrates100g: Double? = null
 )

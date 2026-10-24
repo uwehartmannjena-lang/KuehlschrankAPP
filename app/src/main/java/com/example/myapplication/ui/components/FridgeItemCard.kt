@@ -115,9 +115,17 @@ fun FridgeItemCard(
         Column(modifier = Modifier.padding(if (isCompact) 8.dp else 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (item.imageUrl != null && !isCompact) {
-                    androidx.compose.foundation.Image(
-                        painter = coil.compose.rememberAsyncImagePainter(item.imageUrl),
-                        contentDescription = null,
+                    val placeholderPainter = androidx.compose.ui.graphics.vector.rememberVectorPainter(androidx.compose.material.icons.Icons.Default.Image)
+                    val errorPainter = androidx.compose.ui.graphics.vector.rememberVectorPainter(androidx.compose.material.icons.Icons.Default.Restaurant)
+                    coil.compose.AsyncImage(
+                        model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                            .data(item.imageUrl)
+                            .crossfade(true)
+                            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .build(),
+                        placeholder = placeholderPainter,
+                        error = errorPainter,
+                        contentDescription = item.name,
                         modifier = Modifier.size(50.dp).clip(RoundedCornerShape(8.dp)).clickable { onImageClick() },
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop
                     )

@@ -73,6 +73,7 @@ data class UserLearnedCorrection(
     @PrimaryKey
     @ColumnInfo(name = "receipt_raw_text") val receiptRawText: String,
     @ColumnInfo(name = "corrected_name") val correctedName: String,
+    @ColumnInfo(name = "image_url") val imageUrl: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 

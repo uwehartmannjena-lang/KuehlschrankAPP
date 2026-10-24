@@ -17,6 +17,7 @@ import androidx.room.RoomDatabase
 ], version = 35, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun fridgeItemDao(): FridgeItemDao
+    abstract fun userLearnedDao(): UserLearnedDao
 
     companion object {
         @Volatile
