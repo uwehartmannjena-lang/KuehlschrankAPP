@@ -34,6 +34,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
@@ -72,6 +74,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import coil.compose.SubcomposeAsyncImage
+import com.example.myapplication.ui.screens.ReceiptScannerScreen
+import com.example.myapplication.ui.screens.SettingsScreen
 import com.example.myapplication.FridgeViewModel
 import com.example.myapplication.KassenzettelScannerActivity
 import com.example.myapplication.MarketDictionaryHelper
@@ -164,6 +168,8 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showReceiptScanner by remember { mutableStateOf(false) }
+    var showWebCompanion by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var itemForInfoDialog by remember { mutableStateOf<FridgeItem?>(null) }
 
@@ -323,7 +329,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                     onPositioned = { k, r -> tutorialTargets[k] = r },
                     onOpenSettings = { showSettings = true },
                     onOpenHelp = { showHelp = true },
-                    onScanReceipt = { receiptScannerLauncher.launch(Intent(context, KassenzettelScannerActivity::class.java)) }
+                    onScanReceipt = { showReceiptScanner = true }
                 )
             },
             bottomBar = {
@@ -848,7 +854,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                 onDismiss = { showFabSheet = false },
                 onScanReceipt = {
                     showFabSheet = false
-                    receiptScannerLauncher.launch(Intent(context, KassenzettelScannerActivity::class.java))
+                    showReceiptScanner = true
                 },
                 onScanBarcode = {
                     showFabSheet = false
@@ -925,12 +931,59 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
 
 
 
-        if (showSettings) SettingsDialog(
-            viewModel = fridgeViewModel,
-            onDismiss = { showSettings = false },
-            onStartTour = { showSettings = false; showTutorial = true },
-            onOpenHelp = { showSettings = false; showHelp = true }
-        )
+        if (showSettings) {
+            BackHandler { showSettings = false }
+            SettingsScreen(
+                viewModel = fridgeViewModel,
+                onBack = { showSettings = false },
+                onOpenHelp = { showSettings = false; showHelp = true },
+                onStartTour = { showSettings = false; showTutorial = true },
+                onExportBackup = { fridgeViewModel.exportBackup(context) },
+                onOpenWebCompanion = { showWebCompanion = true },
+                onClearInventory = { fridgeViewModel.clearInventory() }
+            )
+        }
+
+        if (showReceiptScanner) {
+            BackHandler { showReceiptScanner = false }
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("Kassenbon scannen", fontWeight = FontWeight.Bold) },
+                            navigationIcon = {
+                                IconButton(onClick = { showReceiptScanner = false }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                                }
+                            }
+                        )
+                    }
+                ) { padding ->
+                    Box(modifier = Modifier.padding(padding)) {
+                        ReceiptScannerScreen(
+                            onScanFinished = { products ->
+                                if (products.isNotEmpty()) {
+                                    val contentHash = products.joinToString { it.name }.hashCode().toString()
+                                    fridgeViewModel.handleScannedProducts(products, "SCAN_$contentHash")
+                                }
+                                showReceiptScanner = false
+                            },
+                            onDismiss = { showReceiptScanner = false }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showWebCompanion) {
+            WebCompanionDialog(
+                viewModel = fridgeViewModel,
+                onDismiss = { showWebCompanion = false }
+            )
+        }
         if (showHelp) HelpDialog(
             onDismiss = { showHelp = false },
             onStartTour = { showHelp = false; showTutorial = true }
@@ -1636,6 +1689,12 @@ fun TopBarWithSearch(
                     modifier = Modifier.onGloballyPositioned { onPositioned("barcode_btn", Rect(it.positionInRoot(), it.size.toSize())) }
                 ) {
                     Icon(Icons.Default.QrCodeScanner, "Barcode scannen")
+                }
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.onGloballyPositioned { onPositioned("settings_btn", Rect(it.positionInRoot(), it.size.toSize())) }
+                ) {
+                    Icon(Icons.Outlined.Settings, "Einstellungen")
                 }
             }
             Box {
