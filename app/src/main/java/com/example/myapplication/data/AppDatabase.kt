@@ -14,10 +14,11 @@ import androidx.room.RoomDatabase
     BudgetConfig::class, Receipt::class, CachedProduct::class, UserCorrection::class, UserLearnedCorrection::class,
     MarketProductEntry::class, MarketProductFts::class,
     PurchaseHistoryEntry::class
-], version = 35, exportSchema = false)
+], version = 36, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun fridgeItemDao(): FridgeItemDao
     abstract fun userLearnedDao(): UserLearnedDao
+    abstract fun shoppingListDao(): ShoppingListDao
 
     companion object {
         @Volatile
@@ -29,6 +30,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_35_36 = object : androidx.room.migration.Migration(35, 36) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE fridge_items ADD COLUMN calories TEXT NOT NULL DEFAULT ''")
+                } catch (_: Exception) {}
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -36,7 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "fridge_database"
                 )
-                .addMigrations(MIGRATION_33_34)
+                .addMigrations(MIGRATION_33_34, MIGRATION_35_36)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance

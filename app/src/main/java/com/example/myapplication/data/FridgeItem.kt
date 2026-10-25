@@ -27,6 +27,7 @@ data class FridgeItem(
     var price: Double = 0.0,
     var brand: String? = null,
     var kcal: Int = 0,
+    var calories: String = "",
     var nutriScore: String = "",
     var allergens: String = "",
     var isOrganic: Boolean = false,

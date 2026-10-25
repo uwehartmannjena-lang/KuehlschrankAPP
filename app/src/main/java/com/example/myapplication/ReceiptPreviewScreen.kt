@@ -46,6 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.Product
+import com.example.myapplication.ui.BarcodeScannerIconButton
+import com.example.myapplication.ui.rememberBarcodeScanner
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -191,6 +193,14 @@ fun ArticleCorrectionDialog(
     var receiptUriInput by remember { mutableStateOf(product.receiptUri ?: "") }
     var expanded by remember { mutableStateOf(false) }
 
+    val barcodeScanner = rememberBarcodeScanner { scanned ->
+        textInput = scanned.productName
+        if (!scanned.imageUrl.isNullOrBlank()) {
+            receiptUriInput = scanned.imageUrl
+        }
+        viewModel.onQueryChanged(scanned.productName)
+    }
+
     LaunchedEffect(product) {
         viewModel.onQueryChanged(textInput)
     }
@@ -232,7 +242,10 @@ fun ArticleCorrectionDialog(
                         label = { Text("Artikelname") },
                         singleLine = true,
                         trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                BarcodeScannerIconButton(controller = barcodeScanner)
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                            }
                         },
                         colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         modifier = Modifier
@@ -301,6 +314,16 @@ fun ArticleCorrectionDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val currentBarcode = barcodeScanner.lastScannedBarcode
+                    if (!currentBarcode.isNullOrBlank() && textInput.isNotBlank()) {
+                        barcodeScanner.saveLearnedMapping(
+                            barcode = currentBarcode,
+                            finalName = textInput.trim(),
+                            imageUrl = receiptUriInput.trim().takeIf { it.isNotBlank() },
+                            originalName = initialText.takeIf { it.isNotBlank() } ?: product.name
+                        )
+                    }
+
                     val parsedDateMillis = try {
                         java.text.SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY).parse(dateInput.trim())?.time
                     } catch (_: Exception) { null } ?: product.purchaseDate ?: System.currentTimeMillis()

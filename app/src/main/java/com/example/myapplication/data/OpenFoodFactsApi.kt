@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 interface OpenFoodFactsApi {
 
-    @GET("api/v2/product/{barcode}.json")
+    @GET("https://world.openfoodfacts.org/api/v0/product/{barcode}.json")
     suspend fun getProduktByBarcode(
         @Path("barcode") barcode: String
     ): ProductResponse

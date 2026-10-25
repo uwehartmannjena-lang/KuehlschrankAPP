@@ -26,7 +26,8 @@ object MhdOcrHelper {
         if (rawText.isBlank()) return null
         val patterns = listOf(
             Regex("""\b(\d{1,2})[./\-](\d{1,2})[./\-](\d{4})\b"""),
-            Regex("""\b(\d{1,2})[./\-](\d{1,2})[./\-](\d{2})\b""")
+            Regex("""\b(\d{1,2})[./\-](\d{1,2})[./\-](\d{2})\b"""),
+            Regex("""\b(\d{1,2})[./\-](\d{4})\b""")
         )
         for (regex in patterns) {
             val match = regex.find(rawText)
@@ -39,7 +40,10 @@ object MhdOcrHelper {
 
     fun parseDateToTimestamp(dateStr: String?): Long? {
         if (dateStr.isNullOrBlank()) return null
-        val formats = listOf("dd.MM.yyyy", "dd.MM.yy", "dd/MM/yyyy", "dd/MM/yy", "dd-MM-yyyy")
+        val formats = listOf(
+            "dd.MM.yyyy", "dd.MM.yy", "dd/MM/yyyy", "dd/MM/yy", "dd-MM-yyyy",
+            "MM/yyyy", "MM.yyyy", "MM-yyyy"
+        )
         for (format in formats) {
             try {
                 val sdf = SimpleDateFormat(format, Locale.GERMANY).apply { isLenient = false }

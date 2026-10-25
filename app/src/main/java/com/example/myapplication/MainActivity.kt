@@ -123,7 +123,7 @@ class MainActivity : FragmentActivity() {
                 fridgeViewModel.loadProductLexicon()
             }
 
-            MaterialTheme {
+            com.example.myapplication.ui.theme.KuehlschrankProfiTheme {
                 RefrigeratorApp(fridgeViewModel)
             }
 

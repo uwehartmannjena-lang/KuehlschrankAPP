@@ -20,6 +20,7 @@ data class ProductData(
     @SerializedName("allergens_tags") val allergensTags: List<String>? = null,
     @SerializedName("additives_tags") val additivesTags: List<String>? = null,
     @SerializedName("categories") val categories: String? = null,
+    @SerializedName("categories_tags") val categoriesTags: List<String>? = null,
     @SerializedName("quantity") val quantity: String? = null,
     val nutriments: NutrimentsData? = null
 )

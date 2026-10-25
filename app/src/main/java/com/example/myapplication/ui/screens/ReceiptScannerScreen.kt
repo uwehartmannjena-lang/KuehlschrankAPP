@@ -38,6 +38,8 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.tasks.await
 import com.example.myapplication.data.AppDatabase
 import com.example.myapplication.data.FridgeItem
+import com.example.myapplication.ui.BarcodeScannerIconButton
+import com.example.myapplication.ui.rememberBarcodeScanner
 import com.example.myapplication.data.Product
 import com.example.myapplication.data.UnconfirmedReceiptItem
 import com.example.myapplication.data.UnconfirmedReceiptsRepository
@@ -183,37 +185,55 @@ fun ReceiptScannerScreen(
                     cameraLauncher.launch(uri)
                 },
                 enabled = !isProcessing,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("ReceiptScannerButton_Camera")
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("Kamera")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("Kamera", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
             }
 
             OutlinedButton(
                 onClick = { galleryLauncher.launch("image/*") },
                 enabled = !isProcessing,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("ReceiptScannerButton_Gallery")
             ) {
-                Icon(Icons.Default.Image, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("Galerie")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("Galerie", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
             }
 
             Button(
                 onClick = { pdfLauncher.launch(arrayOf("application/pdf")) },
                 enabled = !isProcessing,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("ReceiptScannerButton_Pdf")
             ) {
-                Icon(Icons.Default.Description, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("PDF Dokument")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("PDF", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
             }
         }
 
@@ -309,6 +329,12 @@ fun UnconfirmedItemCard(
     onDiscard: () -> Unit
 ) {
     var editedName by remember(item.id) { mutableStateOf(item.suggestedName) }
+    var scannedImageUrl by remember(item.id) { mutableStateOf<String?>(null) }
+
+    val barcodeScanner = rememberBarcodeScanner { scanned ->
+        editedName = scanned.productName
+        scannedImageUrl = scanned.imageUrl
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -326,7 +352,10 @@ fun UnconfirmedItemCard(
                 onValueChange = { editedName = it },
                 label = { Text("Produktname zuweisen") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                trailingIcon = {
+                    BarcodeScannerIconButton(controller = barcodeScanner)
+                }
             )
             Spacer(Modifier.height(8.dp))
             Row(
@@ -338,7 +367,19 @@ fun UnconfirmedItemCard(
                     Text("Verwerfen", color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(Modifier.width(8.dp))
-                Button(onClick = { onConfirm(editedName.trim()) }) {
+                Button(onClick = {
+                    val finalName = editedName.trim()
+                    val currentBarcode = barcodeScanner.lastScannedBarcode
+                    if (!currentBarcode.isNullOrBlank() && finalName.isNotBlank()) {
+                        barcodeScanner.saveLearnedMapping(
+                            barcode = currentBarcode,
+                            finalName = finalName,
+                            imageUrl = scannedImageUrl,
+                            originalName = item.rawText
+                        )
+                    }
+                    onConfirm(finalName)
+                }) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Bestätigen")

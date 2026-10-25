@@ -587,7 +587,7 @@ fun MainScreenContent(fridgeViewModel: FridgeViewModel) {
                             }
                         }
                     }
-                    1 -> ShoppingList(fridgeViewModel, fridgeViewModel.allShoppingItems.collectAsState(initial = emptyList()).value)
+                    1 -> ShoppingListScreen()
                     2 -> PlanScreen(fridgeViewModel, mealPlans, allItems)
                     3 -> StatisticsView(fridgeViewModel, allItems, wastedItems, consumedItems)
                     }
@@ -1063,6 +1063,13 @@ fun CorrectArticleDialog(
     var isSearching by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
+    val barcodeScanner = rememberBarcodeScanner { scanned ->
+        searchQuery = scanned.productName
+        if (!scanned.imageUrl.isNullOrBlank()) {
+            imageUrlInput = scanned.imageUrl
+        }
+    }
+
     // Suche mit Debounce und abseits des Main-Threads (FTS-DB + Levenshtein sind teuer).
     val suggestions: List<String> by produceState(initialValue = emptyList<String>(), searchQuery) {
         delay(250)
@@ -1093,7 +1100,10 @@ fun CorrectArticleDialog(
                         label = { Text("Produkt-Suchbegriff / EAN") },
                         singleLine = true,
                         trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                BarcodeScannerIconButton(controller = barcodeScanner)
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                            }
                         },
                         colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         modifier = Modifier.fillMaxWidth().menuAnchor()
@@ -1174,6 +1184,15 @@ fun CorrectArticleDialog(
             Button(
                 onClick = {
                     if (searchQuery.isNotBlank()) {
+                        val currentBarcode = barcodeScanner.lastScannedBarcode
+                        if (!currentBarcode.isNullOrBlank()) {
+                            barcodeScanner.saveLearnedMapping(
+                                barcode = currentBarcode,
+                                finalName = searchQuery.trim(),
+                                imageUrl = imageUrlInput.takeIf { it.isNotBlank() },
+                                originalName = ocrText
+                            )
+                        }
                         viewModel.updateCandidateName(item.id, searchQuery)
                         viewModel.teachItemCorrection(item, newName = searchQuery)
                     }
@@ -2493,7 +2512,7 @@ fun LocationTile(label: String, icon: ImageVector, isSelected: Boolean, modifier
 
 @Composable
 fun ShoppingList(viewModel: FridgeViewModel, items: List<ShoppingItem>) {
-    ShoppingListScreen(viewModel = viewModel, items = items)
+    ShoppingListScreen()
 }
 
 @Composable
@@ -2541,6 +2560,9 @@ fun StatisticsView(
     val currentMonthYear = remember { SimpleDateFormat("yyyy-MM", Locale.GERMANY).format(Date()) }
     val budget by viewModel.getBudget(currentMonthYear).collectAsState(initial = null)
     var showBudgetDialog by remember { mutableStateOf(false) }
+
+    val statisticsViewModel: com.example.myapplication.StatisticsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val isExportingPdf by statisticsViewModel.isExportingPdf.collectAsState()
 
     val filteredWasted = remember(wastedItems, selectedTimeFrame) {
         StatisticsHelper.filterWastedByTimeframe(wastedItems, selectedTimeFrame)
@@ -2611,32 +2633,55 @@ fun StatisticsView(
                     )
                 }
 
-                IconButton(
-                    onClick = {
-                        val report = StatisticsHelper.generateShareReport(
-                            timeFrameTitle = selectedTimeFrame.title,
-                            inventoryCount = totalCount,
-                            inventoryValue = totalValue,
-                            consumedCount = sustainability.consumedCount,
-                            wastedCount = sustainability.wastedCount,
-                            wastedValue = sustainability.wastedValue,
-                            wastedCo2 = sustainability.wastedCo2,
-                            freshnessScore = freshness.freshnessScore,
-                            nutritionStats = nutritionStats,
-                            wasteTrend = wasteTrend,
-                            costProjection = costProjection,
-                            topConsumedItems = topConsumed,
-                            topWastedItems = topWasted
-                        )
-                        val sendIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, report)
-                            type = "text/plain"
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            statisticsViewModel.exportStatisticsPdf(context, selectedTimeFrame)
+                        },
+                        enabled = !isExportingPdf
+                    ) {
+                        if (isExportingPdf) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = viewModel.themeColor.value
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.PictureAsPdf,
+                                contentDescription = "PDF-Bericht exportieren",
+                                tint = viewModel.themeColor.value
+                            )
                         }
-                        context.startActivity(Intent.createChooser(sendIntent, "Statistikbericht teilen"))
                     }
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = "Bericht teilen", tint = viewModel.themeColor.value)
+
+                    IconButton(
+                        onClick = {
+                            val report = StatisticsHelper.generateShareReport(
+                                timeFrameTitle = selectedTimeFrame.title,
+                                inventoryCount = totalCount,
+                                inventoryValue = totalValue,
+                                consumedCount = sustainability.consumedCount,
+                                wastedCount = sustainability.wastedCount,
+                                wastedValue = sustainability.wastedValue,
+                                wastedCo2 = sustainability.wastedCo2,
+                                freshnessScore = freshness.freshnessScore,
+                                nutritionStats = nutritionStats,
+                                wasteTrend = wasteTrend,
+                                costProjection = costProjection,
+                                topConsumedItems = topConsumed,
+                                topWastedItems = topWasted
+                            )
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, report)
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Statistikbericht teilen"))
+                        }
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Bericht teilen", tint = viewModel.themeColor.value)
+                    }
                 }
             }
 

@@ -3,8 +3,10 @@ package com.example.myapplication.ui.screens
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,6 +47,7 @@ import com.example.myapplication.data.FridgeItem
 import com.example.myapplication.ui.LocationTileSelector
 import com.example.myapplication.ui.QuantityStepper
 import com.example.myapplication.ui.UnitSelector
+import com.example.myapplication.ui.components.NutriScoreBadge
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,8 +123,95 @@ fun EditItemScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val barcode = result.data?.getStringExtra("SCANNED_BARCODE")
             if (!barcode.isNullOrBlank()) {
-                viewModel.scanBarcode(barcode)
+                viewModel.scanBarcode(barcode) { success, errorMsg ->
+                    if (!success) {
+                        Toast.makeText(
+                            context,
+                            errorMsg ?: "Produkt nicht gefunden",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "Produktdaten erfolgreich übernommen",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val intent = Intent(context, ScannerActivity::class.java).apply {
+                putExtra("EXTRA_MULTI_SCAN", false)
+            }
+            scannerLauncher.launch(intent)
+        } else {
+            Toast.makeText(context, "Kamera-Berechtigung wird für den Barcode-Scanner benötigt", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val onLaunchScannerWithPermission = {
+        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA)
+        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val intent = Intent(context, ScannerActivity::class.java).apply {
+                putExtra("EXTRA_MULTI_SCAN", false)
+            }
+            scannerLauncher.launch(intent)
+        } else {
+            permissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
+    }
+
+    val mhdCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            tempCameraUri?.let { uri ->
+                scope.launch {
+                    try {
+                        val parsedDate = MhdOcrHelper.parseExpiryDateFromUri(context, uri)
+                        if (!parsedDate.isNullOrBlank()) {
+                            viewModel.onExpiryDateChange(parsedDate)
+                            Toast.makeText(context, "MHD erkannt: $parsedDate", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Kein Datum erkannt", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Fehler beim Lesen des MHDs", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    val mhdPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val uri = CameraHelper.createTempPictureUri(context)
+            tempCameraUri = uri
+            mhdCameraLauncher.launch(uri)
+        } else {
+            Toast.makeText(context, "Kamera-Berechtigung wird für den MHD-Scanner benötigt", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val onLaunchMhdScanner = {
+        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        )
+        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val uri = CameraHelper.createTempPictureUri(context)
+            tempCameraUri = uri
+            mhdCameraLauncher.launch(uri)
+        } else {
+            mhdPermissionLauncher.launch(android.Manifest.permission.CAMERA)
         }
     }
 
@@ -207,6 +298,19 @@ fun EditItemScreen(
                 }
             }
 
+            // Barcode scannen Button
+            Button(
+                onClick = onLaunchScannerWithPermission,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("EditItemButton_ScanBarcode"),
+                enabled = !uiState.isScanning
+            ) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Barcode scannen")
+            }
+
             // EAN / Barcode mit Scanner-Button
             OutlinedTextField(
                 value = uiState.barcode,
@@ -216,12 +320,8 @@ fun EditItemScreen(
                 singleLine = true,
                 trailingIcon = {
                     IconButton(
-                        onClick = {
-                            val intent = Intent(context, ScannerActivity::class.java).apply {
-                                putExtra("EXTRA_MULTI_SCAN", false)
-                            }
-                            scannerLauncher.launch(intent)
-                        }
+                        onClick = onLaunchScannerWithPermission,
+                        enabled = !uiState.isScanning
                     ) {
                         Icon(
                             imageVector = Icons.Default.QrCodeScanner,
@@ -258,33 +358,132 @@ fun EditItemScreen(
                 onValueChange = { viewModel.onNameChange(it) },
                 label = { Text("Name") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            // MHD / Mindesthaltbarkeitsdatum mit OCR-Crop-Scanner
-            OutlinedTextField(
-                value = uiState.expiryDate,
-                onValueChange = { viewModel.onExpiryDateChange(it) },
-                label = { Text("MHD (z.B. 15.11.2026)") },
-                modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 trailingIcon = {
                     IconButton(
-                        onClick = {
-                            isCroppingForMhd = true
-                            val uri = CameraHelper.createTempPictureUri(context)
-                            tempCameraUri = uri
-                            cameraLauncher.launch(uri)
-                        }
+                        onClick = onLaunchScannerWithPermission,
+                        enabled = !uiState.isScanning
                     ) {
                         Icon(
-                            imageVector = Icons.Default.DocumentScanner,
-                            contentDescription = "MHD scannen",
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = "Barcode scannen",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
             )
+
+            // Prädiktive Anti-Food-Waste-Warnung
+            uiState.wasteWarning?.let { warning ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Warnung",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = warning,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                    }
+                }
+            }
+
+            // MHD / Mindesthaltbarkeitsdatum mit OCR-Scanner-Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = uiState.expiryDate,
+                    onValueChange = { viewModel.onExpiryDateChange(it) },
+                    label = { Text("MHD (z.B. 15.11.2026)") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    trailingIcon = {
+                        IconButton(onClick = onLaunchMhdScanner) {
+                            Icon(
+                                imageVector = Icons.Default.DocumentScanner,
+                                contentDescription = "MHD scannen",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                )
+
+                OutlinedButton(
+                    onClick = onLaunchMhdScanner,
+                    modifier = Modifier.height(56.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DocumentScanner,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("MHD scannen")
+                }
+            }
+
+            // Nährwerte: Nutri-Score & Kalorien
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Nährwerte",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (uiState.nutriScore.isNotBlank()) {
+                            NutriScoreBadge(score = uiState.nutriScore)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.nutriScore,
+                            onValueChange = { viewModel.onNutriScoreChange(it) },
+                            label = { Text("Nutri-Score (A-E)") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = uiState.calories,
+                            onValueChange = { viewModel.onCaloriesChange(it) },
+                            label = { Text("Kalorien (kcal)") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
 
             // Bild-Pfad / Bild-URL
             OutlinedTextField(
@@ -302,6 +501,57 @@ fun EditItemScreen(
             ) {
                 QuantityStepper(uiState.quantity) { viewModel.onQuantityChange(it) }
                 UnitSelector(uiState.unit) { viewModel.onUnitChange(it) }
+            }
+
+            // Kategorie-Auswahl mit Dropdown und Textfeld
+            var categoryDropdownExpanded by remember { mutableStateOf(false) }
+            val availableCategories = remember {
+                listOf(
+                    "Milchprodukte",
+                    "Fleisch",
+                    "Obst & Gemüse",
+                    "Brot & Backwaren",
+                    "Getränke",
+                    "Vorrat & Konserven",
+                    "Drogerie & Hygiene",
+                    "Haushalt",
+                    "Haustier",
+                    "Sonstiges"
+                )
+            }
+
+            ExposedDropdownMenuBox(
+                expanded = categoryDropdownExpanded,
+                onExpandedChange = { categoryDropdownExpanded = !categoryDropdownExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = uiState.category,
+                    onValueChange = { viewModel.onCategoryChange(it) },
+                    label = { Text("Kategorie") },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryDropdownExpanded)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    singleLine = true
+                )
+
+                ExposedDropdownMenu(
+                    expanded = categoryDropdownExpanded,
+                    onDismissRequest = { categoryDropdownExpanded = false }
+                ) {
+                    availableCategories.forEach { categoryOption ->
+                        DropdownMenuItem(
+                            text = { Text(categoryOption) },
+                            onClick = {
+                                viewModel.onCategoryChange(categoryOption)
+                                categoryDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
             }
 
             // Lagerort-Auswahl

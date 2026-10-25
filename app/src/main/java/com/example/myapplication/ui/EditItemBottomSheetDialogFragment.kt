@@ -119,6 +119,16 @@ fun ItemEditSheetContent(
     var unit by remember { mutableStateOf(item?.unit ?: "Stk.") }
     var location by remember { mutableStateOf(item?.storageLocation ?: "Kühlschrank") }
     var drawer by remember { mutableIntStateOf(item?.freezerDrawer ?: 0) }
+    var imageUrl by remember { mutableStateOf(item?.imageUrl) }
+    var barcode by remember { mutableStateOf(item?.barcode) }
+
+    val barcodeScanner = rememberBarcodeScanner { scanned ->
+        name = scanned.productName
+        barcode = scanned.barcode
+        if (!scanned.imageUrl.isNullOrBlank()) {
+            imageUrl = scanned.imageUrl
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -175,7 +185,7 @@ fun ItemEditSheetContent(
                 horizontalArrangement = Arrangement.Center
             ) {
                 ProductThumbnail(
-                    imageUrl = item?.imageUrl,
+                    imageUrl = imageUrl ?: item?.imageUrl,
                     category = item?.category ?: "SONSTIGES",
                     itemName = name.ifBlank { "Artikel" },
                     storageLocation = location,
@@ -187,7 +197,10 @@ fun ItemEditSheetContent(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text("Name") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    BarcodeScannerIconButton(controller = barcodeScanner)
+                }
             )
 
             Row(
@@ -300,12 +313,24 @@ fun ItemEditSheetContent(
             Button(
                 onClick = {
                     val updatedItem = (item ?: FridgeItem(name = name)).copy(
-                        name = name,
+                        name = name.trim(),
                         quantity = quantity,
                         unit = unit,
                         storageLocation = location,
-                        freezerDrawer = if (location == "Gefrierfach") drawer else 0
+                        freezerDrawer = if (location == "Gefrierfach") drawer else 0,
+                        barcode = barcode ?: item?.barcode,
+                        imageUrl = imageUrl ?: item?.imageUrl
                     )
+                    // Lern-Logik: Falls Barcode vorhanden, Mapping im UserLearnedDao sichern
+                    val currentBarcode = barcode ?: barcodeScanner.lastScannedBarcode
+                    if (!currentBarcode.isNullOrBlank() && name.isNotBlank()) {
+                        barcodeScanner.saveLearnedMapping(
+                            barcode = currentBarcode,
+                            finalName = name.trim(),
+                            imageUrl = imageUrl ?: item?.imageUrl,
+                            originalName = item?.name
+                        )
+                    }
                     if (item != null) {
                         viewModel?.teachItemCorrection(item, newName = name, newLocation = location, newUnit = unit)
                     }
